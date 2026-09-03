@@ -76,3 +76,5 @@
 - Approved runtime dependencies: `typer`, `rich`, `sqlite-utils`, `questionary`, `jinja2`.
 - Approved dev/test dependencies: `pytest`, `pytest-mock`, `ruff`, and `typer.testing.CliRunner`.
 - Git default branch is `main`; initial commit message is `chore: initial scaffold from metaproject`.
+- `metaproject universe [target_dir]` scopes output to `target_dir` (use `--all` to view all cataloged projects across all workspaces).
+- Universe scanner directly catalogs `target_dir` itself if `target_dir` is a project root.
