@@ -39,7 +39,7 @@ testpypi: clean package ## Publish package to TestPyPI
 pypi: clean package ## Publish package to PyPI
 	python3 -m twine upload dist/*
 
-install-testpypi: build ## Install the latest version of the tool from TestPyPI
+install-testpypi: ## Install the latest version of the tool from TestPyPI
 	python3 -m pip install --upgrade \
 	--no-cache-dir \
 	--index-url https://test.pypi.org/simple/ \
