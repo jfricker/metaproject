@@ -312,6 +312,74 @@ def commit_version_files(
         return None
 
 
+def create_git_tag(repo_root: Path, version: str) -> Optional[str]:
+    """Create annotated git tag for the specified version."""
+    tag_name = f"v{version}"
+    try:
+        check_res = subprocess.run(
+            ["git", "tag", "-l", tag_name],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if check_res.stdout.strip() == tag_name:
+            print(f"Git tag '{tag_name}' already exists.")
+            return tag_name
+
+        subprocess.run(
+            ["git", "tag", "-a", tag_name, "-m", f"Release {tag_name}"],
+            cwd=repo_root,
+            check=True,
+        )
+        return tag_name
+    except Exception as exc:
+        print(f"Warning: Failed to create git tag '{tag_name}': {exc}", file=sys.stderr)
+        return None
+
+
+def get_matching_tag_at_head(repo_root: Path, current_version: str) -> Optional[str]:
+    """Check if current git tag at HEAD matches version metadata."""
+    try:
+        res = subprocess.run(
+            ["git", "tag", "--points-at", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        tags = [t.strip() for t in res.stdout.splitlines() if t.strip()]
+        for tag in tags:
+            if tag in (f"v{current_version}", current_version) or tag.lstrip("v") == current_version:
+                return tag
+    except Exception:
+        pass
+    return None
+
+
+def has_uncommitted_changes(repo_root: Path) -> bool:
+    """Check if repository has uncommitted changes or untracked non-ignored files."""
+    if get_uncommitted_new_files(repo_root):
+        return True
+    res_diff = subprocess.run(
+        ["git", "diff", "--stat"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if res_diff.stdout.strip():
+        return True
+    res_staged = subprocess.run(
+        ["git", "diff", "--staged", "--stat"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return bool(res_staged.stdout.strip())
+
+
 def main() -> int:
     """Main entrypoint for version increment script."""
     parser = argparse.ArgumentParser(
@@ -340,9 +408,14 @@ def main() -> int:
         help="Force a specific bump type, overriding heuristic detection.",
     )
     parser.add_argument(
+        "--force-bump",
+        action="store_true",
+        help="Force increment even if git tag matches current version metadata.",
+    )
+    parser.add_argument(
         "--no-commit",
         action="store_true",
-        help="Do not commit version files after updating.",
+        help="Do not commit version files or create git tag after updating.",
     )
     parser.add_argument(
         "--current",
@@ -370,7 +443,23 @@ def main() -> int:
         bump_type = "major"
         explanation = "Milestone release: operator forced major version increment (zeroed minor and patch)"
         next_version = compute_next_version(current_version, "major")
+        milestone_tag = get_matching_tag_at_head(repo_root, next_version)
+        if milestone_tag and not args.force_bump:
+            print(
+                f"Version metadata ({next_version}) matches current git tag ({milestone_tag}). "
+                f"No bump is needed."
+            )
+            return 0
     else:
+        # If tag and version metadata match, exit cleanly with message that no bump is needed
+        matching_tag = get_matching_tag_at_head(repo_root, current_version)
+        if matching_tag and not args.force_bump:
+            print(
+                f"Version metadata ({current_version}) matches current git tag ({matching_tag}). "
+                f"No bump is needed."
+            )
+            return 0
+
         bump_type, explanation = decide_bump_type(repo_root, major, force_type=args.force)
         next_version = compute_next_version(current_version, bump_type)
 
@@ -383,8 +472,9 @@ def main() -> int:
     print(f"Target version:  {next_version}")
 
     if args.dry_run:
-        print("\n[Dry run] No files were modified and no git commit was created.")
+        print("\n[Dry run] No files were modified and no git commit or tag was created.")
         print(f"[Dry run] Planned commit: chore(release): bump version to {next_version} [{bump_category}]")
+        print(f"[Dry run] Planned tag:    v{next_version}")
         return 0
 
     results = apply_version_bump(repo_root, current_version, next_version)
@@ -406,6 +496,10 @@ def main() -> int:
         )
         if commit_title:
             print(f"Git commit created: {commit_title}")
+
+        tag_name = create_git_tag(repo_root, next_version)
+        if tag_name:
+            print(f"Git tag created:    {tag_name}")
 
     return 0
 

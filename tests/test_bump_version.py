@@ -123,9 +123,9 @@ def test_cli_bump_script_execution() -> None:
     )
     assert res_curr.stdout.strip() == curr_v
 
-    # 2. --dry-run (heuristic)
+    # 2. --dry-run with --force-bump (heuristic)
     res_dry = subprocess.run(
-        [sys.executable, str(script_path), "--dry-run"],
+        [sys.executable, str(script_path), "--force-bump", "--dry-run"],
         capture_output=True,
         text=True,
         check=True,
@@ -148,7 +148,19 @@ def test_cli_bump_script_execution() -> None:
     assert "Bump category:   Milestone" in res_major.stdout
     assert "Increment type:  MAJOR" in res_major.stdout
     assert f"Target version:  {expected_major}" in res_major.stdout
-    assert "chore(release): bump version to 1.0.0 [Milestone]" in res_major.stdout
+    assert f"chore(release): bump version to {expected_major} [Milestone]" in res_major.stdout
+
+    # 4. Normal run when matching tag is present on HEAD
+    matching_tag = bump_version.get_matching_tag_at_head(repo_root, curr_v)
+    if matching_tag:
+        res_match = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "matches current git tag" in res_match.stdout
+        assert "No bump is needed" in res_match.stdout
 
 
 def test_commit_version_files(tmp_path: Path) -> None:
@@ -204,3 +216,49 @@ def test_commit_version_files(tmp_path: Path) -> None:
         check=True,
     )
     assert "?? unrelated.txt" in status_res.stdout
+
+
+def test_create_git_tag_and_no_bump_when_matched(tmp_path: Path) -> None:
+    """Verify tag creation and that bump script exits cleanly when tag matches metadata."""
+    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Tester"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "tester@example.com"], cwd=tmp_path, check=True)
+
+    pyproj = tmp_path / "pyproject.toml"
+    pyproj.write_text('[project]\nversion = "0.2.0"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-m", "chore: initial commit"], cwd=tmp_path, check=True)
+
+    # 1. Create tag
+    tag = bump_version.create_git_tag(tmp_path, "0.2.0")
+    assert tag == "v0.2.0"
+
+    # Verify matching tag at HEAD
+    matching = bump_version.get_matching_tag_at_head(tmp_path, "0.2.0")
+    assert matching == "v0.2.0"
+
+    # 2. Run bump_version.py on this clean tagged repo
+    script_path = scripts_dir / "bump_version.py"
+    res = subprocess.run(
+        [sys.executable, str(script_path)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res.returncode == 0
+    assert "matches current git tag" in res.stdout
+    assert "No bump is needed" in res.stdout
+
+    # 3. Verify scripts/bump_version.sh exits cleanly as well
+    sh_script = scripts_dir / "bump_version.sh"
+    res_sh = subprocess.run(
+        ["bash", str(sh_script)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res_sh.returncode == 0
+    assert "matches current git tag" in res_sh.stdout
+    assert "No bump is needed" in res_sh.stdout

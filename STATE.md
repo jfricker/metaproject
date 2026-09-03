@@ -77,6 +77,10 @@
   - [x] 10.7 Add automatic git commit for modified version files indicating Milestone vs Heuristic with summary
   - [x] 10.8 Update `spec.md` with complete development automation and milestone specification
   - [x] 10.9 Verify Gate G10 (`make lint`, `make test`, `make build`)
+  - [x] 10.10 Create executable shell wrapper `scripts/bump_version.sh`
+  - [x] 10.11 Add automated git tag creation (`vX.Y.Z`) on version bump in `bump_version.sh` / `bump_version.py`
+  - [x] 10.12 Add idempotency guard: exit cleanly when git tag matches current version metadata
+  - [x] 10.13 Add unit test coverage and integrate with `Makefile` (`package`, `bump-version`, `bump-major`)
 
 ## Design invariants (regression guards)
 - Non-destructive by default: Never overwrite existing non-empty target directories unless explicit `--force` is provided.

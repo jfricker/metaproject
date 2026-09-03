@@ -517,7 +517,7 @@ When a version increment is applied, the script automatically updates all synchr
 - `tests/test_baseline.py`: `assert metaproject.__version__ == "X.Y.Z"` and output assertion
 - `README.md`: `metaproject==X.Y.Z` in installation instructions
 
-#### 10.1.3 Automated Git Commit
+#### 10.1.3 Automated Git Commit & Tagging
 At the end of a successful non-dry-run execution, the script:
 1. Stages **only** the modified version files (`git add <files>`).
 2. Creates a git commit with a formatted message indicating bump category (`Milestone` or `Heuristic`) and decision summary:
@@ -528,12 +528,26 @@ At the end of a successful non-dry-run execution, the script:
 
    Summary: <decision_explanation>
    ```
+3. Creates an annotated git tag for the release (`v<new_version>`):
+   ```bash
+   git tag -a v<new_version> -m "Release v<new_version>"
+   ```
 
-#### 10.1.4 CLI Interface
+#### 10.1.4 Idempotency Guard (Tag & Metadata Match)
+When `bump_version.sh` runs (e.g. invoked via `make package`), it checks if git tag at `HEAD` matches the current version in `pyproject.toml`. If the tag matches:
+- The script exits cleanly with return code 0 and logs:
+  ```text
+  Version metadata (<version>) matches current git tag (v<version>). No bump is needed.
+  ```
+- This prevents duplicate version bumps during packaging workflows (`make package`, `make testpypi`, `make pypi`).
+
+#### 10.1.5 CLI Interface (`scripts/bump_version.sh` / `scripts/bump_version.py`)
+- `scripts/bump_version.sh [major|heuristic]`: Shell executable wrapper invoking `bump_version.py`.
 - `python3 scripts/bump_version.py [major|heuristic]`: Positional action (`major` launches a milestone; default is `heuristic`).
 - `--major`: Flag alias to force a major milestone bump.
-- `--dry-run`: Evaluate git status and preview the decided version increment and planned commit without modifying any files or committing.
-- `--force {major,minor,patch}`: Override heuristic detection with an explicit bump type (subject to major version 0 policy unless `major` action is invoked).
-- `--no-commit`: Skip creating a git commit after updating files.
+- `--dry-run`: Evaluate git status and preview the decided version increment and planned commit without modifying any files, committing, or tagging.
+- `--force {major,minor,patch}`: Override heuristic detection with an explicit bump type.
+- `--force-bump`: Force a version increment even if the git tag on HEAD matches current version metadata.
+- `--no-commit`: Skip creating git commit and tag after updating files.
 - `--current`: Print the active package version and exit.
 

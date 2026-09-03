@@ -33,10 +33,10 @@ build: ## Build source distribution and wheel
 package: bump-version build ## Create package archive for distribution
 	@echo "Package created successfully. See dist/ directory."
 
-testpypi: build ## Publish package to TestPyPI
+testpypi: clean package ## Publish package to TestPyPI
 	python3 -m twine upload --repository testpypi dist/*
 
-pypi: build ## Publish package to PyPI
+pypi: clean package ## Publish package to PyPI
 	python3 -m twine upload dist/*
 
 install-testpypi: build ## Install the latest version of the tool from TestPyPI
@@ -50,7 +50,7 @@ uninstall: ## Uninstall the tool from the current Python environment
 	python3 -m pip uninstall -y metaproject
 
 bump-version: ## Increment project version based on git heuristics
-	$(PYTHON) scripts/bump_version.py
+	scripts/bump_version.sh
 
 bump-major: ## Force major milestone version increment (zeroes minor and patch)
-	$(PYTHON) scripts/bump_version.py major
+	scripts/bump_version.sh major
