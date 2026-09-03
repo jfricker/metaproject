@@ -106,41 +106,38 @@ def review_project(
 def review_workspace(
     root_dir: Path,
     templates_dir: Optional[Path] = None,
-    max_depth: int = 3,
+    max_depth: int = 4,
 ) -> List[Dict[str, Any]]:
-    """Audit all projects found within root_dir."""
+    """Audit all projects found within root_dir and its subdirectories."""
     resolved_root = root_dir.expanduser().resolve()
     results: List[Dict[str, Any]] = []
 
-    # If root_dir is itself a project root
+    # If root_dir itself is a project root, include it
     if is_project_root(resolved_root):
         results.append(review_project(resolved_root, templates_dir))
-        return results
 
-    # Otherwise scan subdirectories
+    # Scan subdirectories
     for current, dirs, _ in os_walk_with_depth(resolved_root, max_depth):
         if current != resolved_root and is_project_root(current):
             results.append(review_project(current, templates_dir))
-            # Don't recurse into subdirectories of a project root
-            dirs.clear()
 
     return results
 
 
 def os_walk_with_depth(root: Path, max_depth: int):
-    """Walk directories limiting traversal depth."""
+    """Walk directories limiting traversal depth and skipping cache/vendor dirs."""
     root_depth = len(root.parts)
     import os
+
+    from metaproject.universe import IGNORED_DIRECTORIES
 
     for dirpath, dirnames, filenames in os.walk(root):
         curr_path = Path(dirpath)
         depth = len(curr_path.parts) - root_depth
         if depth >= max_depth:
             dirnames.clear()
-        # Skip vendor/cache
+        # Skip vendor/cache and hidden directories
         dirnames[:] = [
-            d
-            for d in dirnames
-            if not d.startswith(".") and d not in {"node_modules", "venv", "__pycache__"}
+            d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIRECTORIES
         ]
         yield curr_path, dirnames, filenames

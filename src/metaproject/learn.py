@@ -115,20 +115,21 @@ def apply_learned_enhancement(template_path: Path, new_lines: List[str]) -> int:
 def learn_workspace(
     root_dir: Path,
     templates_dir: Optional[Path] = None,
-    max_depth: int = 3,
+    max_depth: int = 4,
 ) -> List[Dict[str, Any]]:
-    """Scan all projects within root_dir and extract improvements."""
+    """Scan all projects within root_dir and its subdirectories to extract improvements."""
     resolved_root = root_dir.expanduser().resolve()
     results: List[Dict[str, Any]] = []
 
     if is_project_root(resolved_root):
-        return [learn_from_project(resolved_root, templates_dir)]
+        res = learn_from_project(resolved_root, templates_dir)
+        if res["total_additions"] > 0:
+            results.append(res)
 
     for current, dirs, _ in os_walk_with_depth(resolved_root, max_depth):
         if current != resolved_root and is_project_root(current):
             res = learn_from_project(current, templates_dir)
             if res["total_additions"] > 0:
                 results.append(res)
-            dirs.clear()
 
     return results

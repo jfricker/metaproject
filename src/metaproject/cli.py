@@ -462,6 +462,11 @@ def review_cmd(
         "--templates",
         help="Template directory to compare against (default: ~/.metaproject/templates).",
     ),
+    depth: int = typer.Option(
+        4,
+        "--depth",
+        help="Maximum directory traversal depth (default: 4).",
+    ),
 ) -> None:
     """Analyze projects against central templates to detect missing files and drift."""
     from metaproject.review import review_project, review_workspace
@@ -469,7 +474,7 @@ def review_cmd(
     target = (project_dir or Path.cwd()).resolve()
 
     if all_projects:
-        results = review_workspace(target, templates_path)
+        results = review_workspace(target, templates_path, max_depth=depth)
     else:
         results = [review_project(target, templates_path)]
 
@@ -524,6 +529,11 @@ def learn_cmd(
         "--templates",
         help="Central template directory to update (default: ~/.metaproject/templates).",
     ),
+    depth: int = typer.Option(
+        4,
+        "--depth",
+        help="Maximum directory traversal depth (default: 4).",
+    ),
     yes: bool = typer.Option(
         False,
         "--yes",
@@ -532,12 +542,16 @@ def learn_cmd(
     ),
 ) -> None:
     """Scan existing projects to harvest customizations and update central templates."""
-    from metaproject.learn import apply_learned_enhancement, learn_from_project, learn_workspace
+    from metaproject.learn import (
+        apply_learned_enhancement,
+        learn_from_project,
+        learn_workspace,
+    )
 
     target = (project_dir or Path.cwd()).resolve()
 
     if all_projects:
-        results = learn_workspace(target, templates_path)
+        results = learn_workspace(target, templates_path, max_depth=depth)
     else:
         results = [learn_from_project(target, templates_path)]
 

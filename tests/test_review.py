@@ -80,3 +80,29 @@ def test_review_workspace_and_cli(runner: CliRunner, tmp_path: Path) -> None:
     assert "DRIFT" in cli_result.output
     assert "app_one" in cli_result.output
     assert "app_two" in cli_result.output
+
+
+def test_review_all_descends_nested_subdirs_when_root_is_project(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    """Verify that 'review --all' descends into subdirectories even when root is a project."""
+    parent_repo = tmp_path / "ParentProject"
+    parent_repo.mkdir()
+    (parent_repo / ".git").mkdir()
+    (parent_repo / "README.md").write_text("# Parent", encoding="utf-8")
+
+    # Create nested subproject inside ParentProject
+    nested_proj = parent_repo / "subproject"
+    nested_proj.mkdir()
+    (nested_proj / ".git").mkdir()
+    (nested_proj / "README.md").write_text("# Nested Project", encoding="utf-8")
+
+    results = review_workspace(parent_repo)
+    project_names = [r["project_name"] for r in results]
+    assert "ParentProject" in project_names
+    assert "subproject" in project_names
+
+    cli_result = runner.invoke(app, ["review", str(parent_repo), "--all"])
+    assert cli_result.exit_code == 0
+    assert "ParentProject" in cli_result.output
+    assert "subproject" in cli_result.output
