@@ -6,7 +6,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from metaproject.cli import app
-from metaproject.db import get_db, query_projects, reconcile_missing_projects, upsert_project
+from metaproject.db import (
+    get_db,
+    get_universe_summary,
+    query_projects,
+    reconcile_missing_projects,
+    upsert_project,
+)
 from metaproject.universe import (
     classify_project,
     is_archived_path,
@@ -238,3 +244,126 @@ def test_universe_path_scoping_and_single_project(runner: CliRunner, tmp_path: P
     assert all_result.exit_code == 0
     assert "Target Project" in all_result.output
     assert "external_proj" in all_result.output
+
+
+def test_get_universe_summary(tmp_path: Path) -> None:
+    """Verify get_universe_summary metric calculations."""
+    db_path = tmp_path / "test_summary.db"
+    db = get_db(db_path)
+
+    # Empty database
+    empty_summary = get_universe_summary(db)
+    assert empty_summary["total_projects"] == 0
+    assert empty_summary["active_now"] == 0
+    assert empty_summary["last_run"] == "Never"
+    assert empty_summary["missing_projects"] == 0
+
+    # Add active now project
+    upsert_project(
+        db,
+        {
+            "name": "active_proj",
+            "path": str(tmp_path / "active_proj"),
+            "relative_path": "active_proj",
+            "title": "Active Project",
+            "description": "Active desc",
+            "last_modified": "2026-09-03T10:00:00Z",
+            "last_modified_ts": time.time(),
+            "classification": "Active Now",
+            "is_git": 1,
+            "git_branch": "main",
+            "has_agents_md": 1,
+            "has_intent_md": 1,
+            "has_state_md": 1,
+            "has_handoff_md": 1,
+            "has_readme_md": 1,
+            "scanned_at": "2026-09-03T10:00:00Z",
+            "scan_root": str(tmp_path),
+        },
+    )
+    # Add idle project
+    upsert_project(
+        db,
+        {
+            "name": "idle_proj",
+            "path": str(tmp_path / "idle_proj"),
+            "relative_path": "idle_proj",
+            "title": "Idle Project",
+            "description": "Idle desc",
+            "last_modified": "2026-08-01T10:00:00Z",
+            "last_modified_ts": time.time() - 3600 * 24 * 40,
+            "classification": "Idle",
+            "is_git": 0,
+            "git_branch": None,
+            "has_agents_md": 0,
+            "has_intent_md": 0,
+            "has_state_md": 0,
+            "has_handoff_md": 0,
+            "has_readme_md": 1,
+            "scanned_at": "2026-09-03T10:05:00Z",
+            "scan_root": str(tmp_path),
+        },
+    )
+
+    populated_summary = get_universe_summary(db)
+    assert populated_summary["total_projects"] == 2
+    assert populated_summary["active_now"] == 1
+    assert populated_summary["last_run"] == "2026-09-03T10:05:00Z"
+    assert populated_summary["missing_projects"] == 0
+
+
+def test_cli_universe_summary(runner: CliRunner, tmp_path: Path) -> None:
+    """Verify running 'metaproject universe summary' through CLI."""
+    import json
+
+    db_path = tmp_path / "summary_cli.db"
+    db = get_db(db_path)
+
+    upsert_project(
+        db,
+        {
+            "name": "super_proj",
+            "path": str(tmp_path / "super_proj"),
+            "relative_path": "super_proj",
+            "title": "Super Project",
+            "description": "Super desc",
+            "last_modified": "2026-09-03T10:00:00Z",
+            "last_modified_ts": time.time(),
+            "classification": "Active Now",
+            "is_git": 1,
+            "git_branch": "main",
+            "has_agents_md": 1,
+            "has_intent_md": 1,
+            "has_state_md": 1,
+            "has_handoff_md": 1,
+            "has_readme_md": 1,
+            "scanned_at": "2026-09-03T10:00:00Z",
+            "scan_root": str(tmp_path),
+        },
+    )
+
+    # 1. Summary command 2-line format
+    res = runner.invoke(app, ["universe", "summary", "--db", str(db_path)])
+    assert res.exit_code == 0
+    lines = [line.strip() for line in res.output.strip().splitlines() if line.strip()]
+    assert len(lines) == 2
+    assert "Universe DB status" in lines[0]
+    assert "1 projects" in lines[0]
+    assert "1 active now" in lines[0]
+    assert "Last update to the db: 2026-09-03T10:00:00Z" in lines[1]
+
+    # 2. Summary command json format
+    res_json = runner.invoke(app, ["universe", "summary", "--db", str(db_path), "--format", "json"])
+    assert res_json.exit_code == 0
+    data = json.loads(res_json.output)
+    assert data["total_projects"] == 1
+    assert data["active_now"] == 1
+    assert data["last_run"] == "2026-09-03T10:00:00Z"
+
+    # 3. Via --summary flag
+    res_flag = runner.invoke(app, ["universe", "--summary", "--db", str(db_path)])
+    assert res_flag.exit_code == 0
+    flag_lines = [line.strip() for line in res_flag.output.strip().splitlines() if line.strip()]
+    assert len(flag_lines) == 2
+    assert "1 projects" in flag_lines[0]
+    assert "Last update to the db" in flag_lines[1]

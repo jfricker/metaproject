@@ -1,4 +1,4 @@
-.PHONY: help install lint format test clean
+.PHONY: help install lint format test clean build package testpypi pypi install-testpypi uninstall bump-version bump-major
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -26,3 +26,31 @@ test: ## Run test suite via pytest
 clean: ## Remove build artifacts, caches, and test output
 	rm -rf build/ dist/ *.egg-info .pytest_cache .ruff_cache
 	find . -type d -name "__pycache__" -exec rm -rf {} +
+
+build: ## Build source distribution and wheel
+	uv build --no-build-isolation
+
+package: bump-version build ## Create package archive for distribution
+	@echo "Package created successfully. See dist/ directory."
+
+testpypi: build ## Publish package to TestPyPI
+	python3 -m twine upload --repository testpypi dist/*
+
+pypi: build ## Publish package to PyPI
+	python3 -m twine upload dist/*
+
+install-testpypi: build ## Install the latest version of the tool from TestPyPI
+	python3 -m pip install --upgrade \
+	--no-cache-dir \
+	--index-url https://test.pypi.org/simple/ \
+	--extra-index-url https://pypi.org/simple/ \
+	metaproject
+
+uninstall: ## Uninstall the tool from the current Python environment
+	python3 -m pip uninstall -y metaproject
+
+bump-version: ## Increment project version based on git heuristics
+	$(PYTHON) scripts/bump_version.py
+
+bump-major: ## Force major milestone version increment (zeroes minor and patch)
+	$(PYTHON) scripts/bump_version.py major

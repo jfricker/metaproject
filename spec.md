@@ -72,11 +72,14 @@
 
 ```
 metaproject/
-├── pyproject.toml              # Build config & CLI entry point [project.scripts]
-├── Makefile                    # Standard make targets (test, lint, install)
+├── pyproject.toml              # Build config & CLI entry point (Hatchling backend)
+├── Makefile                    # Make targets (test, lint, install, build, bump-version)
+├── LICENSE                     # MIT License
 ├── intent.md                   # Source of truth for feature proposals
 ├── spec.md                     # This specification
 ├── STATE.md                    # Process tracking and task checklist
+├── scripts/
+│   └── bump_version.py         # Heuristic version incrementing script
 ├── templates/                  # Seed template directory
 │   ├── .gitignore.template
 │   ├── AGENTS.template.md
@@ -86,18 +89,30 @@ metaproject/
 │   ├── STATE.template.md
 │   ├── intent.template.md
 │   └── docs.template/
-└── src/
-    └── metaproject/
-        ├── __init__.py
-        ├── __main__.py         # CLI router
-        ├── cli.py              # CLI commands & argument parsing
-        ├── config.py           # ~/.metaproject configuration manager
-        ├── templates.py        # Template discovery, copying, and rendering
-        ├── variables.py        # Metadata resolver (git, date, prompt)
-        ├── git.py              # Git initialisation helpers
-        ├── universe.py         # Workspace scanner, classification & metadata extraction
-        ├── db.py               # SQLite schema, connections & upsert queries
-        └── exceptions.py       # Domain-specific error types
+├── src/
+│   └── metaproject/
+│       ├── __init__.py         # Package entry & dynamic __version__
+│       ├── __main__.py         # CLI router
+│       ├── cli.py              # CLI commands, version option & argument parsing
+│       ├── config.py           # ~/.metaproject configuration manager
+│       ├── templates.py        # Template discovery, copying, and rendering
+│       ├── variables.py        # Metadata resolver (git, date, prompt)
+│       ├── git.py              # Git initialisation helpers
+│       ├── universe.py         # Workspace scanner, classification & metadata extraction
+│       ├── db.py               # SQLite schema, connections, summary & upsert queries
+│       ├── review.py           # Drift review engine
+│       ├── learn.py            # Template learning & enhancement harvester
+│       └── exceptions.py       # Domain-specific error types
+└── tests/
+    ├── test_baseline.py        # Version & CLI help tests
+    ├── test_bump_version.py    # Version bump automation tests
+    ├── test_config.py          # Config & template seeding tests
+    ├── test_e2e.py             # Full lifecycle and performance tests
+    ├── test_learn.py           # Template learning tests
+    ├── test_review.py          # Drift review tests
+    ├── test_scaffold.py        # Scaffolding & init guard tests
+    ├── test_templates.py       # Template engine tests
+    └── test_universe.py        # Universe scanning & summary tests
 ```
 
 ---
@@ -145,12 +160,19 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
   - `--force, -f`: Reinitialize configuration and overwrite existing templates.
 
 - **Behavior**:
-  1. Checks if `~/.metaproject` exists.
-  2. Seeds `~/.metaproject/templates/` from `path/to/templates` or bundled package data.
-  3. Prompts for author name (defaulting to `git config user.name`), default branch (`main`), and confirms `project_home`.
-  4. Writes `~/.metaproject/config.json`.
-  5. Initializes `universe.db` with WAL mode and `busy_timeout=5000`.
-  6. Executes the initial `universe` scan on `project_home` to build the workspace catalog.
+  1. **Existing Configuration Safeguard**:
+     - Checks if `config.json` already exists in the target directory (default `~/.metaproject/config.json`).
+     - If found and `--force` is **not** provided, initialization immediately halts without modifying any files.
+     - Formats and displays two Rich panels/tables:
+       a. Current configuration settings (`author`, `default_branch`, `project_home`, `templates_dir`, `universe_db`, `auto_git_init`, `default_license`).
+       b. Current `universe.db` status summary (total projects, active now count, last scan timestamp).
+       c. Clear prompt informing the operator that initialization is skipped and `--force` is required to overwrite.
+  2. If clean or `--force` specified:
+     - Seeds `~/.metaproject/templates/` from `path/to/templates` or bundled package data via `importlib.resources`.
+     - Prompts for author name (defaulting to `git config user.name`), default branch (`main`), and confirms `project_home`.
+     - Writes `~/.metaproject/config.json`.
+     - Initializes `universe.db` with WAL mode and `busy_timeout=5000`.
+     - Executes the initial `universe` scan on `project_home` to build the workspace catalog.
 
 ### 5.2 `metaproject new`
 Scaffolds a new project directory and generates boilerplate files.
@@ -211,7 +233,7 @@ Analyzes an existing project against current templates to identify drift or miss
   ```
 - **Arguments & Options**:
   - `<project-dir>`: Project directory to review (default: current working directory `./`).
-  - `--all`: Review all subdirectories of the current working directory.
+  - `--all`: Review all subdirectories of the target directory. When `--all` is specified, traversal continues descending into subdirectories even if the root itself is a project root.
   - `--templates <path>`: Template directory to compare against (default: `~/.metaproject/templates`).
 - **Output**:
   - Missing standard files (e.g. project lacks `HANDOFF.md` or `docs/`).
@@ -223,32 +245,48 @@ Scans existing projects to find recurring customizations or improvements to inco
 
 - **Usage**:
   ```bash
-  metaproject learn [project-dir] [--all] [--templates <path>]
+  metaproject learn [project-dir] [--all] [--templates <path>] [--yes]
   ```
 - **Arguments & Options**:
   - `<project-dir>`: Project directory to learn from (default: current working directory `./`).
-  - `--all`: Review all subdirectories of the current working directory.
+  - `--all`: Review all subdirectories of the target directory. When `--all` is specified, traversal continues descending into subdirectories even if the root itself is a project root.
   - `--templates <path>`: Central template directory to update (default: `~/.metaproject/templates`).
+  - `--yes, -y`: Automatically export enhancements without interactive confirmation prompts.
 - **Output**:
   - Discovered additions (e.g., custom rules in `AGENTS.md`, extra gitignore rules).
   - Prompts operator to export improvements into `~/.metaproject/templates`.
 
-### 5.5 `metaproject universe`
+### 5.5 `metaproject universe` & `universe summary`
 Scans from the current directory (or a specified root), catalogs all subdirectories, classifies them by activity and archive status, extracts metadata, and persists the catalog into a SQLite database at `~/.metaproject/universe.db`.
 
 - **Usage**:
   ```bash
+  # Filesystem scan and catalog refresh
   metaproject universe [dir] [options]
+
+  # Instant status summary of cataloged universe
+  metaproject universe summary [--db PATH] [--format table|json|csv]
+  metaproject universe --summary [--db PATH] [--format table|json|csv]
   ```
 - **Arguments & Options**:
-  - `[dir]`: Starting scan directory (default: current directory `./` or `project_home` from config).
+  - `[dir]`: Starting scan directory or `"summary"` subcommand (default: current directory `./` or `project_home` from config).
   - `--db <path>`: SQLite database path (default: `~/.metaproject/universe.db` or config setting).
+  - `--summary, -s`: Display a concise 2-line status summary of `universe.db` without scanning the filesystem.
   - `--filter <classification>`: Filter console output by classification (`Active Now`, `Active Near`, `Active Far`, `Idle`, `Ancient`, `Archived`).
   - `--depth <int>`: Maximum directory traversal depth (default: `4`).
   - `--format [table|json|csv]`: Console output format (default: `table`).
   - `--quiet, -q`: Run silently and refresh the database without printing tables.
   - `--list, -l`: Query and list projects in the database without re-running a full filesystem scan.
   - `--show-missing`: In `--list` mode, display projects previously cataloged that are now missing (`missing_since IS NOT NULL`).
+  - `--all, -a`: In `--list` mode, show all cataloged projects across all workspaces rather than scoping to current target directory.
+
+- **Status Summary Output (`metaproject universe summary`)**:
+  When `summary` is requested, the command bypasses filesystem scanning and queries `universe.db` (safely handling missing database files with zero counts). In default mode, it renders a clean, non-wrapping 2-line summary:
+  ```text
+  Universe DB status: <total_projects> projects (<active_now> active now)
+  Last update to the db: <last_run_timestamp>
+  ```
+  When `--format json` or `--format csv` is passed, the output emits structured records including `database`, `total_projects`, `active_now`, `last_run`, and `missing_projects`.
 
 - **Classification Rules & Precedence**:
   Every discovered project is classified into exactly one category based on location and recency of last modification:
@@ -319,6 +357,27 @@ Scans from the current directory (or a specified root), catalogs all subdirector
        WHERE scan_root = ? AND scanned_at < ? AND missing_since IS NULL;
        ```
 
+### 5.6 Global Version & Package Manifest (`metaproject -v` / `--version`)
+Inspects and outputs comprehensive package metadata, dependencies, and configuration.
+
+- **Usage**:
+  ```bash
+  metaproject --version
+  metaproject -v
+  ```
+- **Behavior**:
+  - Implemented as an eager Typer callback (`is_eager=True`) executed before command routing.
+  - Dynamically extracts package metadata using `importlib.metadata`, falling back to static constants if running from source in an uninstalled state.
+  - Renders a Rich table containing:
+    - **Name**: `metaproject`
+    - **Version**: Current semantic version (e.g. `0.1.2`)
+    - **Summary**: Package summary from metadata
+    - **Author**: Author name from metadata
+    - **License**: Package license identifier (e.g. `MIT`)
+    - **Requires Python**: Python compatibility constraint (e.g. `>=3.11`)
+    - **Dependencies**: Core runtime dependencies (filtered to omit optional dev extras)
+    - **CLI Entrypoint**: `metaproject = metaproject.cli:app`
+
 ---
 
 ## 6. Template Engine Specification
@@ -374,7 +433,9 @@ Templates are processed using Jinja2. To support existing templates while allowi
 ## 8. Technology Stack & Dependencies
 
 - **Language & Runtime**: Python 3.11+
-- **Environment & Packaging**: Managed with `uv` (`pyproject.toml`)
+- **Build Backend**: `hatchling` (`[build-system]` configured with `build-backend = "hatchling.build"`)
+- **Package Manager**: Managed with `uv` (`pyproject.toml`)
+- **License**: MIT (`LICENSE` file distributed with package)
 - **Approved Runtime Dependencies**:
   - `typer>=0.12.0`: Modern CLI declaration, type validation, subcommands, and shell autocompletion.
   - `rich>=13.7.0`: Terminal styling, status spinners, colored tables, and badges for project classifications.
@@ -385,6 +446,8 @@ Templates are processed using Jinja2. To support existing templates while allowi
   - `pytest>=8.0.0`: Unit and integration test runner.
   - `pytest-mock>=3.12.0`: Mocking fixtures for environment variables, git interactions, and filesystem tests.
   - `ruff>=0.3.0`: High-speed linter and code formatter.
+  - `editables>=0.3`: Editable installation support for local development under Hatchling.
+  - `hatch`: Project building and environment management.
   - `typer.testing.CliRunner`: In-memory isolated CLI execution testing.
 
 ---
@@ -411,8 +474,66 @@ Templates are processed using Jinja2. To support existing templates while allowi
    - Correct classification into `Archived`, `Active Now`, `Active Near`, `Active Far`, `Idle`, and `Ancient` using mocked timestamps.
    - Extracting titles and descriptions from `README.md` and `intent.md`.
    - SQLite table schema creation, `sqlite-utils` upsert on conflict, and query filtering.
+   - `metaproject universe summary` 2-line concise status output verification.
+5. **Version Flag & Manifest Tests (`tests/test_baseline.py`)**:
+   - Verifying `-v` and `--version` options render complete package manifest information.
+6. **Version Bump Automation Tests (`tests/test_bump_version.py`)**:
+   - Semver parsing, next version arithmetic, major-zero downgrade policy, diff command detection, and synchronized file updates.
 
 ### 9.2 Verification Commands
 - `make lint` &rarr; `ruff check` and `ruff format --check`
 - `make test` &rarr; `pytest -v tests/`
-- `make install` &rarr; `uv pip install -e .` or `uv tool install .`
+- `make build` &rarr; `uv build --no-build-isolation` (generates sdist and wheel)
+- `make bump-version` &rarr; `python3 scripts/bump_version.py`
+- `make install` &rarr; `uv pip install -e .`
+
+---
+
+## 10. Development Automation & Version Management
+
+### 10.1 Heuristic Semantic Version Incrementing & Milestones (`scripts/bump_version.py`)
+To automate release versioning following AI-native development practices, `metaproject` includes an intelligent semantic version incrementing script at `scripts/bump_version.py`, accessible via `make bump-version` or `make bump-major`.
+
+#### 10.1.1 Decision Rules & Heuristics
+1. **Operator Milestone Command (`major`)**:
+   - Explicitly forces a **major version increment** (`(X+1).0.0`), zeroing out both minor and patch numbers.
+   - Used by the operator to mark significant project milestones.
+   - **Bypasses the major version 0 policy** (e.g. increments `0.1.2` directly to `1.0.0`).
+2. **Heuristic Major Version Increment (`X+1.0.0`)**:
+   - Automatically triggered when **new files have been added** to the repository (either untracked or staged new files, excluding cache and build artifacts).
+3. **Heuristic Minor Version Increment (`X.Y+1.0`)**:
+   - Triggered when existing files have been changed and **a new CLI command or feature is added** (e.g. `@app.command`, `@*.command`, `def *_cmd`, or commit messages marked with `feat:`).
+4. **Heuristic Patch Version Increment (`X.Y.Z+1`)**:
+   - Triggered when changes are **only bug fixes or maintenance updates** (e.g. `fix:`, parameter adjustments, refactoring without new commands).
+5. **Major Version 0 Policy (Heuristic Mode)**:
+   - **If the current major version is 0 (`0.Y.Z`), heuristic evaluation only increments minor or patch numbers.**
+   - Any heuristic decision that would otherwise trigger a major increment is automatically **downgraded to a minor increment** (`0.Y+1.0`).
+
+#### 10.1.2 Target File Synchronization
+When a version increment is applied, the script automatically updates all synchronized version strings across the project:
+- `pyproject.toml`: `version = "X.Y.Z"`
+- `src/metaproject/__init__.py`: fallback `__version__ = "X.Y.Z"`
+- `src/metaproject/cli.py`: `get_manifest_info()` fallback `"version": "X.Y.Z"`
+- `tests/test_baseline.py`: `assert metaproject.__version__ == "X.Y.Z"` and output assertion
+- `README.md`: `metaproject==X.Y.Z` in installation instructions
+
+#### 10.1.3 Automated Git Commit
+At the end of a successful non-dry-run execution, the script:
+1. Stages **only** the modified version files (`git add <files>`).
+2. Creates a git commit with a formatted message indicating bump category (`Milestone` or `Heuristic`) and decision summary:
+   ```text
+   chore(release): bump version to <new_version> [<Category>]
+
+   <Category> bump: <old_version> -> <new_version>
+
+   Summary: <decision_explanation>
+   ```
+
+#### 10.1.4 CLI Interface
+- `python3 scripts/bump_version.py [major|heuristic]`: Positional action (`major` launches a milestone; default is `heuristic`).
+- `--major`: Flag alias to force a major milestone bump.
+- `--dry-run`: Evaluate git status and preview the decided version increment and planned commit without modifying any files or committing.
+- `--force {major,minor,patch}`: Override heuristic detection with an explicit bump type (subject to major version 0 policy unless `major` action is invoked).
+- `--no-commit`: Skip creating a git commit after updating files.
+- `--current`: Print the active package version and exit.
+

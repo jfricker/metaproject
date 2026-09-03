@@ -197,3 +197,45 @@ def test_cli_init_command(runner: CliRunner, tmp_path: Path) -> None:
     assert "Metaproject Initialized Successfully" in result.output
     assert (config_dir / "config.json").exists()
     assert (config_dir / "templates" / "AGENTS.template.md").exists()
+
+
+def test_cli_init_existing_config_displays_status_and_aborts(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    """Verify init does not re-initialize when config.json exists without --force."""
+    import json
+
+    config_dir = tmp_path / ".metaproject"
+    config_dir.mkdir(parents=True)
+    config_file = config_dir / "config.json"
+    universe_db = config_dir / "universe.db"
+
+    # Pre-populate config.json
+    config_data = {
+        "version": 1,
+        "author": "Alice Developer",
+        "default_branch": "develop",
+        "project_home": str(tmp_path / "workspaces"),
+        "templates_dir": str(config_dir / "templates"),
+        "universe_db": str(universe_db),
+        "auto_git_init": True,
+        "default_license": "MIT",
+    }
+    config_file.write_text(json.dumps(config_data), encoding="utf-8")
+
+    # Run init without --force
+    result = runner.invoke(app, ["init", "--config-dir", str(config_dir)])
+    assert result.exit_code == 0
+    # Must NOT run initialization wizard
+    assert "Metaproject Initialized Successfully" not in result.output
+    assert "Initializing metaproject" not in result.output
+    # Must inform user config was found
+    assert "Found existing configuration" in result.output
+    assert "Alice Developer" in result.output
+    assert "develop" in result.output
+    # Must display status summary of universe.db
+    assert "Project Universe Database Status" in result.output
+    assert "Total Projects" in result.output
+    assert "Active Now" in result.output
+    assert "Last Scanned" in result.output
+    assert "--force" in result.output

@@ -165,3 +165,38 @@ def query_projects(
     cursor.execute(query, params)
     columns = [col[0] for col in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def get_universe_summary(db: sqlite_utils.Database) -> Dict[str, Any]:
+    """Compute status summary metrics for the universe database."""
+    if "projects" not in db.table_names():
+        return {
+            "total_projects": 0,
+            "active_now": 0,
+            "last_run": "Never",
+            "missing_projects": 0,
+        }
+
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM projects WHERE missing_since IS NULL")
+    total_projects = cursor.fetchone()[0]
+
+    cursor.execute(
+        "SELECT COUNT(*) FROM projects "
+        "WHERE classification = 'Active Now' AND missing_since IS NULL"
+    )
+    active_now = cursor.fetchone()[0]
+
+    cursor.execute("SELECT MAX(scanned_at) FROM projects")
+    row = cursor.fetchone()
+    last_run = row[0] if (row and row[0]) else "Never"
+
+    cursor.execute("SELECT COUNT(*) FROM projects WHERE missing_since IS NOT NULL")
+    missing_projects = cursor.fetchone()[0]
+
+    return {
+        "total_projects": total_projects,
+        "active_now": active_now,
+        "last_run": last_run,
+        "missing_projects": missing_projects,
+    }

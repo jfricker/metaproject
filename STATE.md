@@ -8,6 +8,7 @@
 - [x] 5. Review open questions with operator and subagent; harmonize `intent.md` and `spec.md`
 - [x] 6. Author implementation `plan.md` based on `spec.md`
 - [x] 7. Implementation execution (P0–P7) complete and verified
+- [x] 8. Init existing configuration safeguard and universe summary command complete and verified
 
 ## Implementation phases (plan.md §2)
 - [x] P0: Foundation & tooling
@@ -53,6 +54,29 @@
   - [x] 7.1 Author `tests/test_e2e.py` verifying full SDLC workflow (`init` -> `new` -> `universe` -> `review` -> `learn`)
   - [x] 7.2 Sub-second scaffolding benchmark test
   - [x] 7.3 Run full test suite and verify Gate G7 (`make lint`, `make test`)
+- [x] P8: Init safeguard & Universe summary enhancements
+  - [x] 8.1 Implement `get_universe_summary` in `src/metaproject/db.py`
+  - [x] 8.2 Guard `metaproject init` against overwriting existing `config.json`, displaying config and universe.db status summary
+  - [x] 8.3 Implement `metaproject universe summary` subcommand and `--summary` flag in `src/metaproject/cli.py`
+  - [x] 8.4 Add unit & CLI integration tests in `tests/test_universe.py` and `tests/test_scaffold.py`
+  - [x] 8.5 Update `README.md` and verify Gate G8 (`make lint`, `make test`, `make build`)
+  - [x] 8.6 Format `universe summary` output as a clean 2-line status summary
+- [x] P9: Version flag & manifest info option
+  - [x] 9.1 Add `-v` / `--version` eager callback option in `src/metaproject/cli.py`
+  - [x] 9.2 Implement `print_manifest_info()` displaying package metadata, dependencies, license, and entrypoint
+  - [x] 9.3 Synchronize `__version__` to `0.1.2` with dynamic package lookup in `src/metaproject/__init__.py`
+  - [x] 9.4 Add CLI tests for `-v` and `--version` in `tests/test_baseline.py`
+  - [x] 9.5 Verify Gate G9 (`make lint`, `make test`, `make build`)
+- [x] P10: Automated heuristic version incrementing script
+  - [x] 10.1 Create `scripts/bump_version.py` with semver parsing, git status/diff analysis, and heuristic detection
+  - [x] 10.2 Support major-zero policy: downgrade major to minor if major is 0
+  - [x] 10.3 Synchronize version updates across `pyproject.toml`, `src/metaproject/__init__.py`, `src/metaproject/cli.py`, `tests/test_baseline.py`, and `README.md`
+  - [x] 10.4 Add `make bump-version` target in `Makefile`
+  - [x] 10.5 Add unit tests in `tests/test_bump_version.py` and document in `README.md`
+  - [x] 10.6 Add `major` command to force major milestone increments zeroing minor and patch (`make bump-major`)
+  - [x] 10.7 Add automatic git commit for modified version files indicating Milestone vs Heuristic with summary
+  - [x] 10.8 Update `spec.md` with complete development automation and milestone specification
+  - [x] 10.9 Verify Gate G10 (`make lint`, `make test`, `make build`)
 
 ## Design invariants (regression guards)
 - Non-destructive by default: Never overwrite existing non-empty target directories unless explicit `--force` is provided.
