@@ -8,7 +8,7 @@ from metaproject.cli import app
 
 def test_package_version() -> None:
     """Verify metaproject package exposes expected version."""
-    assert metaproject.__version__ == "0.3.0"
+    assert metaproject.__version__ == "0.4.0"
 
 
 def test_cli_help(runner: CliRunner) -> None:
@@ -27,7 +27,7 @@ def test_cli_version_flag(runner: CliRunner) -> None:
         assert result.exit_code == 0
         assert "Package Manifest" in result.output
         assert "metaproject" in result.output
-        assert "0.3.0" in result.output
+        assert "0.4.0" in result.output
         assert "Author" in result.output
         assert "License" in result.output
         assert "Dependencies" in result.output
