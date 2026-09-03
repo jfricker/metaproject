@@ -1,0 +1,31 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+env/
+venv/
+ENV/
+
+# Build & distribution
+build/
+dist/
+*.egg-info/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.vscode/
+.idea/

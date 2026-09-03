@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "metaproject"
+version = "0.1.0"
+description = "A CLI tool for scaffolding and managing agentic projects and templates"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "John Fricker" }
+]
+dependencies = [
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "sqlite-utils>=3.36",
+    "questionary>=2.0.0",
+    "jinja2>=3.1.0",
+]
+
+[project.scripts]
+metaproject = "metaproject.cli:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.3.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/metaproject"]
+
+[tool.hatch.build.targets.wheel.package-data]
+"metaproject" = ["templates/**"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
