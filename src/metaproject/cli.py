@@ -2,7 +2,7 @@
 
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import questionary
 import typer
@@ -18,18 +18,142 @@ from metaproject.config import (
     load_config,
     save_config,
 )
-from metaproject.db import get_db, query_projects
+from metaproject.db import get_db, get_universe_summary, query_projects
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.scaffold import scaffold_project
 from metaproject.templates import seed_templates
 
 console = Console()
 
+
+def render_config_table(cfg: Config, config_file: Path) -> Table:
+    """Render configuration attributes as a Rich Table."""
+    table = Table(
+        title=f"Configuration Settings ({config_file})",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Setting", style="bold cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Version", str(cfg.version))
+    table.add_row("Author", cfg.author)
+    table.add_row("Default Git Branch", cfg.default_branch)
+    table.add_row("Projects Home", cfg.project_home)
+    table.add_row("Templates Store", cfg.templates_dir)
+    table.add_row("Universe Database", cfg.universe_db)
+    table.add_row("Auto Git Init", str(cfg.auto_git_init))
+    table.add_row("Default License", cfg.default_license)
+    return table
+
+
+def render_universe_summary_table(summary: Dict[str, Any], db_path: Path | str) -> Table:
+    """Render universe.db summary statistics as a Rich Table."""
+    table = Table(
+        title="Project Universe Database Status",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Metric", style="bold cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Database File", str(db_path))
+    table.add_row("Total Projects", str(summary["total_projects"]))
+    table.add_row("Active Now", f"[bold green]{summary['active_now']}[/bold green]")
+    table.add_row("Last Scanned", str(summary["last_run"]))
+    if summary.get("missing_projects", 0) > 0:
+        table.add_row("Missing / Deleted", f"[yellow]{summary['missing_projects']}[/yellow]")
+    return table
+
+
+def get_manifest_info() -> Dict[str, Any]:
+    """Retrieve package manifest metadata, falling back to static defaults if not installed."""
+    try:
+        import importlib.metadata
+
+        meta = importlib.metadata.metadata("metaproject")
+        deps = [d for d in (meta.get_all("Requires-Dist") or []) if "extra ==" not in d]
+        return {
+            "name": meta.get("Name", "metaproject"),
+            "version": meta.get("Version", "0.1.2"),
+            "summary": meta.get(
+                "Summary",
+                "A CLI tool for scaffolding and managing agentic projects and templates",
+            ),
+            "author": meta.get("Author", "John Fricker"),
+            "license": meta.get("License-Expression") or meta.get("License") or "MIT",
+            "requires_python": meta.get("Requires-Python", ">=3.11"),
+            "dependencies": deps,
+            "entrypoint": "metaproject = metaproject.cli:app",
+        }
+    except Exception:
+        return {
+            "name": "metaproject",
+            "version": "0.2.0",
+            "summary": "A CLI tool for scaffolding and managing agentic projects and templates",
+            "author": "John Fricker",
+            "license": "MIT",
+            "requires_python": ">=3.11",
+            "dependencies": [
+                "typer>=0.12.0",
+                "rich>=13.7.0",
+                "sqlite-utils>=3.36",
+                "questionary>=2.0.0",
+                "jinja2>=3.1.0",
+            ],
+            "entrypoint": "metaproject = metaproject.cli:app",
+        }
+
+
+def print_manifest_info() -> None:
+    """Print package manifest and metadata information."""
+    manifest = get_manifest_info()
+
+    table = Table(
+        title=f"Package Manifest — {manifest['name']} v{manifest['version']}",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Field", style="bold cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Name", manifest["name"])
+    table.add_row("Version", f"[bold green]{manifest['version']}[/bold green]")
+    table.add_row("Summary", manifest["summary"])
+    table.add_row("Author", manifest["author"])
+    table.add_row("License", manifest["license"])
+    table.add_row("Requires Python", manifest["requires_python"])
+    if manifest["dependencies"]:
+        table.add_row("Dependencies", ", ".join(manifest["dependencies"]))
+    table.add_row("CLI Entrypoint", manifest["entrypoint"])
+
+    console.print(table)
+
+
+def version_callback(value: bool) -> None:
+    """Callback for -v / --version option."""
+    if value:
+        print_manifest_info()
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="metaproject",
     help="A CLI tool for scaffolding and managing agentic projects and templates.",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "-v",
+        "--version",
+        help="Print package manifest and version information and exit.",
+        callback=version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """A CLI tool for scaffolding and managing agentic projects and templates."""
+    pass
 
 
 @app.command(name="init")
@@ -61,9 +185,36 @@ def init_cmd(
 ) -> None:
     """Initialize or repair the user environment for metaproject."""
     target_config_dir = get_config_dir(config_dir)
+    config_file = get_config_file_path(target_config_dir)
+
+    # If configuration already exists and not forced, display contents and status summary
+    if config_file.exists() and not force:
+        console.print(f"[bold yellow]Found existing configuration at:[/] {config_file}\n")
+        existing_cfg = load_config(config_file)
+        console.print(render_config_table(existing_cfg, config_file))
+
+        db_path = Path(existing_cfg.universe_db)
+        if db_path.exists():
+            db = get_db(db_path)
+            summary = get_universe_summary(db)
+        else:
+            summary = {
+                "total_projects": 0,
+                "active_now": 0,
+                "last_run": "Never",
+                "missing_projects": 0,
+            }
+        console.print()
+        console.print(render_universe_summary_table(summary, db_path))
+
+        console.print(
+            "\n[dim]Metaproject is already initialized. To re-initialize and overwrite, use:[/dim] "
+            "[bold cyan]metaproject init --force[/bold cyan]"
+        )
+        return
+
     target_config_dir.mkdir(parents=True, exist_ok=True)
     templates_dest = target_config_dir / "templates"
-    config_file = get_config_file_path(target_config_dir)
 
     effective_home = project_home_opt or project_home
 
@@ -309,14 +460,20 @@ CLASSIFICATION_COLORS = {
 
 @app.command(name="universe")
 def universe_cmd(
-    target_dir: Optional[Path] = typer.Argument(
+    target_dir: Optional[str] = typer.Argument(
         None,
-        help="Starting scan directory (default: current directory or project_home).",
+        help="Starting scan directory or 'summary' (default: cwd or project_home).",
     ),
     db_path: Optional[Path] = typer.Option(
         None,
         "--db",
         help="Path to SQLite universe database (default: ~/.metaproject/universe.db).",
+    ),
+    summary: bool = typer.Option(
+        False,
+        "--summary",
+        "-s",
+        help="Display status summary of universe.db without scanning.",
     ),
     classification_filter: Optional[str] = typer.Option(
         None,
@@ -362,14 +519,62 @@ def universe_cmd(
     import io
     import json
 
-    from metaproject.db import get_db
+    from metaproject.db import get_db, get_universe_summary
     from metaproject.universe import scan_universe
 
     cfg = load_config()
-    db = get_db(db_path or cfg.universe_db)
+    resolved_db_path = db_path or Path(cfg.universe_db)
+
+    # Check if summary mode requested (via 'summary' argument or --summary flag)
+    is_summary = summary or (target_dir is not None and target_dir.strip().lower() == "summary")
+    if is_summary:
+        if resolved_db_path.exists():
+            db = get_db(resolved_db_path)
+            summary_data = get_universe_summary(db)
+        else:
+            summary_data = {
+                "total_projects": 0,
+                "active_now": 0,
+                "last_run": "Never",
+                "missing_projects": 0,
+            }
+        if output_format == "json":
+            out = {"database": str(resolved_db_path), **summary_data}
+            console.print_json(json.dumps(out, indent=2))
+            return
+
+        if output_format == "csv":
+            output = io.StringIO()
+            writer = csv.DictWriter(
+                output,
+                fieldnames=[
+                    "database",
+                    "total_projects",
+                    "active_now",
+                    "last_run",
+                    "missing_projects",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow({"database": str(resolved_db_path), **summary_data})
+            console.print(output.getvalue().strip())
+            return
+
+        console.print(
+            f"[bold cyan]Universe DB status:[/] "
+            f"[bold]{summary_data['total_projects']}[/] projects "
+            f"([bold green]{summary_data['active_now']}[/] active now)",
+            soft_wrap=True,
+        )
+        console.print(
+            f"[bold cyan]Last update to the db:[/] {summary_data['last_run']}",
+            soft_wrap=True,
+        )
+        return
 
     # Determine target directory
-    start_path = (target_dir or Path.cwd()).expanduser().resolve()
+    start_path = (Path(target_dir) if target_dir else Path.cwd()).expanduser().resolve()
+    db = get_db(resolved_db_path)
 
     if not list_only:
         if not quiet:

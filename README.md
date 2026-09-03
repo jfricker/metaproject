@@ -8,6 +8,7 @@ A CLI tool for scaffolding and managing agentic projects and templates following
 - **Workspace Universe (`metaproject universe`)**: Catalog and classify all projects across subdirectories into a SQLite database.
 - **Drift Auditing (`metaproject review`)**: Detect drift between project files and central templates.
 - **Template Learning (`metaproject learn`)**: Harvest project additions back into the central templates.
+- **Package Manifest (`metaproject -v` / `--version`)**: Inspect package metadata, runtime dependencies, license, and version.
 
 ## Installation & Development
 
@@ -20,6 +21,9 @@ cd metaproject
 
 # Install in editable mode
 make install
+
+# Check version and package manifest
+metaproject --version
 
 # Verify installation and run test suite
 make test
@@ -45,6 +49,15 @@ The wizard will prompt for:
 - **Projects Root Directory** (e.g., `~/Projects`)
 
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
+
+#### Existing Configuration Protection
+If `~/.metaproject/config.json` is already present, running `metaproject init` will not overwrite your settings or re-run the wizard. Instead, it displays your current configuration along with the status summary of your `universe.db` (total projects, active now count, and last run).
+
+To force a re-initialization and overwrite existing configuration and templates, pass `--force`:
+
+```bash
+metaproject init --force
+```
 
 #### Non-Interactive Setup
 To seed templates and configure non-interactively in scripts or CI:
@@ -115,6 +128,17 @@ Projects are classified according to activity and archive precedence:
 - **`Idle`**: Inactive for 1 to 6 months
 - **`Ancient`**: Dormant (> 6 months)
 
+#### Universe Status Summary
+Inspect summary metrics of your cataloged database without scanning the filesystem:
+
+```bash
+# View database path, total projects, active now count, and last run timestamp
+metaproject universe summary
+
+# Output summary as JSON
+metaproject universe summary --format json
+```
+
 #### Fast Listing (Without Re-Scanning Disk)
 Query the database instantly without traversing the filesystem:
 
@@ -170,3 +194,21 @@ metaproject learn ~/Projects/rover-api --yes
 ```
 
 Exported additions are safely appended to your template files in `~/.metaproject/templates/`, making them available for all future projects scaffolded via `metaproject new`.
+
+### Development cycle
+Automate semantic version incrementing based on git heuristics or launch milestones:
+```bash
+# Preview increment decision (dry run)
+python3 scripts/bump_version.py --dry-run
+
+# Increment version based on git heuristics and commit version files
+make bump-version
+
+# Force a major milestone release (zeroes minor and patch, and commits)
+make bump-major # or: python3 scripts/bump_version.py major
+```
+
+Install the latest version of the tool globally for running outside the repo:
+```bash
+python3 -m pip install --index-url https://test.pypi.org/simple/ --upgrade metaproject==0.2.0 --no-cache-dir --extra-index-url https://pypi.org/simple/
+```
