@@ -232,12 +232,12 @@ def scan_universe(
             return
 
         # Check if current is a project root
-        is_root = (current != resolved_root) and is_project_root(current)
+        is_root = is_project_root(current)
 
         if is_root:
             iso_time, ts = resolve_project_timestamp(current)
             classification = classify_project(current, ts, interactive=interactive)
-            rel_path = str(current.relative_to(resolved_root))
+            rel_path = "." if current == resolved_root else str(current.relative_to(resolved_root))
 
             is_git = 1 if is_git_repository(current) else 0
             branch = get_current_branch(current) if is_git else None
@@ -265,21 +265,22 @@ def scan_universe(
             upsert_project(target_db, record)
             discovered_projects.append(record)
 
-            # Do not traverse into child directories of a project root
+            # If current is not the root, do not traverse into child directories
             # unless it contains a nested git repository
-            try:
-                for child in current.iterdir():
-                    if (
-                        child.is_dir()
-                        and child.name not in IGNORED_DIRECTORIES
-                        and is_git_repository(child)
-                    ):
-                        walk_dirs(child, depth + 1)
-            except Exception:
-                pass
-            return
+            if current != resolved_root:
+                try:
+                    for child in current.iterdir():
+                        if (
+                            child.is_dir()
+                            and child.name not in IGNORED_DIRECTORIES
+                            and is_git_repository(child)
+                        ):
+                            walk_dirs(child, depth + 1)
+                except Exception:
+                    pass
+                return
 
-        # Not a project root: traverse subdirectories
+        # If not a project root OR current == resolved_root: traverse subdirectories
         try:
             for child in current.iterdir():
                 if child.is_dir() and child.name not in IGNORED_DIRECTORIES:

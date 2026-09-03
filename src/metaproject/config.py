@@ -39,14 +39,18 @@ class Config:
     author: str = ""
     default_branch: str = "main"
     project_home: str = str(Path.home() / "Projects")
-    templates_dir: str = str(DEFAULT_TEMPLATES_DIR)
-    universe_db: str = str(DEFAULT_UNIVERSE_DB)
+    templates_dir: str = ""
+    universe_db: str = ""
     auto_git_init: bool = True
     default_license: str = "MIT"
 
     def __post_init__(self) -> None:
         if not self.author:
             self.author = detect_git_user_name()
+        if not self.templates_dir:
+            self.templates_dir = str(get_config_dir() / "templates")
+        if not self.universe_db:
+            self.universe_db = str(get_config_dir() / "universe.db")
         # Expand user in paths
         self.project_home = str(Path(self.project_home).expanduser().resolve())
         self.templates_dir = str(Path(self.templates_dir).expanduser().resolve())
@@ -84,15 +88,16 @@ def get_config_file_path(config_dir: Path | None = None) -> Path:
 def load_config(config_path: Path | None = None) -> Config:
     """Load configuration from disk, falling back to defaults if not found."""
     target_path = config_path or get_config_file_path()
-    if not target_path.exists():
-        return Config()
-
     try:
+        if not target_path.exists():
+            return Config()
         with open(target_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             raise ConfigError(f"Malformed config file (expected JSON object): {target_path}")
         return Config.from_dict(data)
+    except PermissionError:
+        return Config()
     except json.JSONDecodeError as exc:
         raise ConfigError(f"Failed to parse config file {target_path}: {exc}") from exc
     except Exception as exc:

@@ -130,10 +130,15 @@ def scaffold_project(
     resolved_templates_dir: Path
     if templates_dir:
         resolved_templates_dir = Path(templates_dir).expanduser().resolve()
-    elif Path(cfg.templates_dir).exists():
-        resolved_templates_dir = Path(cfg.templates_dir).resolve()
     else:
-        resolved_templates_dir = get_bundled_templates_dir()
+        try:
+            tmpl_path = Path(cfg.templates_dir)
+            if tmpl_path.exists() and any(tmpl_path.iterdir()):
+                resolved_templates_dir = tmpl_path.resolve()
+            else:
+                resolved_templates_dir = get_bundled_templates_dir()
+        except (PermissionError, OSError):
+            resolved_templates_dir = get_bundled_templates_dir()
 
     # 3. Variable resolution
     variables = collect_variables(

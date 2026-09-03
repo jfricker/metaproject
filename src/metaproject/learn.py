@@ -50,10 +50,15 @@ def learn_from_project(
 
     if templates_dir:
         resolved_templates = Path(templates_dir).expanduser().resolve()
-    elif Path(cfg.templates_dir).exists():
-        resolved_templates = Path(cfg.templates_dir).resolve()
     else:
-        resolved_templates = get_bundled_templates_dir()
+        try:
+            tmpl_path = Path(cfg.templates_dir)
+            if tmpl_path.exists() and any(tmpl_path.iterdir()):
+                resolved_templates = tmpl_path.resolve()
+            else:
+                resolved_templates = get_bundled_templates_dir()
+        except (PermissionError, OSError):
+            resolved_templates = get_bundled_templates_dir()
 
     candidates: List[Dict[str, Any]] = []
 

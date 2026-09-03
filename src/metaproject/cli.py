@@ -350,6 +350,12 @@ def universe_cmd(
         "--show-missing",
         help="Include projects previously cataloged that are now missing.",
     ),
+    show_all: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show all cataloged projects across all workspaces.",
+    ),
 ) -> None:
     """Catalog and classify all projects across subdirectories into a SQLite database."""
     import csv
@@ -362,16 +368,23 @@ def universe_cmd(
     cfg = load_config()
     db = get_db(db_path or cfg.universe_db)
 
+    # Determine target directory
+    start_path = (target_dir or Path.cwd()).expanduser().resolve()
+
     if not list_only:
-        start_path = target_dir or Path(cfg.project_home) if target_dir else Path.cwd()
         if not quiet:
             console.print(
                 f"[cyan]Scanning universe from: [bold]{start_path}[/bold] (depth {depth})...[/cyan]"
             )
         scan_universe(start_path, max_depth=depth, interactive=False, db=db)
 
+    # By default, scope output to start_path unless --all is passed
+    # (or if --list was called without a specific target_dir)
+    scope_path = None if (show_all or (list_only and target_dir is None)) else str(start_path)
+
     projects = query_projects(
         db,
+        path_prefix=scope_path,
         classification=classification_filter,
         include_missing=show_missing,
     )

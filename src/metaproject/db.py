@@ -138,10 +138,11 @@ def reconcile_missing_projects(
 
 def query_projects(
     db: sqlite_utils.Database,
+    path_prefix: Optional[str] = None,
     classification: Optional[str] = None,
     include_missing: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Query cataloged projects with optional classification filter."""
+    """Query cataloged projects with optional path prefix and classification filter."""
     where_clauses: List[str] = []
     params: List[Any] = []
 
@@ -151,6 +152,11 @@ def query_projects(
     if classification:
         where_clauses.append("classification = ?")
         params.append(classification)
+
+    if path_prefix:
+        norm_prefix = str(Path(path_prefix).expanduser().resolve())
+        where_clauses.append("(path = ? OR path LIKE ? OR scan_root = ?)")
+        params.extend([norm_prefix, f"{norm_prefix}/%", norm_prefix])
 
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
     query = f"SELECT * FROM projects {where_sql} ORDER BY last_modified_ts DESC"

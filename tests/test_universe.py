@@ -168,3 +168,73 @@ def test_scan_universe_and_cli(runner: CliRunner, tmp_path: Path) -> None:
     assert "Project Alpha" in result.output
     assert "proj_legacy" in result.output
     assert "Archived" in result.output
+
+
+def test_universe_path_scoping_and_single_project(runner: CliRunner, tmp_path: Path) -> None:
+    """Verify that universe scopes query results to target_dir and catalogs single project roots."""
+    db_path = tmp_path / "universe.db"
+    db = get_db(db_path)
+
+    # Insert an external project into the db
+    upsert_project(
+        db,
+        {
+            "name": "external_proj",
+            "path": str(tmp_path / "external_proj"),
+            "relative_path": ".",
+            "title": "External Project",
+            "description": "Not in target dir",
+            "last_modified": "2026-09-02T12:00:00Z",
+            "last_modified_ts": time.time(),
+            "classification": "Active Now",
+            "is_git": 1,
+            "git_branch": "main",
+            "has_agents_md": 1,
+            "has_intent_md": 1,
+            "has_state_md": 1,
+            "has_handoff_md": 1,
+            "has_readme_md": 1,
+            "scanned_at": "2026-09-02T12:00:00Z",
+            "scan_root": str(tmp_path / "external_proj"),
+        },
+    )
+
+    # Create target project that is directly scanned
+    target_proj = tmp_path / "my_target_project"
+    target_proj.mkdir()
+    (target_proj / ".git").mkdir()
+    (target_proj / "README.md").write_text("# Target Project\nScoped project", encoding="utf-8")
+
+    # Run universe with path parameter pointing directly to target_proj
+    result = runner.invoke(
+        app,
+        [
+            "universe",
+            str(target_proj),
+            "--db",
+            str(db_path),
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Target Project" in result.output
+    # Must NOT include the external project
+    assert "external_proj" not in result.output
+
+    # Run universe with --all and verify external project is included
+    all_result = runner.invoke(
+        app,
+        [
+            "universe",
+            str(target_proj),
+            "--db",
+            str(db_path),
+            "--all",
+            "--format",
+            "json",
+        ],
+    )
+    assert all_result.exit_code == 0
+    assert "Target Project" in all_result.output
+    assert "external_proj" in all_result.output
