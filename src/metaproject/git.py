@@ -161,3 +161,27 @@ def init_repository(
             raise GitError(f"Failed to create initial commit: {commit_res.stderr.strip()}")
 
     return True
+
+
+def ensure_template_repository(
+    target_dir: Path,
+    branch: str = "main",
+    commit_message: str = "chore: initial template store",
+    author_name: Optional[str] = None,
+) -> bool:
+    """Ensure target_dir is a git repository with an initial commit, idempotently.
+
+    Used by `metaproject init` to git-back the template store (spec.md §4.1) so every
+    subsequent `learn apply` lands as a revertible commit. If target_dir is already a git
+    repository, this is a no-op: it does not re-run `git init` and does not create an
+    empty commit.
+
+    Returns True if a new repository was initialized, False if target_dir was already
+    git-backed.
+    """
+    if is_git_repository(target_dir):
+        return False
+    init_repository(
+        target_dir, branch=branch, commit_message=commit_message, author_name=author_name
+    )
+    return True

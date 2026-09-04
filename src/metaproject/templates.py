@@ -143,6 +143,10 @@ def render_template_tree(
     # Walk directory tree top-down
     for item in sorted(source_dir.rglob("*")):
         rel_path = item.relative_to(source_dir)
+        # Never scaffold the template store's own .git metadata (spec.md §4.1: the
+        # templates directory is itself a git repository) into a new project.
+        if ".git" in rel_path.parts:
+            continue
         # Transform each path component: e.g. docs.template/guide.template.md -> docs/guide.md
         transformed_parts = [transform_template_name(part) for part in rel_path.parts]
         dest_item = target_dir.joinpath(*transformed_parts)

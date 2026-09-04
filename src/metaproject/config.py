@@ -3,7 +3,7 @@
 import json
 import os
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,28 @@ DEFAULT_CONFIG_DIR = Path.home() / ".metaproject"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
 DEFAULT_TEMPLATES_DIR = DEFAULT_CONFIG_DIR / "templates"
 DEFAULT_UNIVERSE_DB = DEFAULT_CONFIG_DIR / "universe.db"
+
+DEFAULT_LEARN_TARGETS = [
+    "README.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "intent.md",
+    "STATE.md",
+    "HANDOFF.md",
+    ".gitignore",
+    "docs/",
+    "Makefile",
+    "pyproject.toml",
+]
+
+DEFAULT_ACTIVITY_WEIGHTS = {
+    "Active Now": 1.0,
+    "Active Near": 0.8,
+    "Active Far": 0.6,
+    "Idle": 0.4,
+    "Ancient": 0.2,
+    "Archived": 0.1,
+}
 
 
 def detect_git_user_name() -> str:
@@ -32,6 +54,25 @@ def detect_git_user_name() -> str:
 
 
 @dataclass
+class LearnConfig:
+    """Configuration for the `learn` proposal pipeline. See spec.md §4.2."""
+
+    targets: list[str] = field(default_factory=lambda: list(DEFAULT_LEARN_TARGETS))
+    resurface_factor: float = 2.0
+    model: str | None = None
+    activity_weights: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_ACTIVITY_WEIGHTS)
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LearnConfig":
+        """Construct LearnConfig from a dictionary, filtering unknown keys."""
+        valid_keys = cls.__dataclass_fields__.keys()
+        filtered = {k: v for k, v in data.items() if k in valid_keys}
+        return cls(**filtered)
+
+
+@dataclass
 class Config:
     """User configuration schema for MetaProject."""
 
@@ -43,8 +84,11 @@ class Config:
     universe_db: str = ""
     auto_git_init: bool = True
     default_license: str = "MIT"
+    learn: LearnConfig = field(default_factory=LearnConfig)
 
     def __post_init__(self) -> None:
+        if isinstance(self.learn, dict):
+            self.learn = LearnConfig.from_dict(self.learn)
         if not self.author:
             self.author = detect_git_user_name()
         if not self.templates_dir:

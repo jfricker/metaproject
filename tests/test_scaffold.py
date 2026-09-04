@@ -239,3 +239,133 @@ def test_cli_init_existing_config_displays_status_and_aborts(
     assert "Active Now" in result.output
     assert "Last Scanned" in result.output
     assert "--force" in result.output
+
+
+def test_cli_init_git_backs_templates_dir(runner: CliRunner, tmp_path: Path) -> None:
+    """`init` initializes ~/.metaproject/templates as a git repo with an initial commit."""
+    import subprocess
+
+    config_dir = tmp_path / ".metaproject"
+    workspaces_dir = tmp_path / "workspaces"
+    workspaces_dir.mkdir()
+
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--config-dir",
+            str(config_dir),
+            "--project-home",
+            str(workspaces_dir),
+            "--force",
+        ],
+    )
+    assert result.exit_code == 0
+
+    templates_dir = config_dir / "templates"
+    assert (templates_dir / ".git").exists()
+
+    branch = subprocess.run(
+        ["git", "-C", str(templates_dir), "branch", "--show-current"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert branch.stdout.strip() == "main"
+
+    log = subprocess.run(
+        ["git", "-C", str(templates_dir), "log", "--oneline"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert log.returncode == 0
+    assert "chore: initial template store" in log.stdout
+    # Exactly one commit from a fresh init.
+    assert len(log.stdout.strip().splitlines()) == 1
+
+    status = subprocess.run(
+        ["git", "-C", str(templates_dir), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert status.stdout.strip() == ""
+
+
+def test_cli_init_idempotent_against_already_git_backed_templates(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    """Running `init --force` again against a git-backed template dir does not re-init or
+    create an empty commit."""
+    import subprocess
+
+    config_dir = tmp_path / ".metaproject"
+    workspaces_dir = tmp_path / "workspaces"
+    workspaces_dir.mkdir()
+
+    first = runner.invoke(
+        app,
+        [
+            "init",
+            "--config-dir",
+            str(config_dir),
+            "--project-home",
+            str(workspaces_dir),
+            "--force",
+        ],
+    )
+    assert first.exit_code == 0
+
+    templates_dir = config_dir / "templates"
+    log_before = subprocess.run(
+        ["git", "-C", str(templates_dir), "log", "--oneline"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    commit_before = subprocess.run(
+        ["git", "-C", str(templates_dir), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+
+    # Run init --force again against the now git-backed templates directory.
+    second = runner.invoke(
+        app,
+        [
+            "init",
+            "--config-dir",
+            str(config_dir),
+            "--project-home",
+            str(workspaces_dir),
+            "--force",
+        ],
+    )
+    assert second.exit_code == 0
+
+    log_after = subprocess.run(
+        ["git", "-C", str(templates_dir), "log", "--oneline"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    commit_after = subprocess.run(
+        ["git", "-C", str(templates_dir), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+
+    # No new commit was created; git history is unchanged.
+    assert log_after.count("\n") == log_before.count("\n")
+    assert commit_after == commit_before
+
+    status = subprocess.run(
+        ["git", "-C", str(templates_dir), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert status.stdout.strip() == ""

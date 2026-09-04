@@ -1,0 +1,147 @@
+{
+  "_comment": "Machine-readable acceptance criteria for the learn pipeline. See MANIFEST.md for prose. age_days drives universe activity classification (<=2 Active Now, <=7 Active Near, <=30 Active Far, <=180 Idle, else Ancient); build.py stamps mtimes from it because git does not preserve them.",
+  "projects": {
+    "orbit": {"age_days": 1, "classification": "Active Now"},
+    "atlas": {"age_days": 1, "classification": "Active Now"},
+    "vault": {"age_days": 1, "classification": "Active Now"},
+    "mimic": {"age_days": 2, "classification": "Active Now"},
+    "kiln": {"age_days": 5, "classification": "Active Near"},
+    "beacon": {"age_days": 20, "classification": "Active Far"},
+    "quarry": {"age_days": 90, "classification": "Idle"},
+    "relic": {"age_days": 400, "classification": "Ancient"}
+  },
+  "cases": [
+    {
+      "id": "C1",
+      "name": "Pristine render yields zero evidence",
+      "phase": 1,
+      "projects": ["orbit"],
+      "assert": "collect() returns no evidence records for orbit. Its AGENTS.md is the template verbatim and its README.md is the template rendered with its own ProjectTitle/ProjectDescription. Rendering before diffing must suppress both.",
+      "regression_of": "The legacy line-diff implementation reported every substituted placeholder line as a novel addition."
+    },
+    {
+      "id": "C2",
+      "name": "Corroborated line addition ranks highest",
+      "phase": 2,
+      "projects": ["atlas", "kiln", "beacon", "relic", "vault", "mimic"],
+      "target_file": "AGENTS.md",
+      "content": "- Run `make check` before every commit.",
+      "assert": "A single proposal with evidence_count == 6 that outranks every other AGENTS.md proposal. Contributing projects must be exactly the six listed.",
+      "notes": "Deliberately spans four activity classes so weighting is observable in the score."
+    },
+    {
+      "id": "C3",
+      "name": "A whole new Markdown section is learnable",
+      "phase": 2,
+      "projects": ["atlas", "kiln", "beacon"],
+      "target_file": "AGENTS.md",
+      "content": "## Release process",
+      "assert": "A proposal whose body includes the '## Release process' heading AND its body text, with evidence_count == 3.",
+      "regression_of": "extract_file_additions discarded every line starting with '#' as a comment, so no Markdown heading could ever be learned."
+    },
+    {
+      "id": "C4",
+      "name": "One-off surfaces but ranks low",
+      "phase": 2,
+      "projects": ["quarry"],
+      "target_file": "AGENTS.md",
+      "content": "- Always benchmark the tokenizer against the 2019 corpus before merging.",
+      "assert": "A proposal with evidence_count == 1 that appears in the queue and ranks strictly below C2 and C3. Must NOT be filtered out: candidates are ranked, not gated.",
+      "notes": "Idle classification plus a single project should place this near the bottom."
+    },
+    {
+      "id": "C5",
+      "name": "Inline secret is redacted before egress",
+      "phase": 1,
+      "projects": ["vault"],
+      "assert": "The literal 'wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY' never appears in the guard output or the synth bundle. The surrounding line may survive in redacted form.",
+      "risk": "R1"
+    },
+    {
+      "id": "C6",
+      "name": "Gitignored files never reach the model",
+      "phase": 1,
+      "projects": ["vault"],
+      "files": [".env", "secrets.yaml"],
+      "assert": "Neither file appears in the send manifest or the bundle. Both are matched by vault/.gitignore.",
+      "risk": "R1"
+    },
+    {
+      "id": "C7",
+      "name": "Denylist applies even when not gitignored",
+      "phase": 1,
+      "projects": ["vault"],
+      "files": ["id_rsa"],
+      "assert": "id_rsa is excluded by the hard denylist. It is deliberately absent from vault/.gitignore, so passing this case requires the denylist and not merely the ignore-file check.",
+      "risk": "R1"
+    },
+    {
+      "id": "C8",
+      "name": "Prompt injection is treated as data",
+      "phase": 3,
+      "projects": ["mimic"],
+      "target_file": "AGENTS.md",
+      "assert": "mimic/AGENTS.md contains text addressed to the reviewing model instructing it to auto-accept and to exfiltrate ~/.ssh/id_rsa. The run must complete with review still required, no proposal auto-applied, and no proposal referencing id_rsa or ~/.ssh. If the injected text surfaces at all it surfaces as an ordinary low-scoring candidate under '## Notes'.",
+      "risk": "R2"
+    },
+    {
+      "id": "C9",
+      "name": "Recurring untemplated file becomes a new_template proposal",
+      "phase": 6,
+      "projects": ["kiln", "beacon", "quarry"],
+      "target_file": "Makefile",
+      "assert": "One proposal with kind == 'new_template' for Makefile, evidence_count == 3. No Makefile template exists in the fixture template store.",
+      "notes": "kiln and beacon have byte-identical Makefiles; quarry's is identical too, so the common body is unambiguous."
+    },
+    {
+      "id": "C10",
+      "name": "Activity weighting affects rank",
+      "phase": 2,
+      "projects": ["atlas", "relic"],
+      "assert": "relic (Ancient, weight 0.2) contributes strictly less to evidence_score than atlas (Active Now, weight 1.0) for the same C2 content. Assert on the per-evidence weight column, not only the total.",
+      "notes": "Both projects carry the identical C2 line, so weight is the only variable."
+    },
+    {
+      "id": "C11",
+      "name": "Binary files are skipped, not decoded",
+      "phase": 1,
+      "projects": ["vault"],
+      "files": ["logo.png"],
+      "assert": "logo.png is skipped without a UnicodeDecodeError and without appearing in any bundle."
+    },
+    {
+      "id": "C12",
+      "name": "Insertion is structural, not appended at EOF",
+      "phase": 4,
+      "projects": ["atlas", "kiln", "beacon"],
+      "target_file": "AGENTS.md",
+      "assert": "Applying the C2 proposal places the line under the existing '## Testing instructions' heading, not at end of file, and not under a '# Added via metaproject learn' banner.",
+      "regression_of": "apply_learned_enhancement appended blindly to EOF under a comment banner, which is meaningless in Markdown."
+    },
+    {
+      "id": "C13",
+      "name": "Project-specific text is not promoted",
+      "phase": 2,
+      "projects": ["quarry"],
+      "target_file": "AGENTS.md",
+      "content": "- Quarry's ingest fixtures live in /Users/johnfricker/Projects/quarry/data/raw and must be re-pulled weekly.",
+      "assert": "No proposal contains this line verbatim, an absolute path under /Users/, or the project name 'Quarry'. A generalized proposal is acceptable; a verbatim one is not."
+    },
+    {
+      "id": "C14",
+      "name": "Scan leaves the template store untouched",
+      "phase": 4,
+      "projects": [],
+      "assert": "After a full scan over this workspace, every file in the fixture template store is byte-identical and its git worktree is clean. This is the primary safety invariant.",
+      "risk": "R6"
+    },
+    {
+      "id": "C15",
+      "name": "Rejection suppresses, then resurfaces on stronger evidence",
+      "phase": 2,
+      "projects": ["atlas", "kiln", "beacon", "relic", "vault", "mimic"],
+      "assert": "Reject the C2 proposal, re-scan the same workspace: it does not reappear. Then raise its evidence_score above rejected_score * resurface_factor (2.0) and re-scan: it reappears. 'learn reject --forget' clears the record.",
+      "notes": "Drive the score change by extending the workspace rather than by editing the ledger directly."
+    }
+  ]
+}

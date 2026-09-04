@@ -19,7 +19,8 @@ from metaproject.config import (
     save_config,
 )
 from metaproject.db import get_db, get_universe_summary, query_projects
-from metaproject.exceptions import CollisionError, MetaProjectError
+from metaproject.exceptions import CollisionError, GitError, MetaProjectError
+from metaproject.git import ensure_template_repository
 from metaproject.scaffold import scaffold_project
 from metaproject.templates import seed_templates
 
@@ -235,6 +236,16 @@ def init_cmd(
     else:
         copied = seed_templates(templates_dest, force=force)
         console.print(f"[cyan]✓ Seeded {len(copied)} default templates in {templates_dest}[/cyan]")
+
+    # 1b. Git-back the template store so `learn apply` has provenance (spec.md §4.1)
+    try:
+        initialized = ensure_template_repository(templates_dest, branch="main")
+        if initialized:
+            console.print(
+                f"[cyan]✓ Initialized template store git repository at {templates_dest}[/cyan]"
+            )
+    except GitError as git_err:
+        console.print(f"[yellow]Notice:[/] Template store git init skipped ({git_err})")
 
     # 2. Configure defaults
     existing_cfg = load_config(config_file) if config_file.exists() and not force else Config()

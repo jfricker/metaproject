@@ -84,6 +84,75 @@ def init_schema(db: sqlite_utils.Database) -> None:
         except Exception:
             pass
 
+    if "learn_proposals" not in db.table_names():
+        db["learn_proposals"].create(
+            {
+                "id": int,
+                "content_hash": str,
+                "target_file": str,
+                "template_path": str,
+                "kind": str,
+                "title": str,
+                "rationale": str,
+                "proposed_body": str,
+                "edited_body": str,
+                "target_section": str,
+                "evidence_count": int,
+                "evidence_score": float,
+                "status": str,
+                "rejected_score": float,
+                "created_at": str,
+                "updated_at": str,
+                "applied_commit": str,
+            },
+            pk="id",
+        )
+        db["learn_proposals"].create_index(["content_hash"], unique=True)
+        db["learn_proposals"].create_index(["status", "evidence_score"])
+        db["learn_proposals"].create_index(["target_file"])
+    else:
+        try:
+            db["learn_proposals"].create_index(["content_hash"], unique=True, if_not_exists=True)
+            db["learn_proposals"].create_index(["status", "evidence_score"], if_not_exists=True)
+            db["learn_proposals"].create_index(["target_file"], if_not_exists=True)
+        except Exception:
+            pass
+
+    if "learn_evidence" not in db.table_names():
+        db["learn_evidence"].create(
+            {
+                "id": int,
+                "proposal_id": int,
+                "project_id": int,
+                "project_path": str,
+                "excerpt": str,
+                "weight": float,
+            },
+            pk="id",
+        )
+        db["learn_evidence"].create_index(["proposal_id"])
+    else:
+        try:
+            db["learn_evidence"].create_index(["proposal_id"], if_not_exists=True)
+        except Exception:
+            pass
+
+    if "learn_runs" not in db.table_names():
+        db["learn_runs"].create(
+            {
+                "id": int,
+                "started_at": str,
+                "finished_at": str,
+                "root": str,
+                "projects_scanned": int,
+                "files_scanned": int,
+                "model": str,
+                "proposals_created": int,
+                "status": str,
+            },
+            pk="id",
+        )
+
 
 def upsert_project(db: sqlite_utils.Database, record: Dict[str, Any]) -> None:
     """Upsert project record using path as unique key."""

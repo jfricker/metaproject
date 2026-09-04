@@ -1,0 +1,13 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environments
+.venv/
+
+# Databases
+*.db
+
+# OS files
+.DS_Store
