@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
+from typer.core import TyperGroup
 
 from metaproject.config import (
     Config,
@@ -732,15 +733,40 @@ def review_cmd(
 
 # --------------------------------------------------------------------------- learn
 #
-# `learn` is a command group, not a command (spec.md §5.4.4). The subcommands and the
-# Phase 5 acceptance TUI are two interfaces to one queue: both call the same
-# `metaproject.learn` public API and both write through to `universe.db` immediately,
-# so a review session can be abandoned and finished from the CLI without divergence.
+# `learn` is a command group whose *default* is the scan-then-review flow (spec.md
+# §5.4.4). The subcommands and the acceptance TUI are two interfaces to one queue: both
+# call the same `metaproject.learn` public API and both write through to `universe.db`
+# immediately, so a review session can be abandoned and finished from the CLI without
+# divergence.
+
+LEARN_DEFAULT_COMMAND = "__default__"
+
+
+class LearnGroup(TyperGroup):
+    """A `learn` group whose bare and `learn [root]` forms run the default mode.
+
+    Click resolves the first argument as a subcommand name, so `learn [root]` would
+    otherwise be "no such command '<root>'". Rather than hanging an optional positional
+    off the group — which would swallow `learn scan` as a path — anything that is not a
+    known subcommand is routed to a hidden default command that carries the real
+    signature. `--help` still belongs to the group.
+    """
+
+    def parse_args(self, ctx, args):
+        if not args or (args[0] not in self.commands and args[0] not in ("--help", "-h")):
+            args = [LEARN_DEFAULT_COMMAND, *args]
+        return super().parse_args(ctx, args)
+
 
 learn_app = typer.Typer(
     name="learn",
-    help="Harvest recurring project drift into reviewed template proposals.",
-    no_args_is_help=True,
+    help=(
+        "Harvest recurring project drift into reviewed template proposals.\n\n"
+        "Run `metaproject learn [ROOT]` with no subcommand to scan and then review the "
+        "queue in the acceptance TUI."
+    ),
+    cls=LearnGroup,
+    no_args_is_help=False,
 )
 app.add_typer(learn_app, name="learn")
 
@@ -766,30 +792,16 @@ def resolve_templates_dir(templates_path: Optional[Path]) -> Path:
 
 
 def open_in_editor(text: str, suffix: str = ".md") -> Optional[str]:
-    """Open `text` in `$EDITOR` and return the saved result, or None if the edit aborted.
+    """Open the proposal body in `$EDITOR`, delegating to the TUI's implementation.
 
-    Returning None covers every failure spec.md §5.4.10 folds together — `$EDITOR`
-    unset, the editor exiting non-zero, or the operator leaving the text unchanged —
-    because the caller's response to all three is the same: keep the candidate pending.
+    `learn edit` and the TUI's `e` are the same action reached two ways, so they share
+    one implementation rather than two copies that can drift (plan.md §1.3.2). None
+    means the edit aborted — no `$EDITOR`, a non-zero exit, or nothing changed — and
+    the caller's answer to all three is the same: keep the candidate pending.
     """
-    import os
-    import shlex
-    import subprocess
-    import tempfile
+    from metaproject.learn.tui import open_in_editor as _open_in_editor
 
-    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if not editor:
-        return None
-
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / f"proposal{suffix}"
-        path.write_text(text, encoding="utf-8")
-        result = subprocess.run([*shlex.split(editor), str(path)], check=False)
-        if result.returncode != 0:
-            return None
-        edited = path.read_text(encoding="utf-8")
-
-    return edited if edited.strip() and edited != text else None
+    return _open_in_editor(text, suffix)
 
 
 def render_proposal_table(rows, verbose: bool = False) -> Table:
@@ -878,6 +890,160 @@ def apply_one(db, proposal_id: int, templates_dir: Path, yes: bool, edited_body=
     return True
 
 
+def perform_scan(
+    root: Optional[Path],
+    all_projects: bool,
+    depth: int,
+    since: Optional[str],
+    yes: bool,
+    model: Optional[str],
+    templates_dir: Path,
+):
+    """Run stages 1–4 and report them. Shared by `learn scan` and the default mode.
+
+    Both entry points call this rather than each assembling their own pipeline, so the
+    default mode cannot quietly scan differently from the subcommand.
+    """
+    from metaproject.learn import scan
+
+    cfg = load_config()
+    target = Path(cfg.project_home) if all_projects else (root or Path.cwd())
+
+    try:
+        result = scan(
+            target,
+            templates_dir=templates_dir,
+            db=learn_db(),
+            config=cfg,
+            depth=depth,
+            since=since,
+            yes=yes,
+            model=model,
+        )
+    except ValueError as exc:
+        console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+    except MetaProjectError as exc:
+        console.print(f"[bold red]Learn failed:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if result.aborted:
+        console.print("[yellow]Send declined. Nothing was sent to the model.[/yellow]")
+        return None
+
+    console.print(
+        f"[bold green]Scanned {result.projects_scanned} projects[/bold green] "
+        f"({result.files_scanned} files with drift) → {result.created} proposals recorded."
+    )
+    if result.skipped:
+        console.print(
+            f"[yellow]Run marked '{result.status}'. Skipped target files: "
+            f"{', '.join(result.skipped)}[/yellow]"
+        )
+    return result
+
+
+def open_review_queue(
+    rows,
+    templates_dir: Path,
+    no_tui: bool = False,
+) -> None:
+    """Review the queue in the TUI, or degrade to the `list` table (spec.md §5.4.5).
+
+    An empty queue never opens the reviewer, and the three degradation triggers —
+    not a TTY, `--no-tui`, `TERM=dumb` — print the table and exit zero. None of them
+    is an error, so scripted and CI use needs no special flag.
+    """
+    from metaproject.learn import tui
+
+    if not rows:
+        console.print("[green]Nothing pending. The templates are current.[/green]")
+        return
+
+    if not tui.should_open_tui(rows, no_tui=no_tui):
+        console.print(render_proposal_table(rows))
+        console.print(
+            "[dim]Not a terminal (or --no-tui): showing the queue instead of the "
+            "reviewer. Act on it with[/dim] [cyan]metaproject learn apply <id>[/cyan]"
+        )
+        return
+
+    result = tui.run_review(learn_db(), rows, templates_dir, console=console)
+    console.print(
+        f"[bold green]{len(result.applied)} applied[/bold green], "
+        f"{len(result.rejected)} discarded, {len(result.skipped)} skipped"
+        + (f", {len(result.remaining)} left pending" if result.remaining else "")
+    )
+    for message in result.errors:
+        console.print(f"[yellow]{message}[/yellow]")
+
+
+@learn_app.command(name=LEARN_DEFAULT_COMMAND, hidden=True)
+def learn_default_cmd(
+    root: Optional[Path] = typer.Argument(
+        None,
+        help="Workspace root to scan for projects (default: current directory).",
+    ),
+    all_projects: bool = typer.Option(
+        False, "--all", help="Scan the configured projects home instead of the given root."
+    ),
+    depth: int = typer.Option(4, "--depth", help="Maximum directory traversal depth."),
+    since: Optional[str] = typer.Option(
+        None,
+        "--since",
+        help="Only scan projects changed since a date (2026-01-01) or within N days.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the egress confirmation for non-interactive use."
+    ),
+    model: Optional[str] = typer.Option(None, "--model", help="Model passed through to `claude`."),
+    no_tui: bool = typer.Option(
+        False, "--no-tui", help="Print the queue table instead of opening the reviewer."
+    ),
+    templates_path: Optional[Path] = typer.Option(
+        None,
+        "--templates",
+        help="Template store to compare against (default: ~/.metaproject/templates).",
+    ),
+) -> None:
+    """Scan, then review the resulting queue in the acceptance TUI (default mode)."""
+    from metaproject.learn import review
+
+    templates_dir = resolve_templates_dir(templates_path)
+    result = perform_scan(root, all_projects, depth, since, yes, model, templates_dir)
+    if result is None:
+        return
+    open_review_queue(review(learn_db(), status="pending"), templates_dir, no_tui=no_tui)
+
+
+@learn_app.command(name="review")
+def learn_review_cmd(
+    target: Optional[str] = typer.Option(
+        None, "--target", help="Only review proposals for this target file."
+    ),
+    status: str = typer.Option("pending", "--status", help="Which queue to review."),
+    min_score: Optional[float] = typer.Option(
+        None, "--min-score", help="Only review proposals at or above this evidence score."
+    ),
+    no_tui: bool = typer.Option(
+        False, "--no-tui", help="Print the queue table instead of opening the reviewer."
+    ),
+    templates_path: Optional[Path] = typer.Option(
+        None, "--templates", help="Template store (default: ~/.metaproject/templates)."
+    ),
+) -> None:
+    """Open the acceptance TUI over the existing queue, without scanning."""
+    from metaproject.learn import review
+
+    rows = review(
+        learn_db(),
+        status=None if status in (None, "all") else status,
+        target_file=target,
+        min_score=min_score,
+    )
+    open_review_queue(rows, resolve_templates_dir(templates_path), no_tui=no_tui)
+
+
 @learn_app.command(name="scan")
 def learn_scan_cmd(
     root: Optional[Path] = typer.Argument(
@@ -906,44 +1072,15 @@ def learn_scan_cmd(
     ),
 ) -> None:
     """Collect drift, synthesize proposals, and record them. Never mutates a template."""
-    from metaproject.learn import scan
-
-    cfg = load_config()
-    target = Path(cfg.project_home) if all_projects else (root or Path.cwd())
-    templates_dir = resolve_templates_dir(templates_path)
-
-    try:
-        result = scan(
-            target,
-            templates_dir=templates_dir,
-            db=learn_db(),
-            config=cfg,
-            depth=depth,
-            since=since,
-            yes=yes,
-            model=model,
-        )
-    except ValueError as exc:
-        console.print(f"[bold red]Error:[/bold red] {exc}")
-        raise typer.Exit(code=1)
-    except MetaProjectError as exc:
-        console.print(f"[bold red]Learn failed:[/bold red] {exc}")
-        raise typer.Exit(code=1)
-
-    if result.aborted:
-        console.print("[yellow]Send declined. Nothing was sent to the model.[/yellow]")
-        raise typer.Exit(code=0)
-
-    console.print(
-        f"[bold green]Scanned {result.projects_scanned} projects[/bold green] "
-        f"({result.files_scanned} files with drift) → {result.created} proposals recorded."
+    result = perform_scan(
+        root, all_projects, depth, since, yes, model, resolve_templates_dir(templates_path)
     )
-    if result.skipped:
-        console.print(
-            f"[yellow]Run marked '{result.status}'. Skipped target files: "
-            f"{', '.join(result.skipped)}[/yellow]"
-        )
-    console.print("[dim]Review them with[/dim] [cyan]metaproject learn list[/cyan]")
+    if result is None:
+        raise typer.Exit(code=0)
+    console.print(
+        "[dim]Review them with[/dim] [cyan]metaproject learn review[/cyan] "
+        "[dim]or[/dim] [cyan]metaproject learn list[/cyan]"
+    )
 
 
 @learn_app.command(name="list")
@@ -1081,11 +1218,15 @@ def learn_edit_cmd(
     original = str(row["edited_body"] or row["proposed_body"] or "")
     edited = open_in_editor(original)
     if edited is None:
+        # An aborted edit is a deliberate no-op, not a failure: spec.md §5.4.10 calls
+        # for "keep the candidate pending, stay in the TUI", and the subcommand is the
+        # same action reached another way (plan.md §1.3.2). It therefore exits zero,
+        # as `learn apply` already does when the diff confirmation is declined.
         console.print(
             "[yellow]Edit aborted (no $EDITOR, a non-zero exit, or no change saved). "
             "The proposal stays pending.[/yellow]"
         )
-        raise typer.Exit(code=1)
+        return
 
     set_edited_body(db, proposal_id, edited)
     templates_dir = resolve_templates_dir(templates_path)

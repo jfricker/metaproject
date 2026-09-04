@@ -196,7 +196,47 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
     from the commit message → 2; never setting `fallback_reason` → 3; making the CLI exit
     0 on a `MetaProjectError` → 1; having `scan` write into the template store → 3. None
     passes vacuously.
-- [ ] Phase 5 — Acceptance TUI
+- [x] Phase 5 — Acceptance TUI
+  - `src/metaproject/learn/tui.py`: the `rich` review loop (spec.md §5.4.5). Public
+    surface: `SessionResult`, `tui_enabled`, `stdout_is_a_terminal`, `should_open_tui`,
+    `effective_view`, `toggle_view`, `order_for_review`, `open_in_editor`, `read_key`,
+    `diff_rows`, `side_by_side_table`, `unified_view`, `header_line`,
+    `provenance_lines`, `render_candidate`, `run_review`. No `textual`, no widget
+    framework: `run_review` reads one keystroke, repaints, and loops (R9).
+  - **Keystroke → subcommand delegation.** `a` and `e` call `plan_apply` / `apply_plan`
+    (exactly what `cli.apply_one` calls), `d` calls `store.reject_proposal` (exactly
+    what `learn reject` calls), `e` additionally calls `store.set_edited_body` and the
+    same `open_in_editor`. `s` writes nothing. There is no TUI-only write path.
+  - `src/metaproject/cli.py`: `learn` is now a `LearnGroup` (a `TyperGroup` subclass)
+    whose `parse_args` routes anything that is not a known subcommand — including no
+    args at all — to a hidden `__default__` command. That is what makes
+    `metaproject learn [ROOT]` the scan-then-review default without an optional
+    positional on the group swallowing `learn scan` as a path. `--help` still belongs
+    to the group. New: `learn review [--target] [--status] [--min-score] [--no-tui]`.
+    New helpers: `perform_scan` (shared by `learn scan` and the default mode, so the
+    two cannot scan differently) and `open_review_queue` (the TUI-or-table decision,
+    shared by the default mode and `learn review`).
+  - `cli.open_in_editor` is now a three-line delegation to `tui.open_in_editor`; the
+    implementation moved rather than being copied.
+  - **`learn edit`'s aborted-edit exit code changed from 1 to 0.** Phase 4 left this
+    open. spec.md §5.4.10 says an aborted edit means "keep the candidate pending, stay
+    in the TUI" — a deliberate no-op, not a failure — and under "one queue, two
+    interfaces" the subcommand is the same action reached another way, so it now prints
+    the same message and returns zero, matching `learn apply`'s existing behavior when
+    the diff confirmation is declined. `tests/test_learn_cli.py::
+    test_edit_aborted_leaves_the_candidate_pending` was updated accordingly.
+  - `tests/test_e2e.py`'s learn step was rewritten for the new default: it mocks
+    `synth.resolve_claude` / `synth.run_claude` (returning zero proposals), asserts
+    `metaproject learn <root> --yes` and the bare `metaproject learn --yes` both exit
+    **zero**, and keeps the byte-identical template-store assertion around every form
+    including the new `learn review --no-tui`.
+  - Tests: `tests/test_learn_tui.py` (20, new) and 8 additions to
+    `tests/test_learn_cli.py`.
+  - Gate results: `make lint` clean. `make test` → `320 passed` (292 pre-existing
+    retained, 28 new). Each headline gate was mutation-checked: making `s` also reject
+    → 5 failures; making `effective_view` never degrade → 2; letting an empty queue
+    open the reviewer → 1; ignoring `no_tui` → 2; ignoring `TERM=dumb` → 2; making an
+    aborted edit advance → 1; making `a` skip `apply_plan` → 4. None passes vacuously.
 - [ ] Phase 6 — `new_template` proposals & `review` integration
 - [ ] Phase 7 — Documentation & release
 
@@ -323,26 +363,60 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   `template_path` comes from a scan row and could in principle point anywhere;
   the containment check is what keeps an accept's blast radius inside the git-backed
   store where it can be reverted.
-- **`learn` is a Typer command group, not a command.** As of Phase 4 there is no bare
-  `metaproject learn <path>` form: `learn <path>` is an unknown subcommand and exits 2,
-  and a bare `learn` prints help and exits non-zero (`no_args_is_help=True`). Phase 5 is
-  what makes `learn [root]` the scan-then-review default. `tests/test_e2e.py`'s learn step
-  asserts non-zero rather than a specific code for both forms, and keeps its
-  byte-identical template-store assertion around each — an exact-code assertion there
-  would break again the moment Phase 5 lands.
+- **`learn` is a Typer command group with a hidden default command.** Phase 4 had no
+  bare form (`learn <path>` exited 2). As of Phase 5, `LearnGroup.parse_args` prepends
+  `__default__` to anything that is not a registered subcommand, so both `metaproject
+  learn` and `metaproject learn <root>` run the scan-then-review default and exit zero.
+  `no_args_is_help` is now False; `--help` is still routed to the group.
 - **`learn show` prints provenance as soft-wrapped lines, not as a `rich` table.** The
   whole point of the view is absolute contributing-project paths (spec.md §5.4.4), and a
   table column ellipsizes them at any ordinary terminal width
   (`/private/var/folders/7k/_13bgbq…`). `console.print(..., soft_wrap=True)` emits the
   path in full. Do not "tidy" this back into a table.
 
+- **The TUI is a caller of the subcommands' functions, never a parallel implementation.**
+  `run_review`'s `a`/`e` go through `plan_apply` + `apply_plan`, `d` through
+  `store.reject_proposal`, `e` through `store.set_edited_body` and `tui.open_in_editor`.
+  Adding a TUI-local write — a batched "apply everything at the end", a direct
+  `UPDATE learn_proposals`, a second editor helper — reintroduces exactly the divergence
+  plan.md §1.3.2 forbids. `tests/test_learn_tui.py`'s three equivalence tests assert the
+  resulting ledger row and template bytes against the subcommand's, on identically
+  seeded proposals in two identical template stores, so a divergence fails a test rather
+  than being caught by review.
+- **Nothing is buffered in a review session.** Each keystroke writes through before the
+  next repaint, which is what makes "quit mid-session loses nothing" true. `run_review`
+  also re-reads the row from the ledger on every repaint rather than trusting the
+  snapshot the session opened with, since the queue is shared with the subcommands.
+- **`e` does not advance when the edit aborts.** spec.md §5.4.10 is explicit: no
+  `$EDITOR`, a non-zero exit, or unchanged text returns to the *same* candidate. Making
+  the abort advance silently converts an aborted edit into a skip.
+- **Degradation is three independent triggers, and each is testable alone.**
+  `stdout_is_a_terminal` exists as a separate seam precisely so a test can force the TTY
+  half true and prove that `--no-tui` or `TERM=dumb` is what caused the fallback. Folding
+  it back into `tui_enabled` makes both CLI degradation tests vacuous under `CliRunner`,
+  whose stdout is never a TTY.
+- **The empty-queue rule is enforced twice on purpose.** `should_open_tui` returns False
+  for an empty queue, and `cli.open_review_queue` returns early before asking. Neither is
+  redundant: the helper protects any future caller, the CLI branch is what prints "the
+  templates are current" instead of an empty table.
+- **`LearnGroup.parse_args` routes unknown first arguments to the default command.** The
+  consequence is deliberate: `metaproject learn scam` is read as a *root path*, not as a
+  misspelled subcommand. Hanging an optional positional off the group instead would make
+  `learn scan` mean "scan the directory named scan", which is worse. Any new `learn`
+  subcommand must therefore be registered on `learn_app`, or it silently becomes a path.
+- **The TUI must surface `fallback_reason` before an accept writes.** `render_candidate`
+  prints it above the diff, exactly as `cli.print_plan` does. This is the Phase 4
+  invariant ("any future caller of `plan_apply`/`apply_plan`, the Phase 5 TUI included")
+  discharged, and `test_accept_surfaces_the_fallback_reason_before_writing` holds it.
+- **A refused accept keeps the session running.** A dirty template repository, or an
+  unresolvable template, prints the error, leaves the candidate `pending`, and stays on
+  it. Ending the session on an `ApplyError` would lose the operator's place over a
+  condition they can fix in another terminal.
+
 ## Open items carried into plan.md
 
 - `README.md` §5 still documents the deleted line-diff harvester (`metaproject learn` as an
   append-to-template command). It is stale as of Phase 1 and is rewritten in Phase 7.
-- `metaproject learn` is a stub that exits 1 until Phase 4 wires the real subcommands. This
-  is deliberate: the alternative was keeping the legacy behavior alive, which is the thing
-  being removed.
 - Only the project-root `.gitignore` is parsed; nested per-directory ignore files and
   `.git/info/exclude` are not. Not needed by any acceptance case, and the hard denylist is
   the backstop. Revisit if a real workspace shows it matters.
@@ -391,6 +465,21 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   enforced by the suite rather than trusted.
 
 ## Verified facts (do not re-investigate)
+
+- `typer.Typer(cls=...)` is honored through `app.add_typer(...)`: Typer builds the
+  sub-group from `typer_instance.info.cls`, so a `TyperGroup` subclass is how `learn`
+  gets a default command. Verified against the installed Typer, not assumed.
+- `click`'s `MultiCommand` resolves the first non-option argument as a subcommand name
+  *before* any group-level positional would see it, which is why `metaproject learn
+  [ROOT]` cannot be implemented as an optional `Argument` on the group callback.
+- A `rich` `Console` constructed with `file=StringIO()` and `force_terminal=False` drops
+  control segments, so `console.clear()` in `run_review` is a no-op in tests and no
+  escape sequences pollute an assertion on the painted text.
+- `CliRunner`'s stdout is never a TTY, so every CLI-level review invocation degrades to
+  the `list` table by default. A CLI test that wants the reviewer to actually open must
+  patch `tui.tui_enabled` (or `tui.stdout_is_a_terminal`) and `tui.read_key`.
+- `difflib.SequenceMatcher(autojunk=False)` is used again in `tui.diff_rows` for the same
+  reason `collect` uses it: templates repeat lines, and autojunk diffs them wrongly.
 
 - `sqlite_utils` `Table.indexes` entries expose columns as a plain list of strings
   (`idx.columns`), not objects with a `.name` attribute — relevant when asserting index

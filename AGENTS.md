@@ -96,8 +96,8 @@
    - `store.py`: the proposal ledger (`learn_proposals` / `learn_evidence` / `learn_runs`) — upsert by content hash, provenance, suppression and resurfacing. The only module that touches SQLite.
    - `synth.py`: bundles guarded evidence one bundle per target file, measures the rendered prompt against the context budget and chunks-and-reduces when it overruns, shells out to `claude -p`, and parses the reply as schema-validated structured data. The only module that reaches a model; model output is data, never instruction.
    - `apply.py`: splices an accepted proposal into its `target_section` (never an end-of-file append under a banner), refuses a dirty template repository, and makes exactly one commit per accept naming the proposal id and its contributing projects. The only module that writes to a template. An unresolvable section falls back to a *reviewed* append that says so, never a silent misplacement.
-   - `api.py`: the public surface `cli.py` and (from Phase 5) `tui.py` call — `scan()`, `review()`, `apply_proposal()`, `reject_proposal()`. `scan` runs stages 1–4 and imports nothing from `apply`, so a scan cannot reach the write path.
-   - The acceptance TUI (`tui`) lands in a subsequent phase; see `plan.md`.
+   - `api.py`: the public surface `cli.py` and `tui.py` call — `scan()`, `review()`, `apply_proposal()`, `reject_proposal()`. `scan` runs stages 1–4 and imports nothing from `apply`, so a scan cannot reach the write path.
+   - `tui.py`: the `rich` acceptance loop behind `metaproject learn` (default mode) and `metaproject learn review`. Every keystroke delegates to the same function the equivalent subcommand calls and writes through to `universe.db` immediately, so there is no TUI-only code path; it degrades to the `list` table without a TTY, with `--no-tui`, or under `TERM=dumb`.
 
 7. **Release & Versioning Automation (`scripts/bump_version.sh`, `scripts/bump_version.py`)**:
    - AI-native semantic version incrementing driven by git diff analysis and file additions.

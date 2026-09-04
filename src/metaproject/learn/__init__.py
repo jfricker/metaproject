@@ -16,11 +16,13 @@ Implemented so far (plan.md phases):
   `claude -p` invocation, and structured output parsing and validation). The only module
   that reaches a model, and the only one that treats its input as untrusted.
 - Phase 4 — `apply` (structural splicing at a proposal's `target_section`, and one git
-  commit per accept) and `api` (the public surface `cli.py` and, later, `tui.py` call).
+  commit per accept) and `api` (the public surface `cli.py` and `tui.py` call).
+- Phase 5 — `tui` (the `rich` acceptance loop). Every keystroke delegates to the same
+  function the equivalent subcommand calls, so there is no TUI-only code path.
 
 The public API is `scan()`, `review()`, `apply_proposal()`, and `reject_proposal()`.
 `scan` imports nothing from `apply`, so a scan cannot reach the write path even by
-mistake; the acceptance TUI (`tui`) arrives in Phase 5 and calls these same functions.
+mistake.
 """
 
 from metaproject.learn.api import (
@@ -114,9 +116,25 @@ from metaproject.learn.synth import (
     synthesize,
     validate_proposal,
 )
+from metaproject.learn.tui import (
+    SessionResult,
+    effective_view,
+    open_in_editor,
+    order_for_review,
+    run_review,
+    should_open_tui,
+    tui_enabled,
+)
 
 __all__ = [
     "ApplyPlan",
+    "SessionResult",
+    "effective_view",
+    "open_in_editor",
+    "order_for_review",
+    "run_review",
+    "should_open_tui",
+    "tui_enabled",
     "ApplyResult",
     "ScanResult",
     "Section",

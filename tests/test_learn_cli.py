@@ -1,4 +1,4 @@
-"""`metaproject learn` subcommand tests (spec.md §5.4.4), plan.md Phase 4.
+"""`metaproject learn` subcommand tests (spec.md §5.4.4), plan.md Phases 4 and 5.
 
 The queue subcommands and the (Phase 5) TUI are two interfaces to one queue, so every
 assertion here is about the state transition the subcommand performs, not about its
@@ -8,6 +8,7 @@ prose.
 scan is exercised, and any `claude` argv detonates.
 """
 
+import io
 import json
 import subprocess
 from pathlib import Path
@@ -74,6 +75,11 @@ def git(cwd: Path, *args: str) -> str:
     """Run a git command in `cwd` and return its stdout."""
     res = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True)
     return res.stdout
+
+
+def _never_called(*_args, **_kwargs):  # pragma: no cover - asserted by not running
+    """A stand-in for `run_review` that fails if a degraded path opens the reviewer."""
+    raise AssertionError("the TUI must not open here")
 
 
 def scan_argv(workspace) -> List[str]:
@@ -375,7 +381,11 @@ def test_edit_aborted_leaves_the_candidate_pending(
         app,
         ["learn", "edit", str(pid), "--templates", str(workspace.templates), "--yes"],
     )
-    assert res.exit_code != 0
+    # An aborted edit is a deliberate no-op, not a failure: the TUI's `e` returns to
+    # the candidate unchanged, and the subcommand is the same action reached another
+    # way (plan.md §1.3.2), so it exits zero having written nothing.
+    assert res.exit_code == 0, res.output
+    assert "aborted" in res.output.lower()
     assert snapshot(workspace.templates) == before
     assert get_proposal(ledger(), pid)["status"] == "pending"
 
@@ -411,9 +421,142 @@ def test_reject_on_an_unknown_id_exits_non_zero(runner: CliRunner) -> None:
 # ------------------------------------------------------------------ command surface
 
 
-def test_learn_help_lists_every_phase_four_subcommand(runner: CliRunner) -> None:
-    """spec.md §5.4.4's command surface, minus the Phase 5 TUI entries."""
+def test_learn_help_lists_every_subcommand(runner: CliRunner) -> None:
+    """spec.md §5.4.4's command surface, including the Phase 5 `review` entry."""
     res = runner.invoke(app, ["learn", "--help"])
     assert res.exit_code == 0
-    for name in ("scan", "list", "show", "apply", "edit", "reject"):
+    for name in ("scan", "review", "list", "show", "apply", "edit", "reject"):
         assert name in res.output
+    # The default mode is routed through a hidden command; it is not part of the surface.
+    assert "__default__" not in res.output
+
+
+# --------------------------------------------------------------- default mode & review
+
+
+def test_bare_learn_scans_then_falls_back_to_the_queue_table(
+    runner: CliRunner, workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`metaproject learn [root]` is the scan-then-review default (spec.md §5.4.4)."""
+    mock_model(monkeypatch)
+    before = snapshot(workspace.templates)
+
+    res = runner.invoke(
+        app,
+        ["learn", str(workspace.projects), "--templates", str(workspace.templates), "--yes"],
+    )
+    assert res.exit_code == 0, res.output
+    assert "proposals recorded" in res.output
+    # CliRunner's stdout is not a TTY, so the reviewer degrades to the `list` table.
+    assert "Learn Proposal Queue" in res.output
+    # The scan half of the default mode still never writes a template.
+    assert snapshot(workspace.templates) == before
+    assert ledger().conn.execute("SELECT COUNT(*) FROM learn_proposals").fetchone()[0] == 1
+
+
+def test_the_default_mode_root_defaults_to_the_current_directory(
+    runner: CliRunner, workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bare `metaproject learn` scans where the operator is standing."""
+    mock_model(monkeypatch)
+    monkeypatch.chdir(workspace.projects)
+
+    res = runner.invoke(app, ["learn", "--templates", str(workspace.templates), "--yes"])
+    assert res.exit_code == 0, res.output
+    assert ledger().conn.execute("SELECT COUNT(*) FROM learn_proposals").fetchone()[0] == 1
+
+
+def test_no_tui_prints_the_list_table_and_exits_zero(
+    runner: CliRunner, workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gate: `--no-tui` degrades to the table; it is not an error (spec.md §5.4.10)."""
+    from metaproject.learn import tui
+
+    pid = seed(workspace.templates)
+    # Force the TTY half true, so `--no-tui` is the only thing causing the fallback.
+    monkeypatch.setattr(tui, "stdout_is_a_terminal", lambda _stream=None: True)
+    monkeypatch.setattr(tui, "run_review", _never_called)
+    res = runner.invoke(
+        app, ["learn", "review", "--no-tui", "--templates", str(workspace.templates)]
+    )
+    assert res.exit_code == 0
+    assert "Learn Proposal Queue" in res.output
+    assert str(pid) in res.output
+    assert get_proposal(ledger(), pid)["status"] == "pending"
+
+
+def test_a_dumb_terminal_degrades_even_on_a_tty(
+    runner: CliRunner, workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gate: `TERM=dumb` falls back to the table and exits zero."""
+    from metaproject.learn import tui
+
+    seed(workspace.templates)
+    monkeypatch.setenv("TERM", "dumb")
+    # Force the TTY half true, so `TERM=dumb` is the only thing causing the fallback.
+    monkeypatch.setattr(tui, "stdout_is_a_terminal", lambda _stream=None: True)
+    monkeypatch.setattr(tui, "run_review", _never_called)
+
+    res = runner.invoke(app, ["learn", "review", "--templates", str(workspace.templates)])
+    assert res.exit_code == 0
+    assert "Learn Proposal Queue" in res.output
+
+
+def test_a_non_tty_degrades_without_opening_the_reviewer(
+    runner: CliRunner, workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gate: not a TTY falls back to the table and exits zero."""
+    from metaproject.learn import tui
+
+    seed(workspace.templates)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    assert tui.stdout_is_a_terminal(io.StringIO()) is False
+    monkeypatch.setattr(tui, "run_review", _never_called)
+
+    res = runner.invoke(app, ["learn", "review", "--templates", str(workspace.templates)])
+    assert res.exit_code == 0
+    assert "Learn Proposal Queue" in res.output
+
+
+def test_an_empty_queue_never_opens_the_reviewer(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Gate: nothing pending reports cleanly and exits zero (spec.md §5.4.5)."""
+    from metaproject.learn import tui
+
+    monkeypatch.setattr(tui, "run_review", _never_called)
+    res = runner.invoke(app, ["learn", "review"])
+    assert res.exit_code == 0
+    assert "templates are current" in res.output
+
+
+def test_review_opens_the_tui_on_a_terminal_and_writes_through(
+    runner: CliRunner, workspace, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On a real terminal `learn review` hands the queue to the loop, which acts on it."""
+    from metaproject.learn import tui
+
+    pid = seed(workspace.templates)
+    monkeypatch.setattr(tui, "tui_enabled", lambda **_kwargs: True)
+    monkeypatch.setattr(tui, "read_key", lambda *_a, **_k: "a")
+
+    res = runner.invoke(app, ["learn", "review", "--templates", str(workspace.templates)])
+    assert res.exit_code == 0, res.output
+    assert get_proposal(ledger(), pid)["status"] == "applied"
+    assert C2_LINE in (workspace.templates / "AGENTS.template.md").read_text(encoding="utf-8")
+
+
+def test_review_filters_by_target_and_min_score(runner: CliRunner, workspace) -> None:
+    """`--target` and `--min-score` narrow the queue before it is reviewed."""
+    low = seed(workspace.templates, body="Keep the changelog current.")
+    high = seed(workspace.templates)
+    ledger().conn.execute("UPDATE learn_proposals SET evidence_score = 0.1 WHERE id = ?", [low])
+    ledger().conn.commit()
+
+    res = runner.invoke(app, ["learn", "review", "--no-tui", "--min-score", "1.0"])
+    assert res.exit_code == 0
+    assert str(high) in res.output
+
+    other = runner.invoke(app, ["learn", "review", "--no-tui", "--target", "README.md"])
+    assert other.exit_code == 0
+    assert "templates are current" in other.output

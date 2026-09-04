@@ -1,14 +1,19 @@
 """End-to-end lifecycle integration and performance tests for MetaProject."""
 
+import json
 import time
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from metaproject.cli import app
+from metaproject.learn import synth
 
 
-def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> None:
+def test_full_lifecycle_and_performance(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Validate full end-to-end workflow: init -> new -> universe -> review -> learn."""
     config_dir = tmp_path / ".metaproject"
     workspaces_dir = tmp_path / "workspaces"
@@ -97,17 +102,21 @@ def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> No
     assert "PASS" in review_res.output
 
     # 5. LEARN
-    # The legacy line-diff harvester is deleted (plan.md §1.1). As of Phase 4 `learn` is
-    # a command group (spec.md §5.4.4): a bare invocation, or one handed a path where a
-    # subcommand belongs, is refused rather than guessed at — the scan-then-review
-    # default for `learn [root]` arrives in Phase 5. Critically, neither form may mutate
-    # the template store on the way out, and no form of `learn` reaches a model here.
+    # The legacy line-diff harvester is deleted (plan.md §1.1). As of Phase 5 a bare
+    # `metaproject learn [root]` is the scan-then-review default (spec.md §5.4.4):
+    # stages 1-4, then the acceptance TUI over the resulting queue — which degrades to
+    # the `list` table here, because `CliRunner`'s stdout is not a TTY. Critically, no
+    # form of `learn` may mutate the template store on the way out, and none reaches a
+    # model: the `claude` invocation is replaced for the whole step.
     agents_file = project_target / "AGENTS.md"
     with open(agents_file, "a", encoding="utf-8") as f:
         f.write("\n### Robotics Rule\nAlways test motor calibration before telemetry.\n")
 
     central_tmpl = config_dir / "templates" / "AGENTS.template.md"
     template_before = central_tmpl.read_bytes()
+
+    monkeypatch.setattr(synth, "resolve_claude", lambda binary=None: "/usr/bin/claude")
+    monkeypatch.setattr(synth, "run_claude", lambda *args, **kwargs: json.dumps({"proposals": []}))
 
     learn_res = runner.invoke(
         app,
@@ -116,16 +125,24 @@ def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> No
             str(project_target),
             "--templates",
             str(config_dir / "templates"),
+            "--yes",
         ],
     )
-    assert learn_res.exit_code != 0
+    assert learn_res.exit_code == 0, learn_res.output
+    assert "proposals recorded" in learn_res.output
     assert central_tmpl.read_bytes() == template_before
 
-    bare_res = runner.invoke(app, ["learn"])
-    assert bare_res.exit_code != 0
+    # The same default mode with no root scans the current directory.
+    monkeypatch.chdir(workspaces_dir)
+    bare_res = runner.invoke(app, ["learn", "--templates", str(config_dir / "templates"), "--yes"])
+    assert bare_res.exit_code == 0, bare_res.output
     assert central_tmpl.read_bytes() == template_before
 
     # The queue subcommands are wired and readable, and reading the queue is not a write.
     list_res = runner.invoke(app, ["learn", "list"])
     assert list_res.exit_code == 0
+    assert central_tmpl.read_bytes() == template_before
+
+    review_res = runner.invoke(app, ["learn", "review", "--no-tui"])
+    assert review_res.exit_code == 0
     assert central_tmpl.read_bytes() == template_before
