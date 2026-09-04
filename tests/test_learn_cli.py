@@ -429,6 +429,11 @@ def test_learn_help_lists_every_subcommand(runner: CliRunner) -> None:
         assert name in res.output
     # The default mode is routed through a hidden command; it is not part of the surface.
     assert "__default__" not in res.output
+    # ...but spec.md §5.4.4's first row is `learn [root] [--no-tui]`, so the group help has
+    # to document it in prose - there is no visible command entry that can carry it.
+    assert "[ROOT]" in res.output
+    assert "--no-tui" in res.output
+    assert "--templates" in res.output
 
 
 # --------------------------------------------------------------- default mode & review

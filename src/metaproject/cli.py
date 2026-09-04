@@ -762,8 +762,12 @@ learn_app = typer.Typer(
     name="learn",
     help=(
         "Harvest recurring project drift into reviewed template proposals.\n\n"
-        "Run `metaproject learn [ROOT]` with no subcommand to scan and then review the "
-        "queue in the acceptance TUI."
+        "Default mode: `metaproject learn [ROOT] [--no-tui]` scans and then reviews the "
+        "resulting queue in the acceptance TUI. It also accepts every `learn scan` "
+        "option (--all, --depth, --since, --yes, --model, --templates). A scan never "
+        "mutates a template; writes happen only on an accept.\n\n"
+        "`--templates <path>` is available on every subcommand "
+        "(default: ~/.metaproject/templates)."
     ),
     cls=LearnGroup,
     no_args_is_help=False,

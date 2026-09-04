@@ -46,8 +46,8 @@
       v                   v                     v                   v                   v
 +-------------------+ +-------------------+ +-------------------+ +-------------------+ +-------------------+
 |   init Command    | |    new Command    | |  review Command   | |   learn Command   | | universe Command  |
-| (Env & Templates  | | (Project Scaffold | |  (Template Drift  | |(Template Feedback | | (Catalog, Classify|
-|      Setup)       | |    & Git Init)    | |    & Auditing)    | |  & Enhancements)  | |  & SQLite Store)  |
+| (Env & Templates  | | (Project Scaffold | |  (Template Drift  | |(Corroborated Tmpl.| | (Catalog, Classify|
+|      Setup)       | |    & Git Init)    | |    & Auditing)    | | Proposal Pipeline)| |  & SQLite Store)  |
 +---------+---------+ +---------+---------+ +---------+---------+ +---------+---------+ +---------+---------+
       |                     |                     |                     |                     |
       | (seeds)             v                     | (diffs against)     | (updates)           v
@@ -66,7 +66,10 @@
 ### Core Subsystems
 1. **CLI Routing & Manifest (`src/metaproject/cli.py`, `__main__.py`)**:
    - Built on `typer` with `rich` console formatting.
-   - Registers commands (`init`, `new`, `universe`, `review`, `learn`).
+   - Registers commands (`init`, `new`, `universe`, `review`) and the `learn` command
+     group (`scan`, `review`, `list`, `show`, `apply`, `edit`, `reject`), whose bare
+     `learn [ROOT]` form is routed to a hidden default command by `LearnGroup.parse_args`.
+     Any new `learn` subcommand must be registered on `learn_app` or it is read as a path.
    - Handles eager manifest inspection via `-v` / `--version`.
 
 2. **Configuration & Template Seeding (`src/metaproject/config.py`)**:
@@ -96,6 +99,7 @@
    - `store.py`: the proposal ledger (`learn_proposals` / `learn_evidence` / `learn_runs`) — upsert by content hash, provenance, suppression and resurfacing. The only module that touches SQLite.
    - `synth.py`: bundles guarded evidence one bundle per target file, measures the rendered prompt against the context budget and chunks-and-reduces when it overruns, shells out to `claude -p`, and parses the reply as schema-validated structured data. The only module that reaches a model; model output is data, never instruction.
    - `apply.py`: splices an accepted proposal into its `target_section` (never an end-of-file append under a banner), refuses a dirty template repository, and makes exactly one commit per accept naming the proposal id and its contributing projects. The only module that writes to a template. An unresolvable section falls back to a *reviewed* append that says so, never a silent misplacement.
+   - `drift.py`: reduces `review`'s findings to a scoring signal. Recurring drift that `review` already reports raises the matching pattern's weight rather than creating a parallel finding — it is a bounded multiplier on an existing contribution, never a candidate of its own, so the same divergence is never counted twice. `review.py` is unchanged.
    - `api.py`: the public surface `cli.py` and `tui.py` call — `scan()`, `review()`, `apply_proposal()`, `reject_proposal()`. `scan` runs stages 1–4 and imports nothing from `apply`, so a scan cannot reach the write path.
    - `tui.py`: the `rich` acceptance loop behind `metaproject learn` (default mode) and `metaproject learn review`. Every keystroke delegates to the same function the equivalent subcommand calls and writes through to `universe.db` immediately, so there is no TUI-only code path; it degrades to the `list` table without a TTY, with `--no-tui`, or under `TERM=dumb`.
 
@@ -111,7 +115,7 @@
 - `src/metaproject/universe.py`: Workspace universe scanning and classification.
 - `src/metaproject/db.py`: SQLite database management for the universe.
 - `src/metaproject/review.py`: Template drift detection and compliance.
-- `src/metaproject/learn/`: Template learning pipeline (`collect`, `guard`, `score`, `store`; further stages per `plan.md`).
+- `src/metaproject/learn/`: Corroborated-proposal pipeline (`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui`).
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.
 

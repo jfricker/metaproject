@@ -275,7 +275,47 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   - Gate results: `make lint` clean. `make test` → `333 passed` (320 pre-existing
     retained, 13 new). Non-vacuity checked by setting `DRIFT_BOOST = 0.0`: 3 failures,
     including the end-to-end gate test.
-- [ ] Phase 7 — Documentation & release
+- [x] Phase 7 — Documentation & release
+  - `README.md`: §5 rewritten from scratch. The stale line-diff harvester documentation
+    (`metaproject learn --yes` appending additions to templates) that Phase 1 deleted the
+    code for is gone. It now documents the corroborated-proposal pipeline: the six stages
+    and who decides each, the default scan-then-review mode, `scan`, `review`, `list`,
+    `show`, `apply`, `edit`, `reject` with their flags, the TUI keymap and its three
+    degradation triggers, rejection/resurfacing semantics, `new_template` proposals, the
+    `claude -p` requirement and the failure modes, and a "Safety properties" subsection
+    covering scan-never-writes, the egress manifest and redaction, model-output-as-data,
+    verified provenance, the git-backed store with one commit per accept, and the
+    admitted-append placement fallback. The Features bullet was updated to match.
+  - `AGENTS.md`: added the missing `drift.py` bullet to §6 (Phase 6 shipped the module but
+    only extended §6's other entries); corrected the "Key Files" `learn/` line, which still
+    read "`collect`, `guard`, `score`, `store`; further stages per `plan.md`"; corrected §1
+    to describe `learn` as a command group with a hidden default command and record that a
+    new subcommand must be registered on `learn_app` or it is silently read as a path;
+    relabeled the `learn` box in the architecture diagram.
+  - `src/metaproject/cli.py`: the **only** production change in this phase. The `learn`
+    group's help text now documents the default mode's own surface. See the §5.4.4 gate
+    note below for why.
+  - `tests/test_learn_cli.py::test_learn_help_lists_every_subcommand` extended to assert
+    `[ROOT]`, `--no-tui` and `--templates` appear in the group help, so the gate cannot
+    silently regress.
+  - **§5.4.4 `--help` gate.** Every subcommand's `--help` was captured and diffed against
+    the spec table. Seven of the eight rows matched exactly. The eighth — row 1,
+    `metaproject learn [root] [--no-tui]` — did not: the default mode is implemented as a
+    hidden `__default__` command (Phase 5's `LearnGroup`), so `learn --help` rendered the
+    group's usage line with no `[ROOT]` argument and no `--no-tui` option. The behavior was
+    correct; only its discoverability was missing, and there is no visible command entry
+    that could carry it. Fixed on the code side by documenting the default form and its
+    options in the group help. **The spec was not edited and was not found wrong.**
+    Documented supersets of the spec table, all spec-sanctioned elsewhere and left as-is:
+    `--model` on `scan` and the default mode (§5.4.3), `--no-tui` on `review` (§5.4.5),
+    `--templates` everywhere (§5.4.4's closing line), and `--yes` on `edit`.
+  - Gate results: `make lint` clean. `make test` → `333 passed` (no test count change;
+    one existing test strengthened). `make build` succeeded, producing
+    `dist/metaproject-0.5.0.tar.gz` and `dist/metaproject-0.5.0-py3-none-any.whl` — it runs
+    *before* the bump in plan.md's ordering, so the artifacts carry the pre-bump version. `make bump-version` bumped 0.5.0 → 0.6.0
+    (MINOR, heuristic: new files `src/metaproject/learn/drift.py`,
+    `tests/test_learn_drift.py`; major-0 policy downgraded major → minor) and made its own
+    commit `chore(release): bump version to 0.6.0 [Heuristic]` plus annotated tag `v0.6.0`.
 
 ## Design invariants (regression guards)
 
@@ -481,8 +521,9 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 
 ## Open items carried into plan.md
 
-- `README.md` §5 still documents the deleted line-diff harvester (`metaproject learn` as an
-  append-to-template command). It is stale as of Phase 1 and is rewritten in Phase 7.
+- ~~`README.md` §5 still documents the deleted line-diff harvester (`metaproject learn` as
+  an append-to-template command).~~ **Resolved in Phase 7**: §5 was rewritten for the
+  corroborated-proposal pipeline.
 - Only the project-root `.gitignore` is parsed; nested per-directory ignore files and
   `.git/info/exclude` are not. Not needed by any acceptance case, and the hard denylist is
   the backstop. Revisit if a real workspace shows it matters.
@@ -577,6 +618,11 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 - `metaproject init --force` skips the interactive `questionary` prompts entirely (see
   `cli.py`'s `if not force:` guard), so CLI-runner tests that need a non-interactive full
   init should pass `--force` rather than mocking `questionary`.
+- `make build` (`uv build --no-build-isolation`) fails in a fresh worktree venv with
+  `ModuleNotFoundError: No module named 'hatchling'`. `--no-build-isolation` is deliberate
+  (see AGENTS.md's offline-packaging learning) but requires the backend to be present
+  locally: `.venv/bin/python -m pip install hatchling` once per worktree. `hatchling` is not
+  in `[dev]`, so this is not a one-time repo fix but a per-environment step.
 - `make install` / test commands require `dangerouslyDisableSandbox: true` in this
   environment — the default sandbox blocks `uv`'s cache directory
   (`~/.cache/uv/sdists-v9/.git`) with "Operation not permitted". `.venv/bin/pytest` and
@@ -653,3 +699,79 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   `subprocess.run`. `tests/test_learn_cli.py` additionally patches `synth.resolve_claude`
   and `synth.run_claude` for the scan tests, so the "no test invokes a model" gate holds
   across the whole `learn` suite.
+
+## Closing — what shipped, and what is still open
+
+`src/metaproject/learn.py`'s line-diff harvester is gone. In its place,
+`src/metaproject/learn/` is a nine-module corroborated-proposal pipeline —
+`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui` — reached
+through a `learn` command group with a hidden default command, backed by three new tables
+in `universe.db` and a git-backed template store. 333 tests, `make lint` clean, version
+0.6.0. Every plan.md §2 phase gate was met; each phase's headline gates were
+mutation-checked rather than trusted.
+
+The following were deferred or narrowed by earlier phases and remain open. None is a
+regression; each is a bounded, deliberate limit that a future change would have to lift.
+
+**Model judgment is asserted as intent, not as behavior (Phase 3).**
+- **C16** ("semantically identical, textually different" variants fold into one proposal)
+  and **C17** ("contradictory conventions are not merged") are properties of what the
+  model does, and no test may invoke a model. What is asserted is what the prompt *asks
+  for*. Whether the model obeys is measurable only against a live model. Unverified, and
+  recorded as unverified.
+- `run_claude` itself has no test beyond `claude_command`, for the same reason: exercising
+  it means spawning a subprocess, which the Phase 3 gate forbids.
+
+**TUI (Phase 5).**
+- `read_key`'s terminal branch (`termios`/`tty` raw-mode read) is `# pragma: no cover` and
+  is exercised by no test — testing it needs a real PTY. Everything above it is tested
+  through the `read_key` seam, so a break here would surface only in manual use.
+- **There is no paging for a long proposal.** `render_candidate` paints the whole diff in
+  one repaint; a proposal taller than the terminal scrolls off the top and cannot be
+  scrolled back within the TUI. `learn show <id>` is the workaround. spec.md §5.4.5 does
+  not require paging, so this is a usability gap, not a gate miss.
+
+**Drift signal (Phase 6).**
+- The `review` drift signal is **not surfaced anywhere in the UI.** It multiplies a
+  contributing project's weight inside `score`, but nothing in `learn list`, `learn show`,
+  or the TUI's provenance view tells the operator that a score was boosted or which
+  projects `review` corroborated. `DriftSignal.reports()` exists to explain it; no caller
+  uses it. An operator therefore cannot account for the number they are being ranked by.
+- `DriftSignal.missing` is recorded and deliberately never scored — a missing file has no
+  added lines, so there is nothing for a proposal to be about. Wiring it into scoring would
+  invent evidence. Intentional; noted so it is not "fixed" later.
+- **`review.py`'s narrowness bounds the signal's value.** `review_project` diffs exactly
+  one deliverable, `AGENTS.md`, and diffs it against the *unrendered* template. So the
+  boost is near-uniform across `AGENTS.md` and absent everywhere else. That is a property
+  of `review`, not of `drift.py`: widening `review` to diff more deliverables (and to
+  render before diffing, as `collect` does) would sharpen the signal with no change in
+  `learn`.
+
+**CLI surface (Phase 4).**
+- `--templates` is accepted on `list`, `show` and `reject` but never read — those three
+  are read-only against the ledger and never touch the template store. spec.md §5.4.4
+  mandates the flag on all subcommands, so it is kept for a uniform surface; it is inert
+  on those three, and passing it changes nothing.
+
+**Collection and scoring limits (Phases 1–2).**
+- Only the project-root `.gitignore` is parsed. Nested per-directory ignore files and
+  `.git/info/exclude` are not. The hard denylist is the backstop.
+- `is_generalizable` rejects a proposal naming a *contributing* project, case-insensitively
+  at word boundaries. The known false-positive class is a project whose name is an ordinary
+  word (`echo`, `forge`, `spire` in the fixture), which could cost a legitimate proposal.
+- `evidence_hash` identity is stable against model rewording but **not** against the
+  evidence set growing: a new project stating the convention in genuinely new words mints a
+  new identity, which a prior rejection does not suppress. Accepted direction of failure —
+  the alternative (hashing the body) fails far worse, every scan.
+- `evidence_score` is a plain sum of weights, so ~10 `Archived` projects carry about as
+  much weight as one `Active Now` project. Deliberate: the number stays explainable by the
+  provenance list.
+- `score.group_candidates` clusters one candidate per normalized line. That is the
+  corroboration signal, not the proposal; `synth` regroups. Fine today, but it means
+  corroboration is measured line-wise even when a convention spans several lines.
+
+**Not in scope, and still not.**
+- `learn` proposes additions and modifications only. Proposing a *removal* from a template
+  is out of scope per spec.md §5.4.6 and nothing implements it.
+- `learn.targets` is configurable but the shipped default list is what every test and
+  fixture exercises; other target sets are untried.
