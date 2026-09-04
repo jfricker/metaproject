@@ -56,7 +56,40 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
     C11, C18, C19, C20, C23, C24, C26, C28. Each of the three headline gates was
     mutation-checked (disable redaction → 10 failures; disable normalization → 4; diff the
     raw template instead of the rendered one → 2), so none of them passes vacuously.
-- [ ] Phase 2 — Score & store
+- [x] Phase 2 — Score & store
+  - `src/metaproject/learn/score.py`: `activity_weight` (config table lookup, `Idle` as the
+    fallback for an unknown/absent classification), `recency_factor` (half-life decay,
+    `RECENCY_HALF_LIFE_DAYS = 30`, clamped at 1.0 for a future mtime), `weigh_project`
+    (`activity * (1 + RECENCY_BONUS * recency)`, `RECENCY_BONUS = 0.5`), `project_age_days`
+    (delegates to `universe.resolve_project_timestamp`), `candidate_key`, `group_candidates`,
+    `rank_candidates`, `order_queue`. Emits frozen `Candidate`s (each carrying frozen
+    `ProjectWeight` contributions with `activity`, `recency`, `age_days`, `weight` and the
+    contributing `excerpt`), with `evidence_count`/`evidence_score` as derived properties.
+  - `src/metaproject/learn/store.py`: `normalize_for_hash`, `content_hash`, `evidence_hash`,
+    `should_resurface`, `upsert_proposal`, `replace_evidence`, `reject_proposal`,
+    `forget_proposal_by_hash`, `mark_applied`, `set_edited_body`, `is_suppressed`,
+    `list_proposals`, `get_proposal`/`get_proposal_by_hash`/`get_evidence`,
+    `start_run`/`finish_run`/`get_run`/`latest_run`. Raw `db.conn` SQL throughout, so the
+    module is the single SQLite surface for `learn`.
+  - `src/metaproject/learn/__init__.py` re-exports both modules. `cli.py` is untouched:
+    the `learn` stub still exits 1, exactly as Phase 1 left it.
+  - **R3 hashing decision.** Two namespaced hash domains, both over `normalize_for_hash`
+    output (CRLF folded, per-line whitespace collapsed, blank lines dropped) and never over
+    raw model prose: `content_hash(target_file, body, kind)` is the primary identity that the
+    schema's `content_hash` column stores, and `evidence_hash(target_file, excerpts, kind)`
+    is R3's named fallback — the normalized, deduplicated, sorted *set* of evidence excerpts,
+    which is model-wording-independent and (because it is a set of distinct excerpts, not of
+    contributors) stable as more projects join a candidate. Phase 3 picks which one it feeds
+    to `upsert_proposal`; nothing else changes if it switches.
+  - Tests: `tests/test_learn_score.py` (31) and `tests/test_learn_store.py` (33), both new.
+    Acceptance cases asserted here: C2 (the eleven contributing projects, by name), C3, C4,
+    C10, C15, C22. C13 ("project-specific text is not promoted") is Phase 3's — it is a
+    property of what the model is allowed to emit, and there is no model yet.
+  - Gate results: `make lint` clean. `make test` → `193 passed` (129 pre-existing retained,
+    64 new). Each headline gate was mutation-checked: flattening the activity table → 10
+    failures; unbounding the recency term → 2; keying the contribution dict per-line instead
+    of per-project → 1; making the resurfacing comparison non-strict → 2; hashing raw instead
+    of normalized content → 3. None passes vacuously.
 - [ ] Phase 3 — Synthesize
 - [ ] Phase 4 — Apply
 - [ ] Phase 5 — Acceptance TUI
@@ -101,6 +134,31 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 - **Redaction must stay precise.** Hex strings, UUIDs, and tokens under 32 characters are
   exempt from the entropy rule, so git SHAs, UUIDs, and base64 test vectors survive.
   Raising aggressiveness to catch more will start eating the signal.
+- **Recency is a bounded bonus, not a second axis.** `weigh_project` multiplies the
+  activity weight by `1 + 0.5 * recency`, so recency only ever reorders projects *within*
+  an activity class. `universe` classification is already coarsely recency-derived; letting
+  recency scale freely would double-count it and let a freshly-touched `Ancient` project
+  outrank a stale `Active Now` one. There is a test for exactly that.
+- **Frequency counts distinct projects, never occurrences.** `group_candidates` keys
+  contributions by project path, so `spire/docs/reference.md`'s 6000 repetitions of one
+  phrase are one project's opinion. Any future regrouping must preserve that key.
+- **`evidence_score` is a plain sum of contribution weights**, so the number is always
+  explainable by the provenance list. The consequence is deliberate and should not be
+  "fixed": fractional weights mean what they say, so ~10 `Archived` projects carry about
+  as much weight as one `Active Now` project. The Phase 2 gate ("a single-project candidate
+  ranks below a corroborated one") holds at equal activity, which is spec.md §5.4.2's
+  "accumulates ... weighted".
+- **Status belongs to the ledger, not to the scan.** `upsert_proposal` refreshes content,
+  counts, and score on every scan, but cannot reopen an `applied` proposal and cannot
+  overturn a `rejected` one except through `should_resurface`. That single path is what
+  makes rejection durable; adding a second way to set `status = "pending"` would silently
+  restore the legacy "forgets every rejection" behavior.
+- **Resurfacing is strictly greater than.** `evidence_score > rejected_score * factor`.
+  Equal is not stronger evidence; making it `>=` re-surfaces a candidate on an unchanged
+  workspace whenever `rejected_score` is 0.
+- **Evidence rows are replaced, never appended.** `learn_evidence` describes the current
+  scan; appending would inflate `evidence_count` forever and quietly clear every
+  resurfacing bar.
 - Removals are never evidence. `_added_lines` only reports insertions/replacements, so a
   zero-byte project file (fixture `husk`) cannot become a deletion proposal.
 
@@ -114,6 +172,15 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 - Only the project-root `.gitignore` is parsed; nested per-directory ignore files and
   `.git/info/exclude` are not. Not needed by any acceptance case, and the hard denylist is
   the backstop. Revisit if a real workspace shows it matters.
+- `score.py` groups evidence into candidates by normalized line, one line per candidate.
+  That is the deterministic corroboration signal; it is not the proposal. Phase 3's `synth`
+  is what turns a cluster (or several related clusters) into a coherent proposal body, and
+  it may regroup. `group_candidates` exists so frequency/recency/activity can be measured
+  and gated before any model runs.
+- C13 ("project-specific text is not promoted") is listed in `expectations.json` as a
+  Phase 2 case but is really Phase 3's: it constrains what the model may emit. `collect`
+  already strips the placeholder class; the remaining absolute-path/project-name leak is a
+  synthesis concern. Assert it in `tests/test_learn_synth.py`.
 - C22's open question ("should Archived projects be scanned at all?") is answered
   *yes, at weight 0.1*: `collect` scans them and records the classification. The weighting
   itself is Phase 2's.
@@ -150,5 +217,20 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 - `universe.resolve_project_timestamp` uses the last *commit* time for a clean git repo, so
   the fixture's `atlas` classifies from its build-time commit rather than its stamped
   mtimes. It still lands on `Active Now`, matching `expectations.json`.
+- The C2 line (`- Run \`make check\` before every commit.`) is corroborated by exactly the
+  eleven projects `expectations.json` names, as produced by
+  `group_candidates(guard_evidence(collect_workspace(...)).records)`. Verified, not assumed:
+  `echo` (different wording), `notes` (not a project root), `quarry`, `husk`, and `orbit`
+  are correctly absent. `test_c2_contributing_projects_are_exactly_the_eleven_expected`
+  asserts the set by name, so a regression in any earlier stage surfaces here.
+- The full fixture workspace scores C2 at roughly 11.5 and the C4 one-off at roughly 0.43,
+  so C15's resurfacing cannot be demonstrated by adding a few projects to the full
+  workspace — doubling 11.5 is out of reach. `test_c15_...` therefore builds with
+  `build_workspace(tmp_path, only=["atlas", "relic"])` (score ~1.7), rejects, then rebuilds
+  the full workspace at the same path. `build_workspace` `rmtree`s and recreates only
+  `<dest>/learn_workspace`, so a `universe.db` kept at `tmp_path` survives the rebuild —
+  which is what makes "extend the workspace, never edit the ledger" testable.
+- `sqlite3` `cursor.lastrowid` after an `INSERT` through `db.conn` is the new row's id;
+  `sqlite_utils`' own `insert()` is not needed and is not used in `store.py`.
 - `difflib.SequenceMatcher(autojunk=False)` matters here: with autojunk on, files with many
   repeated lines (the generated `spire/docs/reference.md`) diff wrongly.

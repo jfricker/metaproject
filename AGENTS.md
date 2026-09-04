@@ -92,7 +92,9 @@
 6. **Template Learning Pipeline (`src/metaproject/learn/`)**:
    - `collect.py`: renders each template with a project's own variables and diffs it against the project's file, so substituted placeholders are not mistaken for novel content.
    - `guard.py`: filters `.gitignore` matches and a hard denylist, redacts credentials, and builds the send manifest before anything leaves the machine.
-   - Later stages (`synth`, `score`, `store`, `apply`, `tui`) land in subsequent phases; see `plan.md`.
+   - `score.py`: clusters evidence into candidates and ranks them by frequency, recency, and `universe` activity weighting.
+   - `store.py`: the proposal ledger (`learn_proposals` / `learn_evidence` / `learn_runs`) — upsert by content hash, provenance, suppression and resurfacing. The only module that touches SQLite.
+   - Later stages (`synth`, `apply`, `tui`) land in subsequent phases; see `plan.md`.
 
 7. **Release & Versioning Automation (`scripts/bump_version.sh`, `scripts/bump_version.py`)**:
    - AI-native semantic version incrementing driven by git diff analysis and file additions.
@@ -106,7 +108,7 @@
 - `src/metaproject/universe.py`: Workspace universe scanning and classification.
 - `src/metaproject/db.py`: SQLite database management for the universe.
 - `src/metaproject/review.py`: Template drift detection and compliance.
-- `src/metaproject/learn/`: Template learning pipeline (`collect`, `guard`; further stages per `plan.md`).
+- `src/metaproject/learn/`: Template learning pipeline (`collect`, `guard`, `score`, `store`; further stages per `plan.md`).
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.
 
