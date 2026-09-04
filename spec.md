@@ -2,31 +2,20 @@
 
 **Status**: Draft  
 **Reference**: [intent.md](file:///Users/johnfricker/Projects/MetaProject/intent.md)  
-**Author**: John (Operator), Antigravity (Agent)  
+**Author**: John (Operator), Claude (Agent)  
 
 ---
 
 ## 1. Executive Summary
 
-`metaproject` is a lightweight, opinionated command-line utility built in Python to automate the creation and maintenance of projects following the agentic software development lifecycle (SDLC) defined in [AGENTS.md](file:///Users/johnfricker/Projects/MetaProject/AGENTS.md). It eliminates repetitive manual scaffolding, enforces consistent project layouts, and establishes a foundation for tracking and evolving templates across the user's workspace.
 
 ---
 
 ## 2. Goals & Non-Goals
 
 ### 2.1 Goals
-- **Instant Scaffolding**: Generate a complete, ready-to-use project repository with standard files (`README.md`, `AGENTS.md`, `intent.md`, `STATE.md`, `HANDOFF.md`, `CLAUDE.md`, `.gitignore`, `docs/`) in under a second.
-- **Dynamic Variable Substitution**: Automatically inject project metadata (`ProjectTitle`, `ProjectDescription`, `Author`, `Date`, etc.) into template files.
-- **Intelligent Defaults**: Source default values seamlessly from local environment (`git config user.name`, current date, directory names). Pre-flight check git identity; fall back to author name from config, or warn and leave files staged without committing.
-- **Dual Invocation UX**: Provide an interactive wizard for guided creation alongside non-interactive CLI flags for automation and scriptability.
-- **Safety First**: Prevent accidental data loss through strict collision detection, non-destructive defaults, and path-containment checks.
-- **Git Integration**: Initialize a clean git repository on branch `main` with an initial commit reflecting the generated template state.
-- **Extensible Template Architecture**: Decouple templates from code so templates can be updated without reinstalling the CLI.
-
+-
 ### 2.2 Non-Goals (v1)
-- Remote template downloading or registry synchronization (e.g., fetching from GitHub/GitLab).
-- Multi-language AST-level code manipulation or complex conditional templating engines (e.g. Jinja2 macro systems).
-- Full cross-platform OS abstractions outside macOS/Linux POSIX zsh environments.
 
 ---
 

@@ -135,7 +135,7 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
  Maintain a running list of all tasks and their status. Update it as tasks are completed. Format the list as a checklist with a box, task number and a task description.
 
 ### intent.md
- intent.md is a source of truth for proposed changes to the system. Read it when instructed to and mark it complete after all work is tested and merged. Move the file to docs/archive/ after confirmation from operator and rename it `YYYY-MM-DD-<title>|intent.md`. 
+ intent.md is a source of truth for proposed changes to the system. Read it when instructed to and mark it complete after all work is tested and merged.  
 
 ### spec.md
  The agent will be instructed to create a design and requirements spec from the intent.md.

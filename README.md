@@ -178,7 +178,7 @@ Output displays:
 
 ---
 
-### 5. Evolving Central Templates (`metaproject learn`)
+### 5. Evolving Central Templates (`metaproject learn`) (beta)
 
 When you create useful new rules or tooling patterns in an individual project (e.g., in `AGENTS.md`, `.gitignore`, or `Makefile`), `metaproject learn` extracts these additions and prompts you to export them back to your central templates:
 
