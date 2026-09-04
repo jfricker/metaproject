@@ -5,13 +5,13 @@
 
 ## Testing instructions
 - Run `make check` before every commit.
-- Use `pytest` for all new tests.
+
+## Deployment
+- Deploys are gated on a green `make check` and a signed tag.
+- Roll back with `make rollback VERSION=<tag>`; never hand-edit the live config.
 
 ## Process
 This process is based on the AI-native SDLC playbook with modifications.
 
 ### STATE.md
  Maintain a running list of all tasks and their status.
-
-## Release process
-Tag the release, then run `make publish`. Never publish from a dirty worktree.

@@ -5,6 +5,7 @@
 
 ## Testing instructions
 - Run `make check` before every commit.
+- Use `pytest` for all new tests.
 
 ## Process
 This process is based on the AI-native SDLC playbook with modifications.

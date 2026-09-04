@@ -5,13 +5,10 @@
 
 ## Testing instructions
 - Run `make check` before every commit.
-- Use `pytest` for all new tests.
+- Use `unittest` for all new tests. Do not add pytest as a dependency.
 
 ## Process
 This process is based on the AI-native SDLC playbook with modifications.
 
 ### STATE.md
  Maintain a running list of all tasks and their status.
-
-## Release process
-Tag the release, then run `make publish`. Never publish from a dirty worktree.

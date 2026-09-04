@@ -1,7 +1,8 @@
 # `learn` Acceptance Workspace
 
-A deliberately seeded workspace of eight projects, each carrying planted patterns that
-exercise one or more acceptance criteria for `metaproject learn`.
+A deliberately seeded workspace of fifteen projects (plus one directory that is
+deliberately *not* a project), carrying planted patterns that exercise 28 acceptance
+criteria for `metaproject learn`.
 
 **Reference**: [spec.md §5.4](../../../spec.md) | [plan.md §2](../../../plan.md)
 
@@ -29,19 +30,32 @@ a change to the fixture updates its tests rather than silently invalidating them
 
 ## The projects
 
+Sixteen directories. Fifteen are project roots; `notes` deliberately is not.
+
 | Project | Age | Classification | Seeded to exercise |
 |---|---|---|---|
 | `orbit` | 1d | Active Now | Pristine render — the zero-evidence control |
-| `atlas` | 1d | Active Now | Corroborated line, new Markdown section |
-| `vault` | 1d | Active Now | Inline secret, gitignored files, denylisted key, binary |
-| `mimic` | 2d | Active Now | Prompt injection |
-| `kiln` | 5d | Active Near | Corroborated line, new section, untemplated Makefile |
-| `beacon` | 20d | Active Far | Corroborated line, new section, untemplated Makefile |
-| `quarry` | 90d | Idle | One-off addition, project-specific noise, Makefile |
-| `relic` | 400d | Ancient | Corroborated line at the lowest activity weight |
+| `atlas` | 1d | Active Now | Corroborated line, new section, real git repo |
+| `vault` | 1d | Active Now | Secret, gitignored files, denylisted key, binary, **no** git repo |
+| `cipher` | 1d | Active Now | Over-redaction traps: SHA, UUID, base64, a `secrets.md` that isn't secret |
+| `echo` | 1d | Active Now | Same convention as C2 in different words |
+| `lattice` | 1.5d | Active Now | CRLF, trailing whitespace, non-ASCII glyphs |
+| `mimic` | 1.5d | Active Now | Prompt injection |
+| `forge` | 4d | Active Near | The minority side of a contradiction |
+| `kiln` | 5d | Active Near | Corroborated line, section, Makefile |
+| `spire` | 6d | Active Near | Section absent from template, oversized file, `docs/`, `pyproject.toml` |
+| `beacon` | 20d | Active Far | Corroborated line, section, Makefile, symlinks |
+| `husk` | 25d | Active Far | Degenerate: zero-byte `AGENTS.md`, nothing else |
+| `quarry` | 90d | Idle | One-off addition, project-specific noise |
+| `relic` | 400d | Ancient | Corroborated line at weight 0.2 |
+| `Archive/derelict` | 300d | Archived | Corroborated line at weight 0.1, the floor |
+| `notes` | 30d | *(not a project)* | Contains a learnable line but has no project marker |
 
-The spread across five activity classes is deliberate: `C2`'s line appears in projects
-weighted 1.0 down to 0.2, so weighting is observable rather than theoretical.
+Ages sit clear of every classification boundary on purpose — nothing is stamped at exactly
+2, 7, 30, or 180 days — so stamping jitter cannot flip a classification. The build is
+verified against `universe.classify_project`; all fifteen match.
+
+Six activity classes are represented, so weighting is measurable rather than theoretical.
 
 ## The cases
 
@@ -62,6 +76,19 @@ weighted 1.0 down to 0.2, so weighting is observable rather than theoretical.
 | C13 | Project-specific text not promoted | 2 | No proposal contains `quarry`'s absolute `/Users/...` path or the project name verbatim. A generalized proposal is fine; a verbatim one is not. |
 | C14 | Scan leaves templates untouched | 4 | After a full scan, the template store is byte-identical and its worktree clean. The primary safety invariant. |
 | C15 | Rejection suppresses, then resurfaces | 2 | Reject C2, rescan → absent. Raise its score past `rejected_score * 2.0`, rescan → present. `--forget` clears it. |
+| C16 | Semantically identical, textually different | 3 | `echo` states C2's convention in other words. Must fold into C2 or surface as clearly related — never as an unrelated new idea. **Exact string matching cannot pass this.** |
+| C17 | Contradictory conventions not merged | 3 | Three projects say use `pytest`, `forge` says use `unittest` and explicitly not pytest. No single proposal may recommend both. |
+| C18 | Degenerate project survives the scan | 1 | `husk` has a zero-byte `AGENTS.md` and nothing else. Scan completes, no evidence, and an empty file does not become a deletion proposal. |
+| C19 | Non-project directories skipped | 1 | `notes` has no project marker but *does* contain C2's exact line. If it appears in evidence, discovery is walking files instead of projects. |
+| C20 | Redaction does not eat real content | 1 | `cipher`'s git SHA, UUID, and base64 vector are high-entropy and must **survive**. `secrets.md` is documentation and must not be excluded on filename alone. |
+| C21 | Proposed section absent from template | 4 | `spire` writes under `## Deployment`, which the template lacks. Create deterministically or fall back to a reviewed append — never claim insertion under a heading that doesn't exist. |
+| C22 | Archived weighting is the floor | 2 | `Archive/derelict` weights 0.1, measurable against `relic` (0.2) and `atlas` (1.0). |
+| C23 | Line endings normalized | 1 | `lattice` is CRLF with trailing whitespace. It must appear among C2's contributors and must not make every other line look novel. |
+| C24 | Ignore handling without a git repo | 1 | `atlas` is a real repo; `vault` is a plain directory with a `.gitignore`. An implementation shelling out to `git check-ignore` passes `atlas` and fails `vault`. |
+| C25 | Oversized target chunks and reduces | 3 | `spire/docs/reference.md` is ~500 KB generated. Must chunk, not truncate or fail. |
+| C26 | Symlinks neither loop nor escape | 1 | `beacon` carries a self-referential symlink and one pointing above the workspace root. |
+| C27 | Applied content is not re-proposed | 4 | After applying C2, rescanning the unchanged workspace must not re-propose it. Distinct from C15: that is rejection, this is convergence. |
+| C28 | Directory and config targets | 6 | `docs/` and `pyproject.toml` are default targets. Neither may crash the collector; a directory target must not be read as a file. |
 
 ## Regression coverage
 
@@ -79,10 +106,22 @@ wrong reason:
 
 Cases mapping to [plan.md §3](../../../plan.md):
 
-- **R1 secret egress** → C5, C6, C7, C11. All gated in Phase 1, deliberately *before* any
-  model code exists in Phase 3.
+- **R1 secret egress** → C5, C6, C7, C11, C24 (exclusion) and C20 (the inverse: not
+  over-redacting). All gated in Phase 1, deliberately *before* any model code exists.
 - **R2 prompt injection** → C8.
+- **R4 context budget** → C25.
 - **R6 bad accept corrupts a template** → C14.
+- **R7 wrong structural placement** → C12, C21.
+
+## What is deliberately hard
+
+Four cases cannot be passed by string comparison and exist to prove the model is doing
+the judging:
+
+- **C16** — the same rule in different words must not read as a different rule.
+- **C17** — a workspace that contradicts itself must not be averaged into one line.
+- **C20** — redaction must be precise, not merely aggressive.
+- **C13** — a generalized proposal is acceptable where a verbatim one is not.
 
 ## A note on the planted secrets
 

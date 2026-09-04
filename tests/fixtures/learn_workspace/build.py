@@ -91,6 +91,41 @@ def _write_synthetic_files(project_dir: Path, name: str) -> None:
         (project_dir / rel).write_text(content, encoding="utf-8")
 
 
+# Projects git-initialized at build time. `vault` deliberately stays a plain directory
+# with a .gitignore but no repository, so the guard cannot rely on `git check-ignore`
+# alone (C6/C24). `atlas` is a real repository so the git-backed path is covered too.
+GIT_BACKED_PROJECTS = {"atlas"}
+
+# Size of the generated oversized file (C25). Large enough to force chunk-and-reduce,
+# generated rather than committed so the repository stays small.
+LARGE_FILE_LINES = 6000
+
+
+def _write_generated_files(project_dir: Path, name: str) -> None:
+    """Create files that must not be committed: symlinks and oversized content."""
+    if name == "spire":
+        # C25 (R4): a single target far past any sane context budget.
+        big = project_dir / "docs" / "reference.md"
+        big.parent.mkdir(parents=True, exist_ok=True)
+        lines = ["# Generated Reference", ""]
+        for i in range(LARGE_FILE_LINES):
+            lines.append(f"## Symbol {i:05d}")
+            lines.append(
+                f"Describes generated symbol {i:05d}. Run `make check` before every commit."
+            )
+            lines.append("")
+        big.write_text("\n".join(lines), encoding="utf-8")
+
+    if name == "beacon":
+        # C26: symlink traversal. One loops inside the project, one escapes it.
+        inner = project_dir / "AGENTS.link.md"
+        if not inner.exists():
+            inner.symlink_to("AGENTS.md")
+        escape = project_dir / "outside.link"
+        if not escape.exists():
+            escape.symlink_to("../../../..")
+
+
 def _stamp_mtimes(project_dir: Path, age_days: float) -> None:
     """Backdate every file in a project so `universe` classifies it as intended."""
     target = time.time() - (age_days * 86400.0)
@@ -133,9 +168,14 @@ def build_workspace(
         src = FIXTURE_ROOT / "projects" / name
         if not src.exists():
             raise FileNotFoundError(f"expectations.json names {name!r} but {src} is missing")
-        shutil.copytree(src, projects / name)
-        _write_synthetic_files(projects / name, name)
-        _stamp_mtimes(projects / name, meta["age_days"])
+        dest_proj = projects / name
+        dest_proj.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(src, dest_proj)
+        _write_synthetic_files(dest_proj, name)
+        _write_generated_files(dest_proj, name)
+        if name in GIT_BACKED_PROJECTS:
+            _git_init_project(dest_proj)
+        _stamp_mtimes(dest_proj, meta["age_days"])
 
     if git_init_templates:
         _git(templates, "init", "--initial-branch=main")
@@ -152,6 +192,22 @@ def build_workspace(
         )
 
     return Workspace(root=root, projects=projects, templates=templates, expectations=expectations)
+
+
+def _git_init_project(project_dir: Path) -> None:
+    """Make one fixture project a real git repository (C24)."""
+    _git(project_dir, "init", "--initial-branch=main")
+    _git(project_dir, "add", "-A")
+    _git(
+        project_dir,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "chore: fixture project",
+    )
 
 
 def _git(cwd: Path, *args: str) -> None:
