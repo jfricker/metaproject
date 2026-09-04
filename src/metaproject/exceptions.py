@@ -35,3 +35,15 @@ class ScannerError(MetaProjectError):
     """Raised when workspace scanning or database operations fail."""
 
     pass
+
+
+class ModelUnavailableError(MetaProjectError):
+    """Raised when the `claude` binary `learn` shells out to is not on PATH."""
+
+    pass
+
+
+class ModelOutputError(MetaProjectError):
+    """Raised when model output cannot be parsed as the structured proposal schema."""
+
+    pass

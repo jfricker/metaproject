@@ -12,9 +12,12 @@ Implemented so far (plan.md phases):
   `store` (the proposal ledger: upsert by content hash, provenance, suppression and
   resurfacing, run records). Also deterministic, and `store` is the only module that
   touches SQLite.
+- Phase 3 — `synth` (prompt assembly, per-target-file bundling, chunk-and-reduce, the
+  `claude -p` invocation, and structured output parsing and validation). The only module
+  that reaches a model, and the only one that treats its input as untrusted.
 
 The public API — `scan()`, `review()`, `apply_proposal()`, `reject_proposal()` — arrives
-with the later phases, alongside `synth`, `apply`, and `tui`.
+with the later phases, alongside `apply` and `tui`.
 """
 
 from metaproject.learn.collect import (
@@ -68,9 +71,41 @@ from metaproject.learn.store import (
     start_run,
     upsert_proposal,
 )
+from metaproject.learn.synth import (
+    Bundle,
+    Proposal,
+    SynthResult,
+    build_prompt,
+    build_reduce_prompt,
+    bundle_evidence,
+    chunk_bundle,
+    claude_command,
+    parse_response,
+    render_block,
+    resolve_claude,
+    run_claude,
+    split_record,
+    synthesize,
+    validate_proposal,
+)
 
 __all__ = [
+    "Bundle",
     "Candidate",
+    "Proposal",
+    "SynthResult",
+    "build_prompt",
+    "build_reduce_prompt",
+    "bundle_evidence",
+    "chunk_bundle",
+    "claude_command",
+    "parse_response",
+    "render_block",
+    "resolve_claude",
+    "run_claude",
+    "split_record",
+    "synthesize",
+    "validate_proposal",
     "EvidenceDraft",
     "EvidenceRecord",
     "ProjectWeight",

@@ -94,7 +94,8 @@
    - `guard.py`: filters `.gitignore` matches and a hard denylist, redacts credentials, and builds the send manifest before anything leaves the machine.
    - `score.py`: clusters evidence into candidates and ranks them by frequency, recency, and `universe` activity weighting.
    - `store.py`: the proposal ledger (`learn_proposals` / `learn_evidence` / `learn_runs`) — upsert by content hash, provenance, suppression and resurfacing. The only module that touches SQLite.
-   - Later stages (`synth`, `apply`, `tui`) land in subsequent phases; see `plan.md`.
+   - `synth.py`: bundles guarded evidence one bundle per target file, measures the rendered prompt against the context budget and chunks-and-reduces when it overruns, shells out to `claude -p`, and parses the reply as schema-validated structured data. The only module that reaches a model; model output is data, never instruction.
+   - Later stages (`apply`, `tui`) land in subsequent phases; see `plan.md`.
 
 7. **Release & Versioning Automation (`scripts/bump_version.sh`, `scripts/bump_version.py`)**:
    - AI-native semantic version incrementing driven by git diff analysis and file additions.
