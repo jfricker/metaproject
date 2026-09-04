@@ -1,37 +1,27 @@
-# MetaProject - a CLI tool for creating a new project
+# MetaProject - improve learn command
 
 **Author**: John. **Status**: Draft.
 
 ## Problem
-I create new projects on a regular basis and I find myself creating the same files over and over again. 
+The learn command does a simple diff of the template and the operation document in a project. This rough approach is inadequate as an operational document needs to interpretted inorder to have meaningful changes extracted and added to the templates.
 
 ## Proposed outcome
- CLI tool **metaproject** that creates a new project directory and generate the project boilerplate files based on a collection of templates. The templates are stored in the ./templates directory and the tool can periodically review all projects to find useful changes to make to the templates. The tool can also review existing files and make recommendations to improve/update them based on current templates.
+Use claude cli with a well crafted prompt to review all current operational documents and identify meaningful changes for the templates. For each template in templates gather all operational documents in the universe.db and identify common improvement patterns and other candidates for promotion to templates.
 
-**metaproject init {path/to/templates} project_home**
-Sets up the tool for use. It copies the templates from the project home into the users home directory `~/.metaproject/templates/`. It creates the config file in .metaproject and builds the universe.db database. (Note: symantically this might be better named `install`)
+Identification will ignore project specific text (based on best estimate or heuristic) and will score candidates by frequency of occurances. That is, a change to a document that appears in several projects gets a higher score than another that appears once. Recent changes are also scored positively. Accumulated scores become the rank for the change. 
 
-**metaproject new {nameofproject} --templates {path/to/templates} --output {path/to/output}**
-path/to/templates default is ~/.metaproject/templates
-path/to/output default is current directory, creating the directory if it does not exist
+learn contains the prompt for claude. It prepares the documents packages - one for each template, and launches claude with the prompt. Output from claude is structured and is used by learn to create the acceptance flow for the operator.
+ 
+### Acceptance Flow
+Candidates are reviewed by operator in a line by line or side by side diff TUI with Accept, Edit, Discard actions.
+** Accept ** copies the candidate to the appropriate template.
+** Edit ** allows the operator to edit the candidate with a Save action that copies to appropriate template.
+** Discard ** discards the candidate and moves to the next candidate.
 
-The new project directory will be created with the following files:
-- README.md
-- AGENTS.md
-- intent.md
-- HANDOFF.md
-- STATE.md
-- CLAUDE.md
-- .gitignore
-- docs/
+Flow loops for all candidates for a template. And then loops for all templates.
 
-**metaproject review {directory} --templates {path/to/templates}**
-
-**metaproject learn** — see [Design: `metaproject learn`](#design-metaproject-learn) below.
-
-**metaproject universe [dir]**
-Scans starting at the current directory (or specified root) and catalogs all subdirectories, classifying them by activity recency and archive status (`Active Now`, `Active Near`, `Active Far`, `Idle`, `Ancient`, `Archived`). Records brief description, location, and metadata in a SQLite database at `~/.metaproject/universe.db`.
-
+### Persistence
+learn may benefit from a sqlite db. Make a recommendation. 
 
 ## Design: `metaproject learn`
 
@@ -215,46 +205,21 @@ the same way as several others raises that pattern's evidence score.
   projects") or remain purely operator-invoked. Deferred.
 
 ## Affected users and systems
-Only the operator running the CLI tool.
+This will change src/learn.py and other sources.
 
 ## Scope
 
-### In Scope (v1)
-- CLI command to scaffold a project directory by name or into the current working directory.
-- Recursive copying of the template directory tree, stripping `.template` extensions.
-- Variable substitution for template placeholders (`{ProjectTitle}`, `{ProjectDescription}`, `{Author}`, `{Date}`).
-- Automatic defaults derived from the environment (git user, current date, folder name).
-- Interactive prompt mode when required parameters are omitted, with non-interactive flag support (`-y` / `--yes`).
-- Collision protection (abort if destination directory is not empty unless `--force` is specified).
-- `metaproject universe`: cataloging, activity classification, metadata extraction, and SQLite storage (`~/.metaproject/universe.db`).
-- `metaproject review` and `metaproject learn` as first class v1 features.
+### In Scope 
 - `metaproject learn` as a corroborated, model-driven proposal pipeline with a durable
   proposal ledger, provenance, and human-reviewed application (see design section above).
-- `~/.metaproject/templates` initialized as a git repository so template changes are
-  versioned and revertible.
 
 ### Out of Scope (v1)
-- Remote template fetching (e.g., downloading from GitHub repos).
-- Multi-archetype / multi-language scaffolding matrices (keep to the primary project template set first).
-- Complex conditional AST transformations.
 - `learn` proposing *removals* from templates (negative signal). Additions and
   modifications only.
 - Scheduled or daemonized `learn` runs. Operator-invoked only.
 - Any model provider other than `claude -p`; no direct SDK or API-key path.
 
 ## Resolved decisions
-- Template naming convention: Files ending in `.template` or `.template.<ext>` have `.template` removed upon generation.
-- Default author lookup: Query `git config user.name`.
-- Runtime/Language preference: Python 3.11+ (managed via `uv`).
-- Approved runtime dependencies: `typer`, `rich`, `sqlite-utils`, `questionary`, `jinja2`.
-- Approved test/dev tooling: `pytest`, `pytest-mock`, `ruff`, and `typer.testing.CliRunner`.
-- Template location: read from a user home directory (`~/.metaproject/templates`), with overrides.
-- Automatically run `git init` and create an initial commit.
-- `review` and `learn` are first class, v1 features.
-- Bundle default templates inside the Python package (using `importlib.resources`) so a fresh installation can self-seed `~/.metaproject/templates` during `init`.
-- `git init` will set the default branch to `main`. First commit message will be `chore: initial scaffold from metaproject`.
-- Use Jinja2 for variable substitution in templates. 
-- Set SQLite PRAGMA journal_mode=WAL and busy_timeout=5000 to prevent database locks.
 - `learn` uses a model as its primary engine, invoked by shelling out to `claude -p`. No
   new runtime dependency and no API key management; hard failure if `claude` is absent.
 - `learn` never writes templates during a scan. Proposals are persisted to `universe.db`
@@ -266,6 +231,5 @@ Only the operator running the CLI tool.
 - Rejected proposals are suppressed by content hash but resurface if evidence grows.
 
 ## Constraints
-- CLI tool will only write into the specified directory for the current user.
-- Minimal external dependencies for end users running the CLI. Dependencies must be discussed and approved by operator.
-- Must cleanly support macOS zsh terminal environments.
+- learn must run from CLI
+- learn must be able to access claude cli

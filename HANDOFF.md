@@ -1,29 +1,14 @@
 # Handoff: MetaProject
 
 **Date**: 2026-09-02  
-**Author**: Antigravity Assistant  
-**Status**: All Phases (P0–P7) Complete & Verified  
+**Author**: Claude Code  
+**Status**: draft  
 
 ---
 
 ## Executive Summary
 
-The `metaproject` CLI tool has been fully implemented in accordance with [intent.md](file:///Users/johnfricker/Projects/MetaProject/intent.md), [spec.md](file:///Users/johnfricker/Projects/MetaProject/spec.md), and [plan.md](file:///Users/johnfricker/Projects/MetaProject/plan.md).
-
-All 5 top-level commands are operational:
-1. `metaproject init` (Alias: `metaproject install`): Sets up configuration, seeds central templates, initializes `universe.db`, and catalogs existing workspaces.
-2. `metaproject new <name>`: Instant (<1s) scaffolding with full AI-native SDLC governance files (`README.md`, `AGENTS.md`, `intent.md`, `STATE.md`, `HANDOFF.md`, `CLAUDE.md`, `.gitignore`, `docs/`) and git initial commit on `main`.
-3. `metaproject universe`: Scans directory trees, classifies project activity recency (`Active Now`, `Active Near`, `Active Far`, `Idle`, `Ancient`, `Archived`), and reconciles missing projects in SQLite.
-4. `metaproject review`: Audits projects against central templates to detect missing files and content drift.
-5. `metaproject learn`: Harvests customizations and new rules from projects and updates central templates.
-
----
-
 ## Test & Code Quality Status
-
-- **Automated Tests**: 33 passing tests in `tests/` (`test_baseline.py`, `test_config.py`, `test_templates.py`, `test_scaffold.py`, `test_universe.py`, `test_review.py`, `test_learn.py`, `test_e2e.py`).
-- **Code Linter**: `ruff` check and format passing with 0 warnings/errors.
-- **Scaffolding Performance**: Verified $< 1.0$ second execution time.
 
 ---
 
