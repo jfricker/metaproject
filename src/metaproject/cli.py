@@ -733,80 +733,22 @@ def review_cmd(
 def learn_cmd(
     project_dir: Optional[Path] = typer.Argument(
         None,
-        help="Project directory to learn from (default: current directory).",
-    ),
-    all_projects: bool = typer.Option(
-        False,
-        "--all",
-        help="Review all projects found in subdirectories.",
+        help="Project directory or workspace root to learn from (default: current directory).",
     ),
     templates_path: Optional[Path] = typer.Option(
         None,
         "--templates",
-        help="Central template directory to update (default: ~/.metaproject/templates).",
-    ),
-    depth: int = typer.Option(
-        4,
-        "--depth",
-        help="Maximum directory traversal depth (default: 4).",
-    ),
-    yes: bool = typer.Option(
-        False,
-        "--yes",
-        "-y",
-        help="Automatically apply improvements without interactive prompts.",
+        help="Central template directory (default: ~/.metaproject/templates).",
     ),
 ) -> None:
-    """Scan existing projects to harvest customizations and update central templates."""
-    from metaproject.learn import (
-        apply_learned_enhancement,
-        learn_from_project,
-        learn_workspace,
-    )
-
-    target = (project_dir or Path.cwd()).resolve()
-
-    if all_projects:
-        results = learn_workspace(target, templates_path, max_depth=depth)
-    else:
-        results = [learn_from_project(target, templates_path)]
-
-    total_found = sum(res["total_additions"] for res in results)
-    if total_found == 0:
-        console.print(f"[green]No new template additions or rules found in {target}.[/green]")
-        return
-
+    """Harvest recurring project drift into reviewed template proposals."""
+    # The legacy line-diff harvester has been removed (plan.md §1.1). The proposal
+    # pipeline that replaces it is wired to this command in plan.md Phase 4; until then
+    # `learn` fails loudly rather than silently doing the old, wrong thing.
     console.print(
-        f"[bold cyan]Discovered {total_found} candidate additions "
-        f"across {len(results)} projects:[/bold cyan]\n"
+        "[bold red]`metaproject learn` is being rebuilt.[/bold red]\n"
+        "The line-diff harvester has been removed; the corroborated proposal pipeline "
+        "(spec.md §5.4) is not yet wired to the CLI.\n"
+        "Every other command is unaffected."
     )
-
-    for res in results:
-        if res["total_additions"] == 0:
-            continue
-
-        console.print(f"[bold]{res['project_name']}:[/bold]")
-        for candidate in res["candidates"]:
-            target_file = candidate["target_file"]
-            additions = candidate["additions"]
-            tmpl_path = Path(candidate["template_path"])
-
-            console.print(f"  • [cyan]{target_file}[/cyan] (+{len(additions)} lines):")
-            for line in additions[:5]:
-                console.print(f"    [dim]+ {line}[/dim]")
-            if len(additions) > 5:
-                console.print(f"    [dim]... and {len(additions) - 5} more lines[/dim]")
-
-            should_apply = yes
-            if not yes:
-                prompt_text = (
-                    f"Export these additions from {res['project_name']} into {tmpl_path.name}?"
-                )
-                should_apply = questionary.confirm(prompt_text, default=True).ask()
-
-            if should_apply:
-                applied = apply_learned_enhancement(tmpl_path, additions)
-                console.print(
-                    f"    [bold green]✓ Appended {applied} new lines to "
-                    f"{tmpl_path.name}[/bold green]"
-                )
+    raise typer.Exit(code=1)

@@ -97,10 +97,15 @@ def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> No
     assert "PASS" in review_res.output
 
     # 5. LEARN
-    # Introduce an innovative custom rule into rover_mission
+    # The legacy line-diff harvester is deleted (plan.md §1.1) and the replacement
+    # pipeline is not wired to the CLI until Phase 4. `learn` must fail loudly and,
+    # critically, must not mutate the template store on the way out.
     agents_file = project_target / "AGENTS.md"
     with open(agents_file, "a", encoding="utf-8") as f:
         f.write("\n### Robotics Rule\nAlways test motor calibration before telemetry.\n")
+
+    central_tmpl = config_dir / "templates" / "AGENTS.template.md"
+    template_before = central_tmpl.read_bytes()
 
     learn_res = runner.invoke(
         app,
@@ -109,14 +114,8 @@ def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> No
             str(project_target),
             "--templates",
             str(config_dir / "templates"),
-            "--yes",
         ],
     )
-    assert learn_res.exit_code == 0
-    assert "Appended" in learn_res.output
-
-    # Verify central template received the learned rule
-    central_tmpl = config_dir / "templates" / "AGENTS.template.md"
-    assert "Always test motor calibration before telemetry." in central_tmpl.read_text(
-        encoding="utf-8"
-    )
+    assert learn_res.exit_code == 1
+    assert "being rebuilt" in learn_res.output
+    assert central_tmpl.read_bytes() == template_before

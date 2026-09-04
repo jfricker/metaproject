@@ -89,9 +89,10 @@
    - Audits projects against active templates in `~/.metaproject/templates/`.
    - Identifies missing governance files and structural drift across workspace repositories.
 
-6. **Template Enhancement Harvester (`src/metaproject/learn.py`)**:
-   - Analyzes mature, customized project governance files (e.g. project-specific additions in `AGENTS.md`).
-   - Safely extracts and appends novel content back into central user templates.
+6. **Template Learning Pipeline (`src/metaproject/learn/`)**:
+   - `collect.py`: renders each template with a project's own variables and diffs it against the project's file, so substituted placeholders are not mistaken for novel content.
+   - `guard.py`: filters `.gitignore` matches and a hard denylist, redacts credentials, and builds the send manifest before anything leaves the machine.
+   - Later stages (`synth`, `score`, `store`, `apply`, `tui`) land in subsequent phases; see `plan.md`.
 
 7. **Release & Versioning Automation (`scripts/bump_version.sh`, `scripts/bump_version.py`)**:
    - AI-native semantic version incrementing driven by git diff analysis and file additions.
@@ -105,7 +106,7 @@
 - `src/metaproject/universe.py`: Workspace universe scanning and classification.
 - `src/metaproject/db.py`: SQLite database management for the universe.
 - `src/metaproject/review.py`: Template drift detection and compliance.
-- `src/metaproject/learn.py`: Template learning and enhancement.
+- `src/metaproject/learn/`: Template learning pipeline (`collect`, `guard`; further stages per `plan.md`).
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.
 
