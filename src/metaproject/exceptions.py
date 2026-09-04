@@ -47,3 +47,13 @@ class ModelOutputError(MetaProjectError):
     """Raised when model output cannot be parsed as the structured proposal schema."""
 
     pass
+
+
+class ApplyError(MetaProjectError):
+    """Raised when a proposal cannot be written into the template store.
+
+    Covers a dirty template repository, an unresolvable template file, and a refused
+    R7 fallback. Every one of them leaves the template store untouched.
+    """
+
+    pass

@@ -8,6 +8,7 @@ import questionary
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 
 from metaproject.config import (
@@ -729,26 +730,393 @@ def review_cmd(
         console.print(Panel(rec_text, title="Actionable Recommendations", border_style="yellow"))
 
 
-@app.command(name="learn")
-def learn_cmd(
-    project_dir: Optional[Path] = typer.Argument(
+# --------------------------------------------------------------------------- learn
+#
+# `learn` is a command group, not a command (spec.md §5.4.4). The subcommands and the
+# Phase 5 acceptance TUI are two interfaces to one queue: both call the same
+# `metaproject.learn` public API and both write through to `universe.db` immediately,
+# so a review session can be abandoned and finished from the CLI without divergence.
+
+learn_app = typer.Typer(
+    name="learn",
+    help="Harvest recurring project drift into reviewed template proposals.",
+    no_args_is_help=True,
+)
+app.add_typer(learn_app, name="learn")
+
+STATUS_STYLES = {
+    "pending": "[yellow]pending[/yellow]",
+    "applied": "[green]applied[/green]",
+    "rejected": "[dim]rejected[/dim]",
+}
+
+
+def learn_db():
+    """Open the proposal ledger the way every `learn` subcommand opens it."""
+    from metaproject.db import get_db as _get_db
+
+    return _get_db(load_config().universe_db)
+
+
+def resolve_templates_dir(templates_path: Optional[Path]) -> Path:
+    """The template store a `learn` subcommand operates on (`--templates` wins)."""
+    if templates_path:
+        return Path(templates_path).expanduser().resolve()
+    return Path(load_config().templates_dir).expanduser().resolve()
+
+
+def open_in_editor(text: str, suffix: str = ".md") -> Optional[str]:
+    """Open `text` in `$EDITOR` and return the saved result, or None if the edit aborted.
+
+    Returning None covers every failure spec.md §5.4.10 folds together — `$EDITOR`
+    unset, the editor exiting non-zero, or the operator leaving the text unchanged —
+    because the caller's response to all three is the same: keep the candidate pending.
+    """
+    import os
+    import shlex
+    import subprocess
+    import tempfile
+
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if not editor:
+        return None
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / f"proposal{suffix}"
+        path.write_text(text, encoding="utf-8")
+        result = subprocess.run([*shlex.split(editor), str(path)], check=False)
+        if result.returncode != 0:
+            return None
+        edited = path.read_text(encoding="utf-8")
+
+    return edited if edited.strip() and edited != text else None
+
+
+def render_proposal_table(rows, verbose: bool = False) -> Table:
+    """The `learn list` queue table (spec.md §5.4.4)."""
+    table = Table(
+        title=f"Learn Proposal Queue ({len(rows)} proposals)",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("ID", justify="right", style="bold cyan")
+    table.add_column("Target File", style="bold")
+    table.add_column("Title")
+    table.add_column("Projects", justify="right")
+    table.add_column("Score", justify="right", style="green")
+    table.add_column("Status", justify="center")
+    if verbose:
+        table.add_column("Section", style="dim")
+
+    for row in rows:
+        cells = [
+            str(row["id"]),
+            str(row["target_file"]),
+            str(row["title"]),
+            str(row["evidence_count"]),
+            f"{float(row['evidence_score'] or 0.0):.2f}",
+            STATUS_STYLES.get(str(row["status"]), str(row["status"])),
+        ]
+        if verbose:
+            cells.append(str(row["target_section"] or "—"))
+        table.add_row(*cells)
+    return table
+
+
+def print_plan(plan) -> None:
+    """Show the operator exactly what would be written, before anything is."""
+    from metaproject.learn.apply import PLACEMENT_APPEND, PLACEMENT_NEW_FILE
+
+    console.print(
+        Panel.fit(
+            f"[bold]{plan.title}[/bold]\n\n"
+            f"[bold]Target:[/bold] {plan.target_file} → {plan.template_file}\n"
+            f"[bold]Section:[/bold] {plan.target_section or '—'}\n"
+            f"[bold]Projects:[/bold] "
+            f"{', '.join(plan.contributing_projects) or '—'}\n\n"
+            f"{plan.rationale}",
+            title=f"Proposal #{plan.proposal_id}",
+        )
+    )
+    if plan.fallback_reason:
+        console.print(f"[bold yellow]Warning:[/bold yellow] {plan.fallback_reason}")
+    elif plan.placement == PLACEMENT_NEW_FILE:
+        console.print(f"[cyan]This creates a new template file: {plan.template_file}[/cyan]")
+    elif plan.placement == PLACEMENT_APPEND:
+        console.print("[dim]No target section was proposed; appending at end of file.[/dim]")
+
+    diff = plan.diff()
+    if diff:
+        console.print(Syntax(diff, "diff", theme="ansi_dark", word_wrap=True))
+    else:
+        console.print("[dim]The template already carries this content; nothing to write.[/dim]")
+
+
+def apply_one(db, proposal_id: int, templates_dir: Path, yes: bool, edited_body=None) -> bool:
+    """Review one proposal's diff, confirm, write, and commit. True if it was applied."""
+    from metaproject.learn.apply import apply_plan, plan_apply
+
+    plan = plan_apply(db, proposal_id, templates_dir=templates_dir, edited_body=edited_body)
+    print_plan(plan)
+
+    prompt = f"Apply proposal #{proposal_id} to {plan.template_file.name}?"
+    if not yes and not typer.confirm(prompt):
+        console.print("[yellow]Skipped. The proposal stays pending.[/yellow]")
+        return False
+
+    result = apply_plan(db, plan, templates_dir, edited_body=edited_body)
+    if result.changed:
+        console.print(
+            f"[bold green]Applied proposal #{proposal_id}[/bold green] "
+            f"→ {result.plan.template_file} (commit {str(result.commit)[:12]})"
+        )
+    else:
+        console.print(
+            f"[cyan]Proposal #{proposal_id} was already satisfied by the template; "
+            "marked applied without a commit.[/cyan]"
+        )
+    return True
+
+
+@learn_app.command(name="scan")
+def learn_scan_cmd(
+    root: Optional[Path] = typer.Argument(
         None,
-        help="Project directory or workspace root to learn from (default: current directory).",
+        help="Workspace root to scan for projects (default: current directory).",
     ),
+    all_projects: bool = typer.Option(
+        False,
+        "--all",
+        help="Scan the configured projects home instead of the given root.",
+    ),
+    depth: int = typer.Option(4, "--depth", help="Maximum directory traversal depth."),
+    since: Optional[str] = typer.Option(
+        None,
+        "--since",
+        help="Only scan projects changed since a date (2026-01-01) or within N days.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="Skip the egress confirmation for non-interactive use."
+    ),
+    model: Optional[str] = typer.Option(None, "--model", help="Model passed through to `claude`."),
     templates_path: Optional[Path] = typer.Option(
         None,
         "--templates",
-        help="Central template directory (default: ~/.metaproject/templates).",
+        help="Template store to compare against (default: ~/.metaproject/templates).",
     ),
 ) -> None:
-    """Harvest recurring project drift into reviewed template proposals."""
-    # The legacy line-diff harvester has been removed (plan.md §1.1). The proposal
-    # pipeline that replaces it is wired to this command in plan.md Phase 4; until then
-    # `learn` fails loudly rather than silently doing the old, wrong thing.
+    """Collect drift, synthesize proposals, and record them. Never mutates a template."""
+    from metaproject.learn import scan
+
+    cfg = load_config()
+    target = Path(cfg.project_home) if all_projects else (root or Path.cwd())
+    templates_dir = resolve_templates_dir(templates_path)
+
+    try:
+        result = scan(
+            target,
+            templates_dir=templates_dir,
+            db=learn_db(),
+            config=cfg,
+            depth=depth,
+            since=since,
+            yes=yes,
+            model=model,
+        )
+    except ValueError as exc:
+        console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+    except MetaProjectError as exc:
+        console.print(f"[bold red]Learn failed:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+    if result.aborted:
+        console.print("[yellow]Send declined. Nothing was sent to the model.[/yellow]")
+        raise typer.Exit(code=0)
+
     console.print(
-        "[bold red]`metaproject learn` is being rebuilt.[/bold red]\n"
-        "The line-diff harvester has been removed; the corroborated proposal pipeline "
-        "(spec.md §5.4) is not yet wired to the CLI.\n"
-        "Every other command is unaffected."
+        f"[bold green]Scanned {result.projects_scanned} projects[/bold green] "
+        f"({result.files_scanned} files with drift) → {result.created} proposals recorded."
     )
-    raise typer.Exit(code=1)
+    if result.skipped:
+        console.print(
+            f"[yellow]Run marked '{result.status}'. Skipped target files: "
+            f"{', '.join(result.skipped)}[/yellow]"
+        )
+    console.print("[dim]Review them with[/dim] [cyan]metaproject learn list[/cyan]")
+
+
+@learn_app.command(name="list")
+def learn_list_cmd(
+    status: Optional[str] = typer.Option(
+        "pending",
+        "--status",
+        help="Filter by status: pending, applied, rejected, or 'all'.",
+    ),
+    verbose: bool = typer.Option(False, "--verbose", help="Include the proposed target section."),
+    templates_path: Optional[Path] = typer.Option(
+        None, "--templates", help="Template store (default: ~/.metaproject/templates)."
+    ),
+) -> None:
+    """Table of proposals: id, target file, title, evidence count, score."""
+    from metaproject.learn import review
+
+    wanted = None if status in (None, "all") else status
+    rows = review(learn_db(), status=wanted)
+    if not rows:
+        console.print("[yellow]No proposals in the queue.[/yellow]")
+        return
+    console.print(render_proposal_table(rows, verbose=verbose))
+
+
+@learn_app.command(name="show")
+def learn_show_cmd(
+    proposal_id: int = typer.Argument(..., help="Proposal id, as shown by `learn list`."),
+    templates_path: Optional[Path] = typer.Option(
+        None, "--templates", help="Template store (default: ~/.metaproject/templates)."
+    ),
+) -> None:
+    """Full rationale, proposed body, and contributing projects with absolute paths."""
+    from metaproject.learn.store import get_evidence, get_proposal
+
+    db = learn_db()
+    row = get_proposal(db, proposal_id)
+    if row is None:
+        console.print(f"[bold red]Error:[/bold red] no proposal with id {proposal_id}")
+        raise typer.Exit(code=1)
+
+    body = row["edited_body"] or row["proposed_body"]
+    console.print(
+        Panel(
+            f"[bold]{row['title']}[/bold]\n\n"
+            f"[bold]Target:[/bold] {row['target_file']}\n"
+            f"[bold]Section:[/bold] {row['target_section'] or '—'}\n"
+            f"[bold]Status:[/bold] {row['status']}    "
+            f"[bold]Score:[/bold] {float(row['evidence_score'] or 0.0):.2f}    "
+            f"[bold]Projects:[/bold] {row['evidence_count']}\n\n"
+            f"{row['rationale']}",
+            title=f"Proposal #{row['id']}",
+        )
+    )
+    console.print(Syntax(str(body), "markdown", theme="ansi_dark", word_wrap=True))
+
+    evidence = get_evidence(db, proposal_id)
+    if evidence:
+        # Provenance is printed as lines, not as a table, and with `soft_wrap` on:
+        # `show` exists to name *absolute* paths (spec.md §5.4.4), and a table column
+        # ellipsizes them at any ordinary terminal width, which turns the one piece of
+        # information this view is for into `/private/var/folders/7k/_13bgbq…`.
+        console.print("\n[bold magenta]Contributing Projects[/bold magenta]")
+        for item in evidence:
+            weight = float(item["weight"] or 0.0)
+            console.print(
+                f"  [green]{weight:>5.2f}[/green]  [cyan]{item['project_path']}[/cyan]",
+                soft_wrap=True,
+                highlight=False,
+            )
+            excerpt = str(item["excerpt"] or "").splitlines()
+            if excerpt:
+                console.print(f"         [dim]{excerpt[0]}[/dim]", soft_wrap=True, highlight=False)
+
+
+@learn_app.command(name="apply")
+def learn_apply_cmd(
+    proposal_id: Optional[int] = typer.Argument(None, help="Proposal id to apply."),
+    apply_all: bool = typer.Option(False, "--all", help="Apply every pending proposal in turn."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Apply without the diff confirmation."),
+    templates_path: Optional[Path] = typer.Option(
+        None, "--templates", help="Template store (default: ~/.metaproject/templates)."
+    ),
+) -> None:
+    """Review the diff, write the template, and commit. One commit per accept."""
+    from metaproject.learn import review
+
+    if proposal_id is None and not apply_all:
+        console.print("[bold red]Error:[/bold red] give a proposal id, or --all.")
+        raise typer.Exit(code=1)
+
+    db = learn_db()
+    templates_dir = resolve_templates_dir(templates_path)
+    ids = (
+        [int(row["id"]) for row in review(db, status="pending")]
+        if apply_all
+        else [int(proposal_id)]
+    )
+    if not ids:
+        console.print("[yellow]No pending proposals to apply.[/yellow]")
+        return
+
+    applied = 0
+    for pid in ids:
+        try:
+            if apply_one(db, pid, templates_dir, yes):
+                applied += 1
+        except MetaProjectError as exc:
+            console.print(f"[bold red]Apply failed for #{pid}:[/bold red] {exc}")
+            raise typer.Exit(code=1)
+
+    if apply_all:
+        console.print(
+            f"[bold green]Applied {applied} of {len(ids)} pending proposals.[/bold green]"
+        )
+
+
+@learn_app.command(name="edit")
+def learn_edit_cmd(
+    proposal_id: int = typer.Argument(..., help="Proposal id to edit before applying."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Apply the edit without confirmation."),
+    templates_path: Optional[Path] = typer.Option(
+        None, "--templates", help="Template store (default: ~/.metaproject/templates)."
+    ),
+) -> None:
+    """Open the proposed body in $EDITOR; saving applies the edited version."""
+    from metaproject.learn.store import get_proposal, set_edited_body
+
+    db = learn_db()
+    row = get_proposal(db, proposal_id)
+    if row is None:
+        console.print(f"[bold red]Error:[/bold red] no proposal with id {proposal_id}")
+        raise typer.Exit(code=1)
+
+    original = str(row["edited_body"] or row["proposed_body"] or "")
+    edited = open_in_editor(original)
+    if edited is None:
+        console.print(
+            "[yellow]Edit aborted (no $EDITOR, a non-zero exit, or no change saved). "
+            "The proposal stays pending.[/yellow]"
+        )
+        raise typer.Exit(code=1)
+
+    set_edited_body(db, proposal_id, edited)
+    templates_dir = resolve_templates_dir(templates_path)
+    try:
+        apply_one(db, proposal_id, templates_dir, yes, edited_body=edited)
+    except MetaProjectError as exc:
+        console.print(f"[bold red]Apply failed:[/bold red] {exc}")
+        raise typer.Exit(code=1)
+
+
+@learn_app.command(name="reject")
+def learn_reject_cmd(
+    proposal_id: int = typer.Argument(..., help="Proposal id to reject."),
+    forget: bool = typer.Option(
+        False, "--forget", help="Clear the suppression record entirely instead of suppressing."
+    ),
+    templates_path: Optional[Path] = typer.Option(
+        None, "--templates", help="Template store (default: ~/.metaproject/templates)."
+    ),
+) -> None:
+    """Suppress a proposal by content hash. `--forget` clears the suppression."""
+    from metaproject.learn import reject_proposal
+
+    if not reject_proposal(learn_db(), proposal_id, forget=forget):
+        console.print(f"[bold red]Error:[/bold red] no proposal with id {proposal_id}")
+        raise typer.Exit(code=1)
+
+    if forget:
+        console.print(f"[cyan]Forgot proposal #{proposal_id}. A later scan meets it afresh.[/cyan]")
+    else:
+        console.print(
+            f"[cyan]Rejected proposal #{proposal_id}. It resurfaces only on stronger "
+            "evidence.[/cyan]"
+        )

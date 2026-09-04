@@ -15,11 +15,38 @@ Implemented so far (plan.md phases):
 - Phase 3 — `synth` (prompt assembly, per-target-file bundling, chunk-and-reduce, the
   `claude -p` invocation, and structured output parsing and validation). The only module
   that reaches a model, and the only one that treats its input as untrusted.
+- Phase 4 — `apply` (structural splicing at a proposal's `target_section`, and one git
+  commit per accept) and `api` (the public surface `cli.py` and, later, `tui.py` call).
 
-The public API — `scan()`, `review()`, `apply_proposal()`, `reject_proposal()` — arrives
-with the later phases, alongside `apply` and `tui`.
+The public API is `scan()`, `review()`, `apply_proposal()`, and `reject_proposal()`.
+`scan` imports nothing from `apply`, so a scan cannot reach the write path even by
+mistake; the acceptance TUI (`tui`) arrives in Phase 5 and calls these same functions.
 """
 
+from metaproject.learn.api import (
+    ScanResult,
+    parse_since,
+    reject_proposal,
+    review,
+    scan,
+)
+from metaproject.learn.apply import (
+    ApplyPlan,
+    ApplyResult,
+    Section,
+    apply_plan,
+    apply_proposal,
+    body_is_present,
+    commit_message,
+    ensure_clean_repository,
+    iter_sections,
+    normalize_heading,
+    plan_apply,
+    proposal_body,
+    resolve_section,
+    splice,
+    template_destination,
+)
 from metaproject.learn.collect import (
     EvidenceRecord,
     collect_project,
@@ -66,7 +93,6 @@ from metaproject.learn.store import (
     is_suppressed,
     list_proposals,
     mark_applied,
-    reject_proposal,
     should_resurface,
     start_run,
     upsert_proposal,
@@ -90,6 +116,25 @@ from metaproject.learn.synth import (
 )
 
 __all__ = [
+    "ApplyPlan",
+    "ApplyResult",
+    "ScanResult",
+    "Section",
+    "apply_plan",
+    "apply_proposal",
+    "body_is_present",
+    "commit_message",
+    "ensure_clean_repository",
+    "iter_sections",
+    "normalize_heading",
+    "parse_since",
+    "plan_apply",
+    "proposal_body",
+    "resolve_section",
+    "review",
+    "scan",
+    "splice",
+    "template_destination",
     "Bundle",
     "Candidate",
     "Proposal",

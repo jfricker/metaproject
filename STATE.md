@@ -144,7 +144,58 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
     model keys at the parse boundary → 1. None passes vacuously.
   - Gate results: `make lint` clean. `make test` → `247 passed` (193 pre-existing retained,
     54 new).
-- [ ] Phase 4 — Apply
+- [x] Phase 4 — Apply
+  - `src/metaproject/learn/apply.py`: `Section`/`ApplyPlan`/`ApplyResult` (all frozen),
+    `normalize_heading`, `iter_sections`, `resolve_section`, `body_is_present`, `splice`,
+    `template_name`/`template_destination`, `proposal_body`, `evidence_project_names`,
+    `resolve_template_file`, `plan_apply`, `ensure_clean_repository`, `commit_message`,
+    `commit_file`, `apply_plan`, `apply_proposal`. The only module in `learn` that writes
+    to a template.
+  - `src/metaproject/learn/api.py`: the public surface — `scan` (stages 1–4), `review`,
+    `parse_since`, `ScanResult`, and `reject_proposal` re-exported from `store`. It
+    imports nothing from `apply`, so a scan cannot reach the write path even by mistake.
+  - `src/metaproject/exceptions.py`: added `ApplyError` (dirty template repository,
+    unresolvable template file, refused R7 fallback). A `MetaProjectError` subclass, so
+    `cli.py` turns it into a non-zero exit with the same `except` as the Phase 3
+    model errors.
+  - `src/metaproject/cli.py`: the Phase 1 `learn` stub is replaced by a `typer.Typer`
+    **command group** (`learn_app`, `no_args_is_help=True`) carrying `scan`, `list`,
+    `show`, `apply`, `edit`, `reject` — spec.md §5.4.4 minus the Phase 5 TUI entries
+    (`learn [root]` default mode and `learn review`). Helpers: `learn_db`,
+    `resolve_templates_dir`, `open_in_editor`, `render_proposal_table`, `print_plan`,
+    `apply_one`. `--templates` is accepted on every subcommand.
+  - **Splicing (C12).** `splice` inserts at the end of the named section's content,
+    before the next heading of the same or a shallower level. Headings inside fenced
+    code blocks are not structure. Heading matching is exact on `normalize_heading`
+    (hashes, case and internal spacing removed) and nothing looser — a fuzzy match is
+    the silent misplacement R7 warns about. No banner is ever written; the legacy
+    "Added via metaproject learn" EOF append is gone and asserted gone.
+  - **R7 fallback.** An unresolvable `target_section` is never faked and never
+    approximated. `splice` appends at end of file, sets `ApplyPlan.fallback_reason`
+    naming the missing heading, and `print_plan` prints it as a warning above the diff
+    before the confirmation prompt. The commit message records it too
+    (`Section '...' was not present; appended at end of file.`). `apply_plan(...,
+    allow_fallback=False)` is how a reviewer refuses, and raises `ApplyError` having
+    written nothing.
+  - **Commits (R6).** `ensure_clean_repository` refuses both a non-repository template
+    store and a dirty worktree, before any write. Each accept stages exactly one file
+    and makes exactly one commit, subject `learn: <title>`, body naming
+    `#<proposal id>`, the target file, the placement, the rationale,
+    `Contributing projects: ...`, and `Proposal-Hash:`. Accepts are never batched:
+    `learn apply --all` loops one-commit-per-proposal.
+  - **A no-op accept makes no commit.** If the template already carries the body,
+    `apply_plan` marks the proposal `applied` with `commit=None` rather than making an
+    empty commit.
+  - Tests: `tests/test_learn_apply.py` (28) and `tests/test_learn_cli.py` (17), both new.
+    `tests/test_e2e.py`'s learn step was updated for the command group (see the design
+    invariant below). Acceptance cases asserted here: C12, C14, C21, C27.
+  - Gate results: `make lint` clean. `make test` → `292 passed` (247 pre-existing
+    retained, 45 new). Each headline gate was mutation-checked: forcing `resolve_section`
+    to `None` (always append) → 5 failures; making `proposed_body` win over `edited_body`
+    → 1; skipping `ensure_clean_repository` → 2; dropping the contributing-project line
+    from the commit message → 2; never setting `fallback_reason` → 3; making the CLI exit
+    0 on a `MetaProjectError` → 1; having `scan` write into the template store → 3. None
+    passes vacuously.
 - [ ] Phase 5 — Acceptance TUI
 - [ ] Phase 6 — `new_template` proposals & `review` integration
 - [ ] Phase 7 — Documentation & release
@@ -241,6 +292,49 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   `RUN_PARTIAL` constants). This is a deliberate exception to "synth depends on guard
   only": duplicating the hashing logic would give the project two hash implementations,
   which is R3's failure mode arriving by a different road. It touches no SQLite.
+
+- **`api.py` must never import `apply`.** "Scan never writes" (plan.md §1.3, C14) is the
+  primary safety property, and it is enforced structurally rather than by discipline:
+  the module that runs stages 1–4 has no reference to the only module that writes. Adding
+  an `apply` import to `api.py` — or an "auto-apply high-confidence proposals" flag —
+  removes that guarantee even if no code path currently uses it.
+- **Section matching is exact on the normalized heading, never fuzzy.** `normalize_heading`
+  removes hashes, case and spacing noise and nothing else. A near-match heuristic
+  ("Testing" ≈ "Testing instructions") is exactly R7's silent misplacement, and would
+  land content under a heading the operator did not review. When a heading does not
+  resolve, the answer is the reviewed append with `fallback_reason` set — never a guess.
+- **`fallback_reason` must reach the operator before the write.** `ApplyPlan` computes the
+  whole write before anything is written precisely so the reason can be printed above the
+  diff. Any future caller of `plan_apply`/`apply_plan` (the Phase 5 TUI included) has to
+  surface it; dropping it turns a reviewed append back into a silent misplacement.
+- **Headings inside fenced code blocks are not structure.** `iter_sections` tracks ``` and
+  ~~~ fences. Template files routinely contain fenced Markdown examples with `#` lines;
+  treating those as headings would splice content into the middle of a code block.
+- **One accept, one commit, one file staged.** `commit_file` stages the single template
+  path, never `git add -A`. R6's whole mitigation is that reverting one commit undoes
+  exactly one decision; staging broadly, or batching `--all` into one commit, destroys it.
+- **A no-op accept commits nothing.** An empty commit would claim in the history that a
+  template changed when it did not. `apply_plan` marks the proposal `applied` with a null
+  `applied_commit` instead.
+- **`splice` is convergent.** `body_is_present` compares whitespace-normalized lines, so
+  re-applying a proposal a template already satisfies is a no-op rather than a duplicate
+  paragraph. This is what makes C27 (applied content stops being drift) hold across scans.
+- **`resolve_template_file` refuses a stored `template_path` outside the template store.**
+  `template_path` comes from a scan row and could in principle point anywhere;
+  the containment check is what keeps an accept's blast radius inside the git-backed
+  store where it can be reverted.
+- **`learn` is a Typer command group, not a command.** As of Phase 4 there is no bare
+  `metaproject learn <path>` form: `learn <path>` is an unknown subcommand and exits 2,
+  and a bare `learn` prints help and exits non-zero (`no_args_is_help=True`). Phase 5 is
+  what makes `learn [root]` the scan-then-review default. `tests/test_e2e.py`'s learn step
+  asserts non-zero rather than a specific code for both forms, and keeps its
+  byte-identical template-store assertion around each — an exact-code assertion there
+  would break again the moment Phase 5 lands.
+- **`learn show` prints provenance as soft-wrapped lines, not as a `rich` table.** The
+  whole point of the view is absolute contributing-project paths (spec.md §5.4.4), and a
+  table column ellipsizes them at any ordinary terminal width
+  (`/private/var/folders/7k/_13bgbq…`). `console.print(..., soft_wrap=True)` emits the
+  path in full. Do not "tidy" this back into a table.
 
 ## Open items carried into plan.md
 
@@ -354,3 +448,32 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 - `dataclasses.replace` on `EvidenceRecord` is how `split_record` and `chunk_bundle` build
   sub-records; the record is frozen, so nothing can mutate evidence in place between the
   guard and the prompt.
+- `tests/fixtures/learn_workspace/build.py` already accepts `git_init_templates=True`
+  (added in Phase 0); it is what every commit / clean-worktree assertion in Phase 4 uses.
+  `Workspace` exposes `.templates`, `.projects`, and `.project(name)`.
+- The Phase 1 `learn` stub exited 1 on `metaproject learn <path>`. With Phase 4's command
+  group the same argv exits **2** — Click's "no such command" — and a bare `metaproject
+  learn` also exits 2 via `no_args_is_help=True`. This is why `tests/test_e2e.py` asserted
+  `2 == 1` after Phase 4 landed; the fix is on the test side, and the assertion is now
+  `!= 0` rather than an exact code.
+- The "missing `claude` exits non-zero having written nothing" gate is now asserted at the
+  **process boundary** as Phase 3 deferred it:
+  `tests/test_learn_cli.py::test_missing_claude_exits_non_zero_having_written_nothing`
+  patches `shutil.which` to `None` (which is what `synth.resolve_claude` calls), runs
+  `metaproject learn scan --yes` through `CliRunner`, and asserts a non-zero exit, the
+  binary named in the output, a byte-identical template store, and zero rows in
+  `learn_proposals`. Verified non-vacuous: making `learn_scan_cmd` exit 0 on a
+  `MetaProjectError` fails it.
+- `rich.table.Table` truncates a long cell with `…` rather than wrapping once column
+  widths are contested at the default 80-column `CliRunner` width. Any assertion on a full
+  absolute path in CLI output needs a non-table rendering (`console.print(...,
+  soft_wrap=True)`); `overflow="fold"` does not help either, since folding inserts newlines
+  mid-path and a substring assertion still fails.
+- `typer.Typer(no_args_is_help=True)` added via `app.add_typer(learn_app, name="learn")`
+  produces the group's help on a bare invocation and **exit code 2**, not 0.
+- Both new Phase 4 test files carry the same autouse `no_model_ever` guard as
+  `tests/test_learn_synth.py`: any argv mentioning `claude` raises, everything else (`git`,
+  which the fixture builder and the commit path both need) reaches the real
+  `subprocess.run`. `tests/test_learn_cli.py` additionally patches `synth.resolve_claude`
+  and `synth.run_claude` for the scan tests, so the "no test invokes a model" gate holds
+  across the whole `learn` suite.

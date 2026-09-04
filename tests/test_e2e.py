@@ -97,9 +97,11 @@ def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> No
     assert "PASS" in review_res.output
 
     # 5. LEARN
-    # The legacy line-diff harvester is deleted (plan.md §1.1) and the replacement
-    # pipeline is not wired to the CLI until Phase 4. `learn` must fail loudly and,
-    # critically, must not mutate the template store on the way out.
+    # The legacy line-diff harvester is deleted (plan.md §1.1). As of Phase 4 `learn` is
+    # a command group (spec.md §5.4.4): a bare invocation, or one handed a path where a
+    # subcommand belongs, is refused rather than guessed at — the scan-then-review
+    # default for `learn [root]` arrives in Phase 5. Critically, neither form may mutate
+    # the template store on the way out, and no form of `learn` reaches a model here.
     agents_file = project_target / "AGENTS.md"
     with open(agents_file, "a", encoding="utf-8") as f:
         f.write("\n### Robotics Rule\nAlways test motor calibration before telemetry.\n")
@@ -116,6 +118,14 @@ def test_full_lifecycle_and_performance(runner: CliRunner, tmp_path: Path) -> No
             str(config_dir / "templates"),
         ],
     )
-    assert learn_res.exit_code == 1
-    assert "being rebuilt" in learn_res.output
+    assert learn_res.exit_code != 0
+    assert central_tmpl.read_bytes() == template_before
+
+    bare_res = runner.invoke(app, ["learn"])
+    assert bare_res.exit_code != 0
+    assert central_tmpl.read_bytes() == template_before
+
+    # The queue subcommands are wired and readable, and reading the queue is not a write.
+    list_res = runner.invoke(app, ["learn", "list"])
+    assert list_res.exit_code == 0
     assert central_tmpl.read_bytes() == template_before
