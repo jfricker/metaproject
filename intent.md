@@ -3,26 +3,19 @@
 **Author**: John. **Status**: Draft.
 
 ## Problem
-The learn command does a simple diff of the template and the operation document in a project. This rough approach is inadequate as an operational document needs to interpretted inorder to have meaningful changes extracted and added to the templates.
+The learn command does a simple diff of the template and the operation document in a project. This rough approach is inadequate as an operational document needs to be interpreted in order to have meaningful changes extracted and added to the templates.
 
 ## Proposed outcome
 Use claude cli with a well crafted prompt to review all current operational documents and identify meaningful changes for the templates. For each template in templates gather all operational documents in the universe.db and identify common improvement patterns and other candidates for promotion to templates.
 
-Identification will ignore project specific text (based on best estimate or heuristic) and will score candidates by frequency of occurances. That is, a change to a document that appears in several projects gets a higher score than another that appears once. Recent changes are also scored positively. Accumulated scores become the rank for the change. 
+Identification will ignore project specific text (based on best estimate or heuristic) and will score candidates by frequency of occurrences. That is, a change to a document that appears in several projects gets a higher score than another that appears once. Recent changes are also scored positively. Accumulated scores become the rank for the change. 
 
 learn contains the prompt for claude. It prepares the documents packages - one for each template, and launches claude with the prompt. Output from claude is structured and is used by learn to create the acceptance flow for the operator.
+
+The section below refines this: *document package* is realized as one model call per
+template, and "ignore project specific text" is realized deterministically by rendering
+the template with each project's own variables before diffing, rather than by heuristic.
  
-### Acceptance Flow
-Candidates are reviewed by operator in a line by line or side by side diff TUI with Accept, Edit, Discard actions.
-** Accept ** copies the candidate to the appropriate template.
-** Edit ** allows the operator to edit the candidate with a Save action that copies to appropriate template.
-** Discard ** discards the candidate and moves to the next candidate.
-
-Flow loops for all candidates for a template. And then loops for all templates.
-
-### Persistence
-learn may benefit from a sqlite db. Make a recommendation. 
-
 ## Design: `metaproject learn`
 
 **Status**: Designed 2026-09-04. Supersedes the v1 line-diff implementation in `src/metaproject/learn.py`.
@@ -79,10 +72,13 @@ this both cuts token cost and removes the placeholder-substitution false positiv
 redacted diff for that file. The model is asked to identify changes that recur across
 projects and are general enough to belong in a template, and to return structured
 proposals: a title, a rationale, the proposed template body, the target section, and the
-list of contributing projects. Evidence weighting is supplied to the prompt and enforced
-on the output: a proposal must be corroborated by **N ≥ 2 projects** (configurable via
-`learn.min_projects`), and projects are weighted by their `universe.db` activity class —
-`Active Now` counts fully, `Ancient`/`Archived` counts fractionally.
+list of contributing projects.
+
+Every candidate is scored, none are discarded: a candidate seen in one project is ranked
+below one seen in six, but it still surfaces. Score combines **frequency** (distinct
+contributing projects) with **recency**, weighted by each project's `universe.db`
+activity class — `Active Now` counts fully, `Ancient`/`Archived` fractionally. The
+accumulated score is the rank, and the review queue is ordered by it.
 
 Batching: when the bundle for one target file exceeds the context budget, it is split
 into chunks and a final reduce call merges the per-chunk proposals. Cost therefore scales
@@ -99,8 +95,8 @@ proposal id and contributing projects in the message.
 ### Invocation
 
 The model is reached by shelling out to `claude -p` on the operator's PATH. This adds no
-runtime dependency, manages no API key, and reuses existing authentication — consistent
-with the "minimal external dependencies" constraint. If `claude` is absent, `learn`
+runtime dependency, manages no API key, and reuses existing authentication. If
+`claude` is absent, `learn`
 exits with a clear message naming the missing binary rather than degrading to the old
 line-diff heuristic. `--model` is passed through.
 
@@ -108,16 +104,85 @@ line-diff heuristic. `--model` is passed through.
 
 | Command | Behavior |
 |---|---|
-| `metaproject learn scan [root] [--all] [--depth N] [--since DATE] [--yes]` | Run the pipeline; write pending proposals. Never mutates templates. |
-| `metaproject learn list [--status pending\|applied\|rejected]` | Table of proposals: id, target file, title, evidence count, score. |
+| `metaproject learn [root] [--no-tui]` | **Default mode.** Scan, then open the acceptance TUI over the resulting queue. |
+| `metaproject learn scan [root] [--all] [--depth N] [--since DATE] [--yes]` | Run the pipeline; write pending proposals. Never mutates templates, never opens the TUI. |
+| `metaproject learn review [--target FILE] [--status pending] [--min-score N]` | Open the TUI over the existing queue without scanning. |
+| `metaproject learn list [--status pending\|applied\|rejected] [--verbose]` | Table of proposals: id, target file, title, evidence count, score. |
 | `metaproject learn show <id>` | Full rationale, proposed diff, and the list of contributing projects with paths. |
 | `metaproject learn apply <id> \| --all [--yes]` | Review diff, write template, commit. |
+| `metaproject learn edit <id>` | Open the proposed body in `$EDITOR`; save applies the edited version. |
 | `metaproject learn reject <id> [--forget]` | Suppress the proposal. `--forget` clears the suppression instead. |
 
 `--templates <path>` remains available on all subcommands.
 
-Bare `metaproject learn` runs `scan` then drops into `list`, preserving the current
-one-shot ergonomics.
+The TUI and the subcommands are **two interfaces to one queue**, not two pipelines. Every
+TUI keystroke performs exactly the subcommand named in its Action column below and writes
+through to `universe.db` immediately. Nothing is buffered in the TUI session, so the
+operator can quit at any point and resume — or finish the same queue from the
+subcommands, or a script — with no loss and no divergence in behavior.
+
+### Acceptance flow (TUI)
+
+The default operator experience. `metaproject learn` scans and then walks the pending
+queue in a full-screen diff reviewer.
+
+**Ordering.** Candidates loop within a template, highest score first; when a template's
+candidates are exhausted the TUI advances to the next template. Templates are ordered by
+their highest-scoring pending candidate, so the most productive review comes first.
+
+**Implementation.** Built on `rich` — no new dependency. Side-by-side and unified diffs
+render as `rich` tables with `Syntax` highlighting; the review loop reads single
+keystrokes and repaints, rather than running a widget framework's event loop.
+
+**Layout.** Three regions:
+
+```
+┌ AGENTS.md · candidate 3 of 11 · score 8.4 · seen in 6 projects ────────────┐
+│                                                                            │
+│   template (current)              │   proposed                             │
+│   ...                             │   ...                                  │
+│   ## Build                        │   ## Build                             │
+│                                   │ + Run `make check` before every commit.│
+│   Run `make test`.                │   Run `make test`.                     │
+│                                   │                                        │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Why: six projects added a pre-commit verification step under Build.        │
+│ From: ~/Projects/orbit · ~/Projects/atlas · ~/Projects/kiln  (+3, press p) │
+├────────────────────────────────────────────────────────────────────────────┤
+│ [a]ccept  [e]dit  [d]iscard  [s]kip  [u]nified  [p]rovenance  [?]  [q]uit  │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Header** — target template, position in the queue, score, corroboration count.
+- **Body** — side-by-side diff of the template against the proposal, `u` toggling to a
+  unified view. Both views scroll; long proposals page rather than truncate.
+- **Rationale strip** — the model's reason for the change plus the contributing projects.
+  `p` expands to the full provenance list with absolute paths.
+- **Key bar** — always visible; `?` opens full help.
+
+**Actions.** Each maps to a subcommand and is durable the moment it is pressed:
+
+| Key | Action | Equivalent | Effect |
+|---|---|---|---|
+| `a` | Accept | `learn apply <id>` | Write the proposal into the template, commit, mark `applied`, advance. |
+| `e` | Edit | `learn edit <id>` | Suspend the TUI, open the proposed body in `$EDITOR`. Saving applies the edited text and stores it as `edited_body` alongside the original; quitting the editor without saving returns to the candidate unchanged. |
+| `d` | Discard | `learn reject <id>` | Mark `rejected` (suppressed by content hash, resurfaces on stronger evidence) and advance. |
+| `s` | Skip | — | Leave `pending` and advance. The candidate reappears in the next review. |
+| `q` | Quit | — | Exit. Everything already actioned is persisted; the remainder stays pending. |
+
+The distinction between **Discard** and **Skip** is deliberate: discard is a judgment that
+gets remembered, skip is deferral that does not.
+
+**Commits.** Each accept is its own commit in the template repository, carrying the
+proposal id and contributing project names, so a single bad accept can be reverted
+without unwinding the session. Accepts are never batched.
+
+**Degradation.** When stdout is not a TTY, or `--no-tui` is passed, or `TERM=dumb`, the
+default mode prints the `list` table and exits rather than failing. Scripted and CI use
+therefore needs no special flag beyond redirecting output.
+
+**Empty queue.** If a scan yields nothing pending, the TUI is not opened; `learn` reports
+that the templates are current and exits zero.
 
 ### Data model (`universe.db`)
 
@@ -131,6 +196,7 @@ learn_proposals
   title TEXT
   rationale TEXT
   proposed_body TEXT            -- model-authored replacement/insert
+  edited_body TEXT              -- operator's TUI edit, if any; applied in preference
   target_section TEXT           -- heading or anchor the change belongs under
   evidence_count INTEGER        -- distinct contributing projects
   evidence_score REAL           -- activity-weighted
@@ -164,7 +230,7 @@ Everything the template set defines (`README.md`, `AGENTS.md`, `CLAUDE.md`, `int
 have no template yet (`Makefile`, `pyproject.toml`, linter configs). Overridable via a
 `learn.targets` config key.
 
-When a file appears in N or more projects with **no corresponding template at all**,
+When a file recurs across projects with **no corresponding template at all**,
 `learn` emits a `new_template` proposal — a candidate new template file rather than an
 edit to an existing one.
 
@@ -196,24 +262,31 @@ the same way as several others raises that pattern's evidence score.
 | Bundle exceeds context | Chunk and reduce (see Synthesize). |
 | Template repo dirty at apply time | Refuse to apply; tell the operator to commit or stash. |
 | No projects found / no drift | Report cleanly and exit zero. |
+| Not a TTY, or `--no-tui` | Fall back to the `list` table. No error. |
+| `$EDITOR` unset or exits non-zero | Abort the edit, keep the candidate pending, stay in the TUI. |
+| Terminal too narrow for side-by-side | Fall back to the unified diff view automatically. |
 
 ### Open questions
 
-- Default value for `learn.min_projects` — 2 is proposed; may want 3 for large workspaces.
 - Exact activity weights per `universe.db` classification.
-- Whether `learn scan` should be nudged periodically (intent.md's "periodically review all
-  projects") or remain purely operator-invoked. Deferred.
+- Whether `learn scan` should be nudged periodically or remain purely operator-invoked.
+  Deferred.
 
 ## Affected users and systems
-This will change src/learn.py and other sources.
+This will change src/metaproject/learn.py, cli.py, db.py, config.py and init.
 
 ## Scope
 
 ### In Scope 
 - `metaproject learn` as a corroborated, model-driven proposal pipeline with a durable
   proposal ledger, provenance, and human-reviewed application (see design section above).
+- A diff review TUI (Accept / Edit / Discard / Skip) as the default operator mode, backed
+  by the same proposal queue as the subcommands.
+- `~/.metaproject/templates` initialized as a git repository so template changes are
+  versioned and revertible.
+- `new_template` proposals: promoting a recurring untemplated file into a new template.
 
-### Out of Scope (v1)
+### Out of Scope 
 - `learn` proposing *removals* from templates (negative signal). Additions and
   modifications only.
 - Scheduled or daemonized `learn` runs. Operator-invoked only.
@@ -224,8 +297,15 @@ This will change src/learn.py and other sources.
   new runtime dependency and no API key management; hard failure if `claude` is absent.
 - `learn` never writes templates during a scan. Proposals are persisted to `universe.db`
   and applied only through a separate, diff-reviewed `learn apply`.
-- A `learn` proposal requires corroboration from at least 2 projects, weighted by
-  `universe.db` activity classification.
+- Candidates are ranked, not gated. Frequency and recency, weighted by `universe.db`
+  activity classification, produce a score that orders the review queue; a single-project
+  candidate still surfaces, just lower.
+- The diff TUI is the default review mode; the `list`/`show`/`apply`/`reject` subcommands
+  are the same queue by other means, for scripting and for non-TTY environments.
+- The TUI is built on `rich`, which is already an approved dependency. No new dependency
+  is introduced; `textual` is explicitly not adopted.
+- Each accepted candidate is committed individually to the template repository, so a
+  single bad accept reverts without unwinding the review session.
 - Only redacted diffs (project file vs. rendered template) are sent to the model — never
   whole files, never `.gitignore`d or denylisted paths.
 - Rejected proposals are suppressed by content hash but resurface if evidence grows.
