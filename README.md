@@ -343,5 +343,5 @@ make bump-major # or: python3 scripts/bump_version.py major
 
 Install the latest version of the tool globally for running outside the repo:
 ```bash
-python3 -m pip install --index-url https://test.pypi.org/simple/ --upgrade metaproject==0.5.0 --no-cache-dir --extra-index-url https://pypi.org/simple/
+python3 -m pip install --index-url https://test.pypi.org/simple/ --upgrade metaproject==0.6.0 --no-cache-dir --extra-index-url https://pypi.org/simple/
 ```

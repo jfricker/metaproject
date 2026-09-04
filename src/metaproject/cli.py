@@ -90,7 +90,7 @@ def get_manifest_info() -> Dict[str, Any]:
     except Exception:
         return {
             "name": "metaproject",
-            "version": "0.5.0",
+            "version": "0.6.0",
             "summary": "A CLI tool for scaffolding and managing agentic projects and templates",
             "author": "John Fricker",
             "license": "MIT",
