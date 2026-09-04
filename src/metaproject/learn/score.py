@@ -28,7 +28,7 @@ import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Protocol, Sequence, Tuple
 
 from metaproject.config import DEFAULT_ACTIVITY_WEIGHTS, Config
 from metaproject.learn.collect import EvidenceRecord
@@ -45,6 +45,25 @@ RECENCY_HALF_LIFE_DAYS = 30.0
 # The most recency can add, as a fraction of the activity weight. Bounded on purpose:
 # see the module docstring.
 RECENCY_BONUS = 0.5
+
+# How much an independent `review` drift report adds to a project's contribution, as a
+# fraction of that contribution (spec.md §5.4.9). Bounded for the same reason recency is:
+# a second code path agreeing is corroboration of one project's evidence, not a second
+# project. One drift-confirmed project must still rank below two projects that agree.
+DRIFT_BOOST = 0.25
+
+
+class DriftLookup(Protocol):
+    """What scoring needs from a `review` drift signal, and nothing more.
+
+    Structural rather than concrete so `score` does not import `drift`, which imports
+    `review`: scoring stays a pure function of evidence plus a lookup.
+    """
+
+    def reports(
+        self, project_path: str, target_file: str, keys: Iterable[str]
+    ) -> bool:  # pragma: no cover - protocol
+        ...
 
 
 @dataclass(frozen=True)
@@ -116,14 +135,24 @@ def recency_factor(age_days: float, half_life_days: float = RECENCY_HALF_LIFE_DA
     return float(math.pow(0.5, age / half_life_days))
 
 
+def drift_factor(corroborated: bool) -> float:
+    """The multiplier for evidence `review` independently reports as drift.
+
+    A multiplier, never an added contribution: the project's weight goes up, but it is
+    still one project, so `evidence_count` and the provenance list are unchanged.
+    """
+    return 1.0 + DRIFT_BOOST if corroborated else 1.0
+
+
 def weigh_project(
     classification: Optional[str],
     age_days: float,
     weights: Optional[Dict[str, float]] = None,
+    drift: bool = False,
 ) -> float:
-    """Combine activity and recency into one project's contribution weight."""
+    """Combine activity, recency, and `review` corroboration into one project's weight."""
     activity = activity_weight(classification, weights=weights)
-    return activity * (1.0 + RECENCY_BONUS * recency_factor(age_days))
+    return activity * (1.0 + RECENCY_BONUS * recency_factor(age_days)) * drift_factor(drift)
 
 
 def project_age_days(project_path: Path | str, now: Optional[float] = None) -> float:
@@ -152,11 +181,17 @@ def group_candidates(
     weights: Optional[Dict[str, float]] = None,
     ages: Optional[Dict[str, float]] = None,
     now: Optional[float] = None,
+    drift: Optional[DriftLookup] = None,
 ) -> List[Candidate]:
     """Cluster evidence into ranked candidates by target file and normalized content.
 
     `ages` maps a project path to its age in days; anything absent is resolved from the
     filesystem. Passing it keeps a test's arithmetic independent of the wall clock.
+
+    `drift` is anything answering `reports(project_path, target_file, keys)` — in
+    practice a `drift.DriftSignal` built from `review`'s findings (spec.md §5.4.9). It
+    can only raise the weight of a contribution that is already here; it never adds a
+    cluster, a contribution, or a project of its own.
     """
     if weights is None:
         weights = config.learn.activity_weights if config is not None else None
@@ -183,6 +218,7 @@ def group_candidates(
                 resolved_ages[path] = project_age_days(path, now=now)
             age = resolved_ages[path]
             activity = activity_weight(record.classification, weights=weights)
+            corroborated = drift is not None and drift.reports(path, record.target_file, [key])
             clusters[group][path] = ProjectWeight(
                 project_name=record.project_name,
                 project_path=path,
@@ -191,7 +227,9 @@ def group_candidates(
                 activity=activity,
                 recency=recency_factor(age),
                 age_days=age,
-                weight=weigh_project(record.classification, age, weights=weights),
+                weight=weigh_project(
+                    record.classification, age, weights=weights, drift=corroborated
+                ),
             )
 
     candidates = [

@@ -237,7 +237,44 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
     → 5 failures; making `effective_view` never degrade → 2; letting an empty queue
     open the reviewer → 1; ignoring `no_tui` → 2; ignoring `TERM=dumb` → 2; making an
     aborted edit advance → 1; making `a` skip `apply_plan` → 4. None passes vacuously.
-- [ ] Phase 6 — `new_template` proposals & `review` integration
+- [x] Phase 6 — `new_template` proposals & `review` integration
+  - **`new_template` needed no new machinery, only an end-to-end assertion.** Phases 1–4
+    had already built the seam: `collect.collect_project` sets `kind = "new_template"`
+    when `resolve_template` finds nothing, `synth.bundle_evidence` carries that kind on
+    the bundle, `store.ProposalDraft` persists it, and `apply.resolve_template_file`
+    routes it to `apply.template_destination`, where a non-existent file yields
+    `PLACEMENT_NEW_FILE`. Phase 6's work was to prove the whole chain rather than each
+    link: `tests/test_learn_apply.py::
+    test_c9_a_recurring_untemplated_file_becomes_a_new_file_in_the_template_store`
+    scans kiln/beacon/quarry (mocked runner) with `targets=["Makefile"]`, asserts the
+    ledger row is `kind == "new_template"` with `evidence_count == 3`, and applies it —
+    asserting `templates/Makefile.template` now exists, that
+    `transform_template_name` maps it back to `Makefile` (so the walker will render it
+    for the next `metaproject new`), that the accept staged exactly that one file, and
+    that the worktree is clean afterwards. **No production change was required for
+    this half of the gate**; it is recorded as verified, not as newly built.
+  - `src/metaproject/learn/drift.py` (new): `review` findings reduced to a scoring
+    signal. Public surface: `added_lines`, `DriftSignal` (`lines`, `missing`, `pairs`,
+    `reports`), `EMPTY_DRIFT`, `collect_drift`. It calls `review.review_project` behind
+    a late import and a `reviewer=` seam, and **`src/metaproject/review.py` is
+    byte-unchanged** (R10).
+  - `src/metaproject/learn/score.py`: added `DRIFT_BOOST = 0.25`, `drift_factor()`, a
+    `drift: bool = False` parameter on `weigh_project`, and a `drift: Optional[
+    DriftLookup]` parameter on `group_candidates`. `DriftLookup` is a `Protocol`, so
+    `score` does not import `drift` (which imports `review`) and scoring stays a pure
+    function of evidence plus a lookup.
+  - `src/metaproject/learn/api.py`: `scan()` gained `drift: Optional[DriftSignal] =
+    None`. When absent it calls `collect_drift(projects, templates_dir)` — **after** the
+    egress confirmation, so a declined scan does no work — and each contributing
+    project's weight becomes `base * drift_factor(...)`. `api` still imports nothing
+    from `apply`.
+  - `src/metaproject/learn/__init__.py`: re-exports the four `drift` names plus
+    `drift_factor`.
+  - Tests: `tests/test_learn_drift.py` (11, new) and 2 additions to
+    `tests/test_learn_apply.py`.
+  - Gate results: `make lint` clean. `make test` → `333 passed` (320 pre-existing
+    retained, 13 new). Non-vacuity checked by setting `DRIFT_BOOST = 0.0`: 3 failures,
+    including the end-to-end gate test.
 - [ ] Phase 7 — Documentation & release
 
 ## Design invariants (regression guards)
@@ -413,6 +450,35 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   it. Ending the session on an `ApplyError` would lose the operator's place over a
   condition they can fix in another terminal.
 
+- **`review` corroboration is a multiplier, never a contribution.** This is the whole
+  of how spec.md §5.4.9 avoids double-counting the same divergence twice. `collect_drift`
+  returns a *lookup table* and nothing else; every candidate, proposal, and
+  `learn_evidence` row still comes from `collect`. A project `review` flags that
+  `collect` has no evidence for contributes nothing, `evidence_count` and the provenance
+  list are untouched, and the weight of one project's single contribution is scaled once.
+  `test_review_drift_creates_no_candidate_of_its_own` and
+  `test_review_drift_raises_the_score_rather_than_creating_a_parallel_finding` hold both
+  halves — the latter asserts the boosted score is `unboosted * (1 + DRIFT_BOOST)` to
+  within `rel=1e-3`, so a second boost applied to the same project fails it.
+- **`missing_files` is recorded and never scored.** `review` reporting that a project
+  *lacks* `CLAUDE.md` is a finding about that project, not evidence for a template
+  change: there is no file, so there are no added lines and nothing for a proposal to be
+  about. `DriftSignal.missing` exists so a caller can explain the signal; `reports()`
+  consults only `lines`. Wiring `missing` into scoring would invent evidence.
+- **`DRIFT_BOOST` is bounded for the same reason `RECENCY_BONUS` is.** A second code path
+  agreeing about one project is corroboration of that project's evidence, not a second
+  project. One drift-confirmed project must still rank below two projects that agree;
+  `test_the_boost_cannot_outrank_corroboration` asserts exactly that. Raising it toward
+  1.0 would let `review` — which today only diffs `AGENTS.md`, against the *unrendered*
+  template — start deciding queue order.
+- **`score` must not import `drift`.** `drift` imports `review`, which imports `config`,
+  `templates` and `universe`. The `DriftLookup` `Protocol` in `score.py` is what keeps
+  scoring a pure function of evidence plus a lookup, and keeps the dependency arrow
+  pointing one way (`drift` → `score`, never back).
+- **A failing `review` is skipped, not fatal.** `collect_drift` swallows per-project
+  exceptions. Losing a whole scan because one directory is unreadable would be a poor
+  trade for a bounded bonus; `test_a_failing_review_is_not_fatal_to_a_scan` pins it.
+
 ## Open items carried into plan.md
 
 - `README.md` §5 still documents the deleted line-diff harvester (`metaproject learn` as an
@@ -465,6 +531,27 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   enforced by the suite rather than trusted.
 
 ## Verified facts (do not re-investigate)
+
+- `review.review_project` on the fixture workspace reports content drift for exactly one
+  file — `AGENTS.md` — because `review.py` only diffs that one deliverable, and it diffs
+  the project against the **unrendered** template. So every fixture project with an
+  `AGENTS.md` is drift-reported, and the drift boost is in practice near-uniform across
+  `AGENTS.md` today. That is acceptable (the boost is bounded and per-line-matched) and
+  is a property of `review`'s current narrowness, not of `drift.py`: widening `review` to
+  diff more deliverables would make the signal sharper with no change here.
+- `collect` already yields `kind == "new_template"` for `Makefile` in kiln, beacon and
+  quarry (identical bodies, 8 added lines each) and for `docs/architecture.md`,
+  `docs/reference.md` and `pyproject.toml` in spire. Confirmed by running
+  `group_candidates(guard_evidence(collect_workspace(...)).records)` over the full
+  fixture, so C9's and C28's collect halves were already true before Phase 6.
+- `apply.template_destination("Makefile", templates)` is `templates/Makefile.template`,
+  and `templates.transform_template_name` maps it back to `Makefile` — verified by
+  assertion in the C9 end-to-end test, not assumed, since a mismatch would create a
+  template the walker silently ignores.
+- Two `scan()` calls over the same workspace produce `evidence_score`s that differ in the
+  ~1e-8 range even with the drift boost disabled, because `project_age_days` reads the
+  wall clock per call. Any test comparing scores across two scans must use a tolerance
+  (`pytest.approx(..., rel=1e-3)`), never equality.
 
 - `typer.Typer(cls=...)` is honored through `app.add_typer(...)`: Typer builds the
   sub-group from `typer_instance.info.cls`, so a `TyperGroup` subclass is how `learn`

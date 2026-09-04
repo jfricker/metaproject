@@ -20,8 +20,9 @@ import sqlite_utils
 from metaproject.config import Config, load_config
 from metaproject.db import get_db
 from metaproject.learn.collect import collect_project, iter_project_dirs
+from metaproject.learn.drift import DriftSignal, collect_drift
 from metaproject.learn.guard import SendManifest, confirm_send, guard_evidence
-from metaproject.learn.score import project_age_days, weigh_project
+from metaproject.learn.score import drift_factor, project_age_days, weigh_project
 from metaproject.learn.store import (
     RUN_FAILED,
     EvidenceDraft,
@@ -105,8 +106,14 @@ def scan(
     model: Optional[str] = None,
     runner: Optional[Callable[..., str]] = None,
     confirm_fn: Optional[Callable[[str], bool]] = None,
+    drift: Optional[DriftSignal] = None,
 ) -> ScanResult:
-    """Run stages 1–4: collect, guard, synthesize, record. Writes no template, ever."""
+    """Run stages 1–4: collect, guard, synthesize, record. Writes no template, ever.
+
+    `drift` is `review`'s findings for the scanned projects (spec.md §5.4.9); it is
+    gathered from `review` when not supplied. It only ever raises the weight of a
+    contribution collect already found — pass `drift.EMPTY_DRIFT` to score without it.
+    """
     config = config or load_config()
     templates_dir = Path(templates_dir or config.templates_dir).expanduser().resolve()
     root = Path(root).expanduser().resolve()
@@ -151,6 +158,11 @@ def scan(
         runner=runner,
     )
 
+    # `review`'s own findings, gathered after the egress gate: they are read from the
+    # local filesystem and never sent anywhere, and a declined scan should do no work.
+    if drift is None:
+        drift = collect_drift(projects, templates_dir)
+
     weights = _project_weights(guarded.records, config)
     lines_by_project = _lines_by_project(guarded.records)
 
@@ -159,7 +171,11 @@ def scan(
         evidence: List[EvidenceDraft] = []
         score = 0.0
         for path in proposal.contributing_paths:
-            weight = weights.get(path, 0.0)
+            # `review` agreeing about this very pattern raises this project's weight;
+            # it never adds a contribution, so `evidence_count` and provenance are
+            # exactly what `collect` found (spec.md §5.4.9).
+            corroborated = drift.reports(path, proposal.target_file, proposal.source_lines)
+            weight = weights.get(path, 0.0) * drift_factor(corroborated)
             score += weight
             excerpt = "\n".join(
                 line for line in proposal.source_lines if line in lines_by_project.get(path, set())

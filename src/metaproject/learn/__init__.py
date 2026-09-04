@@ -59,6 +59,12 @@ from metaproject.learn.collect import (
     project_variables,
     resolve_template,
 )
+from metaproject.learn.drift import (
+    EMPTY_DRIFT,
+    DriftSignal,
+    added_lines,
+    collect_drift,
+)
 from metaproject.learn.guard import (
     GitignoreMatcher,
     GuardResult,
@@ -77,6 +83,7 @@ from metaproject.learn.score import (
     ProjectWeight,
     activity_weight,
     candidate_key,
+    drift_factor,
     group_candidates,
     order_queue,
     rank_candidates,
@@ -179,8 +186,13 @@ __all__ = [
     "build_manifest",
     "collect_project",
     "collect_workspace",
+    "EMPTY_DRIFT",
+    "DriftSignal",
     "activity_weight",
+    "added_lines",
     "candidate_key",
+    "collect_drift",
+    "drift_factor",
     "confirm_send",
     "contains_secret",
     "content_hash",

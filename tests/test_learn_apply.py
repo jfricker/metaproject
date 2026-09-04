@@ -19,6 +19,7 @@ from metaproject.config import Config
 from metaproject.db import get_db
 from metaproject.exceptions import ApplyError
 from metaproject.learn import apply as apply_mod
+from metaproject.learn import review as review_queue
 from metaproject.learn import scan
 from metaproject.learn.apply import (
     PLACEMENT_APPEND,
@@ -526,3 +527,91 @@ def test_apply_never_runs_during_a_scan(monkeypatch: pytest.MonkeyPatch, tmp_pat
         yes=True,
         runner=fake_runner(payload),
     )
+
+
+# ---------------------------------------------------- `new_template`, end to end (C9)
+
+
+MAKEFILE_PROJECTS = ("kiln", "beacon", "quarry")
+MAKEFILE_BODY = ".PHONY: help check test lint\ncheck: lint test\nlint:\n\truff check .\n"
+
+
+def test_c9_a_recurring_untemplated_file_becomes_a_new_file_in_the_template_store(
+    tmp_path: Path,
+) -> None:
+    """The Phase 6 gate: no template, three projects, one `new_template` accept.
+
+    The whole path is exercised — collect classifies the target as untemplated, synth
+    bundles it as `new_template`, the ledger records it, and the accept creates a file
+    the template walker will render for the next `metaproject new`.
+    """
+    ws = build_workspace(tmp_path, git_init_templates=True, only=list(MAKEFILE_PROJECTS))
+    db = get_db(tmp_path / "universe.db")
+    assert not list(ws.templates.glob("Makefile*")), "the fixture has no Makefile template"
+
+    payload = {
+        "proposals": [
+            {
+                "title": "Add a Makefile with the standard check target",
+                "rationale": "Three projects carry the same lint/test entry points.",
+                "proposed_body": MAKEFILE_BODY,
+                "target_section": None,
+                "source_lines": ["check: lint test", "lint:", "\truff check ."],
+            }
+        ]
+    }
+
+    result = scan(
+        ws.projects,
+        templates_dir=ws.templates,
+        db=db,
+        targets=["Makefile"],
+        yes=True,
+        runner=fake_runner(payload),
+    )
+    assert result.created == 1
+
+    (row,) = list(review_queue(db))
+    assert row["kind"] == "new_template"
+    assert row["target_file"] == "Makefile"
+    assert row["evidence_count"] == len(MAKEFILE_PROJECTS)
+
+    plan = plan_apply(db, int(row["id"]), templates_dir=ws.templates)
+    assert plan.placement == PLACEMENT_NEW_FILE
+    assert plan.template_file == ws.templates / "Makefile.template"
+    assert plan.original == ""
+
+    applied = apply_proposal(db, int(row["id"]), templates_dir=ws.templates)
+    assert applied.changed and applied.commit
+
+    created = ws.templates / "Makefile.template"
+    assert created.is_file()
+    assert "ruff check ." in created.read_text(encoding="utf-8")
+    assert transform_template_name(created.name) == "Makefile"
+
+    # One accept, one commit, one file — and a clean worktree afterwards.
+    assert git(ws.templates, "status", "--porcelain").strip() == ""
+    changed = git(ws.templates, "show", "--name-only", "--format=", "HEAD").split()
+    assert changed == ["Makefile.template"]
+    assert get_proposal(db, int(row["id"]))["status"] == STATUS_APPLIED
+
+
+def test_c28_directory_and_config_shaped_targets_survive_a_scan(tmp_path: Path) -> None:
+    """C28: `docs/` and `pyproject.toml` are scanned without crashing the collector."""
+    ws = build_workspace(tmp_path, git_init_templates=True, only=["spire"])
+    db = get_db(tmp_path / "universe.db")
+    before = snapshot(ws.templates)
+
+    payload = {"proposals": []}
+    result = scan(
+        ws.projects,
+        templates_dir=ws.templates,
+        db=db,
+        targets=["docs/", "pyproject.toml"],
+        yes=True,
+        runner=fake_runner(payload),
+    )
+
+    assert result.projects_scanned == 1
+    assert result.files_scanned >= 2
+    assert snapshot(ws.templates) == before
