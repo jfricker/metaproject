@@ -618,6 +618,14 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
 - `metaproject init --force` skips the interactive `questionary` prompts entirely (see
   `cli.py`'s `if not force:` guard), so CLI-runner tests that need a non-interactive full
   init should pass `--force` rather than mocking `questionary`.
+- **`make bump-version` leaves `make test` failing until you re-run `make install`.**
+  `metaproject.__version__` reads `importlib.metadata.version("metaproject")`, i.e. the
+  *installed* dist-info, not `pyproject.toml`. The bump rewrites the source and
+  `tests/test_baseline.py`'s expected string but cannot refresh the editable install's
+  metadata, so `test_package_version` and `test_cli_version_flag` fail with the old version
+  until `make install` re-prepares it. Observed on the 0.5.0 → 0.6.0 bump: 2 failed / 331
+  passed, then 333 passed after reinstalling. Not a code defect; sequence `bump-version`
+  then `install` then `test`.
 - `make build` (`uv build --no-build-isolation`) fails in a fresh worktree venv with
   `ModuleNotFoundError: No module named 'hatchling'`. `--no-build-isolation` is deliberate
   (see AGENTS.md's offline-packaging learning) but requires the backend to be present
