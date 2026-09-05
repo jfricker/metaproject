@@ -33,6 +33,9 @@ dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.3.0",
+    # `make build` runs `uv build --no-build-isolation`, so the backend named in
+    # [build-system].requires must already be present in the environment.
+    "hatchling>=1.21.0",
 ]
 
 [tool.hatch.build.targets.wheel]
