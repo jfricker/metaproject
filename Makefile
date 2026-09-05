@@ -1,4 +1,4 @@
-.PHONY: help install lint format test clean build package testpypi pypi install-testpypi uninstall bump-version bump-major
+.PHONY: help install install-global lint format test clean build package testpypi pypi install-testpypi uninstall bump-version bump-major
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -9,8 +9,11 @@ help: ## Display this help screen
 	@echo "Available Makefile targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-install: ## Install package in editable mode with dev dependencies
+install: ## Install dev environment
 	uv pip install -e ".[dev]"
+
+install-global: ## Refresh the metaproject CLI on PATH
+	uv tool install --force .
 
 lint: ## Run linter and code formatting checks
 	$(RUFF) check src tests
@@ -34,10 +37,10 @@ package: bump-version build ## Create package archive for distribution
 	@echo "Package created successfully. See dist/ directory."
 
 testpypi: clean package ## Publish package to TestPyPI
-	python3 -m twine upload --repository testpypi dist/*
+	$(PYTHON) -m twine upload --repository testpypi dist/*
 
 pypi: clean package ## Publish package to PyPI
-	python3 -m twine upload dist/*
+	$(PYTHON) -m twine upload dist/*
 
 install-testpypi: ## Install the latest version of the tool from TestPyPI
 	python3 -m pip install --upgrade \

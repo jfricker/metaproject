@@ -106,9 +106,13 @@ def review_project(
 def review_workspace(
     root_dir: Path,
     templates_dir: Optional[Path] = None,
-    max_depth: int = 4,
+    max_depth: int = 1,
 ) -> List[Dict[str, Any]]:
-    """Audit all projects found within root_dir and its subdirectories."""
+    """Audit all projects found within root_dir and its subdirectories.
+
+    ``max_depth`` bounds how far below ``root_dir`` the scan descends; the
+    default of 1 covers only immediate subdirectories.
+    """
     resolved_root = root_dir.expanduser().resolve()
     results: List[Dict[str, Any]] = []
 

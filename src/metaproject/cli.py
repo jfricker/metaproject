@@ -681,9 +681,9 @@ def review_cmd(
         help="Template directory to compare against (default: ~/.metaproject/templates).",
     ),
     depth: int = typer.Option(
-        4,
+        1,
         "--depth",
-        help="Maximum directory traversal depth (default: 4).",
+        help="Maximum subdirectory traversal depth for --all (default: 1).",
     ),
 ) -> None:
     """Analyze projects against central templates to detect missing files and drift."""
