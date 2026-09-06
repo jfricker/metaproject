@@ -11,6 +11,10 @@ def isolate_test_environment(
     """Isolate METAPROJECT_CONFIG_DIR for all tests to avoid touching user home dir."""
     test_config_dir = tmp_path_factory.mktemp("metaproject_cfg")
     monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(test_config_dir))
+    # Keep skill installation out of the operator's real ~/.claude during tests.
+    monkeypatch.setenv(
+        "METAPROJECT_SKILL_DIR", str(tmp_path_factory.mktemp("claude_skills") / "metaproject")
+    )
 
 
 @pytest.fixture

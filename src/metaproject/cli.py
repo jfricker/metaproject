@@ -29,6 +29,13 @@ from metaproject.scaffold import (
     resolve_output,
     scaffold_project,
 )
+from metaproject.skills import (
+    CURRENT,
+    INSTALLED,
+    STALE,
+    UPDATED,
+    install_skill,
+)
 from metaproject.templates import seed_templates
 
 console = Console()
@@ -164,6 +171,32 @@ def main(
     pass
 
 
+def report_skill_install(force: bool) -> None:
+    """Install the bundled skill and narrate the outcome without failing init.
+
+    A skill that cannot be written is an inconvenience, not a reason to abandon an
+    otherwise good environment setup.
+    """
+    try:
+        result = install_skill(force=force)
+    except MetaProjectError as skill_err:
+        console.print(f"[yellow]Notice:[/] Skill installation skipped ({skill_err})")
+        return
+
+    target = result["target_dir"]
+    state = result["state"]
+    if state in (INSTALLED, UPDATED):
+        verb = "Installed" if state == INSTALLED else "Updated"
+        console.print(f"[cyan]✓ {verb} the metaproject Claude Code skill at {target}[/cyan]")
+    elif state == CURRENT:
+        console.print(f"[cyan]✓ Claude Code skill already current at {target}[/cyan]")
+    elif state == STALE:
+        console.print(
+            f"[yellow]Notice:[/] The skill at {target} differs from this release. "
+            f"Re-run with [bold cyan]--force[/bold cyan] to overwrite it."
+        )
+
+
 @app.command(name="init")
 def init_cmd(
     source_templates: Optional[Path] = typer.Argument(
@@ -188,7 +221,12 @@ def init_cmd(
         False,
         "--force",
         "-f",
-        help="Overwrite existing configuration and templates.",
+        help="Overwrite existing configuration, templates, and skill.",
+    ),
+    no_skill: bool = typer.Option(
+        False,
+        "--no-skill",
+        help="Skip installing the bundled Claude Code skill.",
     ),
 ) -> None:
     """Initialize or repair the user environment for metaproject."""
@@ -253,6 +291,10 @@ def init_cmd(
             )
     except GitError as git_err:
         console.print(f"[yellow]Notice:[/] Template store git init skipped ({git_err})")
+
+    # 1c. Install the bundled Claude Code skill so an agent knows how to drive this CLI
+    if not no_skill:
+        report_skill_install(force=force)
 
     # 2. Configure defaults
     existing_cfg = load_config(config_file) if config_file.exists() and not force else Config()

@@ -187,7 +187,7 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
 
 - **Usage**:
   ```bash
-  metaproject init [path/to/templates] [project_home] [--config-dir PATH] [--force]
+  metaproject init [path/to/templates] [project_home] [--config-dir PATH] [--force] [--no-skill]
   # Alias:
   metaproject install [path/to/templates] [project_home] [--config-dir PATH] [--force]
   ```
@@ -195,7 +195,8 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
   - `[path/to/templates]`: Optional path to source templates. If omitted, self-seeds using bundled package templates via `importlib.resources`.
   - `[project_home]`: Root workspace directory for scanning projects (default: current working directory `./` or `~/Projects`).
   - `--config-dir <path>`: Override configuration directory (default: `~/.metaproject`).
-  - `--force, -f`: Reinitialize configuration and overwrite existing templates.
+  - `--force, -f`: Reinitialize configuration and overwrite existing templates and skill.
+  - `--no-skill`: Skip installing the bundled Claude Code skill.
 
 - **Behavior**:
   1. **Existing Configuration Safeguard**:
@@ -210,6 +211,11 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
      - Prompts for author name (defaulting to `git config user.name`), default branch (`main`), and confirms `project_home`.
      - Writes `~/.metaproject/config.json`.
      - Initializes `universe.db` with WAL mode and `busy_timeout=5000`.
+     - Installs the bundled Claude Code skill into `~/.claude/skills/metaproject/`
+       (overridable with `METAPROJECT_SKILL_DIR`, skippable with `--no-skill`). An
+       installed copy that diverges from the release is reported and left in place unless
+       `--force` is supplied, so an operator's own edits are never silently discarded. A
+       failure here is reported as a notice and never aborts `init`.
      - Executes the initial `universe` scan on `project_home` to build the workspace catalog.
 
 ### 5.2 `metaproject new`

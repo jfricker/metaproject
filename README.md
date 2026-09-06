@@ -50,6 +50,18 @@ The wizard will prompt for:
 
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
+#### Claude Code Skill
+`init` also installs a bundled Claude Code skill into `~/.claude/skills/metaproject/`. The
+skill teaches an agent when to reach for each command, which forms are safe to run
+unattended (`review --no-tui`, `learn list`, `universe`) and which need a human
+(`learn scan` calls a model; `learn apply` commits to your template store; a backfill asks
+two confirmations). It ships inside the package, so it travels with every install.
+
+- `metaproject init --no-skill` skips it.
+- An installed copy that differs from the release — an older version, or one you edited —
+  is left alone; `metaproject init --force` overwrites it.
+- Set `METAPROJECT_SKILL_DIR` to install somewhere other than `~/.claude/skills/metaproject`.
+
 #### Existing Configuration Protection
 If `~/.metaproject/config.json` is already present, running `metaproject init` will not overwrite your settings or re-run the wizard. Instead, it displays your current configuration along with the status summary of your `universe.db` (total projects, active now count, and last run).
 
