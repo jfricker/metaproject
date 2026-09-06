@@ -6,10 +6,16 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from metaproject import cli
 from metaproject.cli import app
 from metaproject.config import Config
 from metaproject.exceptions import CollisionError
-from metaproject.scaffold import is_directory_empty, resolve_output, scaffold_project
+from metaproject.scaffold import (
+    is_directory_empty,
+    resolve_output,
+    resolve_project_name,
+    scaffold_project,
+)
 
 
 def test_resolve_output(tmp_path: Path) -> None:
@@ -369,3 +375,198 @@ def test_cli_init_idempotent_against_already_git_backed_templates(
         check=False,
     )
     assert status.stdout.strip() == ""
+
+
+def _confirm_queue(monkeypatch: pytest.MonkeyPatch, answers: list) -> list:
+    """Stub questionary.confirm in the CLI with a queue of canned answers.
+
+    Returns the list of prompt texts actually asked, so tests can assert that the
+    template confirmation and the git confirmation are two distinct questions.
+    """
+    asked: list = []
+    pending = list(answers)
+
+    class _Stub:
+        def __init__(self, message: str) -> None:
+            asked.append(message)
+
+        def ask(self) -> object:
+            return pending.pop(0) if pending else False
+
+    monkeypatch.setattr(cli.questionary, "confirm", lambda message, **kwargs: _Stub(message))
+    return asked
+
+
+def test_resolve_project_name_uses_directory_for_dot(tmp_path: Path) -> None:
+    """`metaproject new .` names a destination; the directory supplies the project name."""
+    assert resolve_project_name(".", tmp_path / "bin") == "bin"
+    assert resolve_project_name("./", tmp_path / "bin") == "bin"
+    assert resolve_project_name("rover-api", tmp_path / "bin") == "rover-api"
+
+
+def test_scaffold_backfill_preserves_existing_files(tmp_path: Path) -> None:
+    """Backfill copies in missing templates and never overwrites what is already there."""
+    target = tmp_path / "existing_work"
+    target.mkdir()
+    (target / "README.md").write_text("# Hand-written readme", encoding="utf-8")
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+
+    res = scaffold_project(
+        project_name=".",
+        output=str(target) + "/",
+        interactive=False,
+        backfill=True,
+        no_git=True,
+    )
+
+    assert res["backfilled"] is True
+    # Pre-existing content survives untouched.
+    assert (target / "README.md").read_text(encoding="utf-8") == "# Hand-written readme"
+    assert (target / "main.py").exists()
+    assert (target / "README.md") in res["preserved_files"]
+    assert (target / "README.md") not in res["rendered_files"]
+    # Missing templates are still backfilled.
+    assert (target / "AGENTS.md").exists()
+    assert (target / "STATE.md").exists()
+    # The directory name supplies the project title.
+    assert res["variables"]["ProjectTitle"] == "Existing Work"
+
+
+def test_scaffold_backfill_leaves_existing_repository_untouched(tmp_path: Path) -> None:
+    """A backfill never stages or commits inside a repository the operator already has."""
+    target = tmp_path / "repo_work"
+    target.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=target, capture_output=True, check=True)
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+
+    res = scaffold_project(
+        project_name=".",
+        output=str(target) + "/",
+        interactive=False,
+        backfill=True,
+        no_git=False,
+    )
+
+    assert res["git_status"] == "existing"
+    assert res["git_initialized"] is False
+    log = subprocess.run(
+        ["git", "-C", str(target), "log", "--oneline"], capture_output=True, text=True, check=False
+    )
+    assert log.returncode != 0 or not log.stdout.strip(), "backfill must not create a commit"
+
+
+def test_scaffold_force_still_overwrites_collisions(tmp_path: Path) -> None:
+    """--force keeps its meaning: colliding files are overwritten, not preserved."""
+    target = tmp_path / "forced"
+    target.mkdir()
+    (target / "README.md").write_text("# Hand-written readme", encoding="utf-8")
+
+    res = scaffold_project(
+        project_name="forced",
+        output=str(target) + "/",
+        interactive=False,
+        force=True,
+        no_git=True,
+    )
+
+    assert res["backfilled"] is False
+    assert res["preserved_files"] == []
+    assert "# Hand-written readme" not in (target / "README.md").read_text(encoding="utf-8")
+
+
+def test_cli_new_backfill_refuses_without_confirmation(runner: CliRunner, tmp_path: Path) -> None:
+    """Non-interactive --yes cannot silently backfill; it must be told --force."""
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["new", ".", "--output", str(target) + "/", "--yes", "--no-git"])
+
+    assert result.exit_code == 1
+    assert "--force" in result.output
+    assert not (target / "AGENTS.md").exists()
+
+
+def test_cli_new_backfill_declined_writes_nothing(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Declining the backfill prompt leaves the directory exactly as it was."""
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    _confirm_queue(monkeypatch, [False])
+
+    result = runner.invoke(app, ["new", ".", "--output", str(target) + "/"])
+
+    assert result.exit_code == 1
+    assert sorted(p.name for p in target.iterdir()) == ["main.py"]
+
+
+def test_cli_new_backfill_confirms_templates_and_git_separately(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Templates and git are two separate confirmations; declining git still backfills."""
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    asked = _confirm_queue(monkeypatch, [True, False])
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            ".",
+            "--output",
+            str(target) + "/",
+            "--title",
+            "Occupied",
+            "--description",
+            "d",
+            "--author",
+            "A",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(asked) == 2, asked
+    assert "Backfill templates into" in asked[0]
+    assert "set up git" in asked[1]
+    assert (target / "AGENTS.md").exists()
+    assert (target / "main.py").exists()
+    assert not (target / ".git").exists()
+
+
+def test_cli_new_backfill_accepting_git_initializes_repository(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Accepting the git confirmation initializes the repository and commits."""
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    _confirm_queue(monkeypatch, [True, True])
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            ".",
+            "--output",
+            str(target) + "/",
+            "--title",
+            "Occupied",
+            "--description",
+            "d",
+            "--author",
+            "A",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (target / ".git").exists()
+    log = subprocess.run(
+        ["git", "-C", str(target), "log", "-1", "--oneline"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "initial scaffold from metaproject" in log.stdout

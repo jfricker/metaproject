@@ -187,7 +187,7 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
 
 - **Usage**:
   ```bash
-  metaproject init [path/to/templates] [project_home] [--config-dir PATH] [--force]
+  metaproject init [path/to/templates] [project_home] [--config-dir PATH] [--force] [--no-skill]
   # Alias:
   metaproject install [path/to/templates] [project_home] [--config-dir PATH] [--force]
   ```
@@ -195,7 +195,8 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
   - `[path/to/templates]`: Optional path to source templates. If omitted, self-seeds using bundled package templates via `importlib.resources`.
   - `[project_home]`: Root workspace directory for scanning projects (default: current working directory `./` or `~/Projects`).
   - `--config-dir <path>`: Override configuration directory (default: `~/.metaproject`).
-  - `--force, -f`: Reinitialize configuration and overwrite existing templates.
+  - `--force, -f`: Reinitialize configuration and overwrite existing templates and skill.
+  - `--no-skill`: Skip installing the bundled Claude Code skill.
 
 - **Behavior**:
   1. **Existing Configuration Safeguard**:
@@ -210,6 +211,11 @@ Sets up the tool for use. Copies templates to the user's home directory `~/.meta
      - Prompts for author name (defaulting to `git config user.name`), default branch (`main`), and confirms `project_home`.
      - Writes `~/.metaproject/config.json`.
      - Initializes `universe.db` with WAL mode and `busy_timeout=5000`.
+     - Installs the bundled Claude Code skill into `~/.claude/skills/metaproject/`
+       (overridable with `METAPROJECT_SKILL_DIR`, skippable with `--no-skill`). An
+       installed copy that diverges from the release is reported and left in place unless
+       `--force` is supplied, so an operator's own edits are never silently discarded. A
+       failure here is reported as a notice and never aborts `init`.
      - Executes the initial `universe` scan on `project_home` to build the workspace catalog.
 
 ### 5.2 `metaproject new`
@@ -227,7 +233,7 @@ Scaffolds a new project directory and generates boilerplate files.
   - `--description, -d <desc>`: One-line project summary.
   - `--author, -a <name>`: Author name (default: from config or `git config user.name`).
   - `--yes, -y`: Non-interactive mode; accepts all default values without prompting.
-  - `--force, -f`: Allow scaffolding into an existing, non-empty directory.
+  - `--force, -f`: Allow scaffolding into an existing, non-empty directory, overwriting colliding files.
   - `--dry-run`: Display all actions and file contents that would be created without writing to disk.
   - `--no-git`: Skip `git init` and initial commit.
 
@@ -239,9 +245,19 @@ Scaffolds a new project directory and generates boilerplate files.
        * --output is an existing directory -> <output>/<project-name>
        * --output does not exist or ends in / -> create <output> as the exact project root
   2. Safety check:
-     - If target_dir contains non-hidden files and not force -> ABORT
      - Allow target_dir containing solitary .git/ or .DS_Store (e.g. if git init was run beforehand)
+     - If target_dir contains non-hidden files -> BACKFILL (see below), or ABORT if unconfirmed
+  2b. Backfill (target_dir already holds the operator's work):
+     - Show what occupies target_dir, then ask the operator to confirm the backfill.
+     - Ask a second, separate confirmation before any git setup.
+     - Declining the first prompt writes nothing; declining the second scaffolds without git.
+     - `--yes` cannot answer these prompts: a non-interactive backfill must pass `--force`.
+     - Colliding files are kept as-is and reported; only missing template files are written.
+     - `--force` skips both prompts and overwrites colliding files instead of keeping them.
+     - If target_dir is already a git repository, a backfill never re-inits, stages, or commits.
   3. Collect variables:
+     - project_name of `.` (or `./`, `..`) names a destination, not a project: the target
+       directory's own name is used for ProjectTitle and ProjectSlug.
      - ProjectTitle = title or prompt(default=titlecase(project_name))
      - ProjectDescription = description or prompt()
      - Author = author or config.author or git_config("user.name")
@@ -639,8 +655,10 @@ Templates are processed using Jinja2. To support existing templates while allowi
 ## 7. Safety, Permissions, & Invariants
 
 1. **Non-destructive Overwrite Guard**:
-   - `metaproject` must never write files into a non-empty directory without `--force`.
+   - `metaproject` must never write files into a non-empty directory without either `--force` or an explicit interactive backfill confirmation.
+   - A confirmed backfill keeps every colliding file exactly as it is; only missing template files are written.
    - Even with `--force`, existing files not present in the template are never deleted; colliding files are explicitly overwritten.
+   - Rollback never deletes a file that existed before the run, including one overwritten by `--force`.
    - **Empty Directory Definition**: A directory containing no non-hidden files, allowing a solitary `.git/` directory and `.DS_Store`.
    - **Transactional Rollback**: On a failed scaffold, only delete paths created during *this* run; never `rmtree` an existing pre-created directory.
 2. **Filesystem Confinement**:
@@ -648,18 +666,34 @@ Templates are processed using Jinja2. To support existing templates while allowi
    - Prevent path traversal attacks in project names (e.g., `../../etc`).
 3. **Fail-Safe Rollback**:
    - If an error occurs during template rendering before git initialization, prompt or cleanup partial generation to avoid dirty partial states.
-4. **`learn` Egress Guard** (data leaving the machine):
+4. **Agent-Session Guards**:
+   - The CLI detects whether a person or an agent is driving it, from environment markers
+     no ordinary login shell sets (`CLAUDECODE`, `CLAUDE_CODE`, `AI_AGENT`, `CI`).
+   - In an agent session the interactive TUIs never open: `review` and the `learn`
+     acceptance reviewer print their board or table and exit zero, naming the marker. A
+     full-screen loop inside a tool call blocks on keystrokes that never arrive, and a
+     harness that allocates a pty defeats the TTY check on its own.
+   - `learn scan` (and the bare `learn [ROOT]` form, which scans) is refused with exit 1.
+     It spends the operator's money and egresses their diffs; the refusal prints the exact
+     command for the operator to run.
+   - A backfill's confirmations are refused with exit 1 and a handover message. `--dry-run`
+     still previews, because it writes nothing.
+   - `METAPROJECT_AGENT` overrides detection in both directions: `0` forces human mode,
+     any other truthy value forces agent mode.
+   - Every guard degrades to something useful. A person misdetected as an agent loses
+     interactivity, never work.
+5. **`learn` Egress Guard** (data leaving the machine):
    - Only redacted **diffs** are sent to the model — never whole project files.
    - Anything matched by the project's `.gitignore` is excluded.
    - A hard denylist is excluded regardless of `.gitignore`: `.env*`, `*.pem`, `*.key`, `id_*`, `*credentials*`, `*secret*`.
    - High-entropy strings and known token shapes are redacted from surviving diffs.
    - The file list to be sent is displayed and confirmed once per session; `--yes` bypasses for non-interactive use.
-5. **`learn` Write Guard**:
+6. **`learn` Write Guard**:
    - A scan never mutates a template. Mutation happens only via `apply`, from a persisted proposal.
    - `apply` refuses to run when the template repository has uncommitted changes.
    - Every applied proposal is an individual commit; accepts are never batched.
    - Model output is treated as data, never as instructions. A proposal's body is inserted as template text; it is never executed, and never interpreted as a directive to the tool.
-6. **Template Walker & Variable Whitelist Guard**:
+7. **Template Walker & Variable Whitelist Guard**:
    - Only rewrite known whitelisted variables (`ProjectTitle`, `Author`, `Date`, etc.), leaving all other curly braces untouched.
    - Template walker must sniff or filter binary files (images, icons) to copy verbatim rather than decoding as UTF-8.
    - Ensure the template engine mirrors empty directories like `docs/` (or place `.gitkeep` inside `docs.template/`).

@@ -7,9 +7,12 @@ from typing import Any, Dict, List, Optional, Set
 
 from metaproject.config import Config, load_config
 from metaproject.exceptions import CollisionError, MetaProjectError
-from metaproject.git import init_repository
+from metaproject.git import init_repository, is_git_repository
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
 from metaproject.variables import collect_variables
+
+# Argument forms that mean "scaffold into this directory" rather than naming a project.
+CWD_ALIASES = {".", "./", ".\\", "..", "../", "..\\"}
 
 
 def resolve_output(
@@ -58,6 +61,30 @@ def is_directory_empty(target_dir: Path) -> bool:
         return False
 
     return True
+
+
+def resolve_project_name(project_name: str, target_dir: Path) -> str:
+    """Resolve the effective project name for variable collection.
+
+    `metaproject new .` names a destination, not a project; in that case the target
+    directory's own name is the project name.
+    """
+    name = project_name.strip()
+    if name in CWD_ALIASES:
+        return target_dir.name or name
+    return name
+
+
+def list_directory_entries(target_dir: Path) -> List[str]:
+    """Return the visible entry names occupying target_dir, sorted.
+
+    Used to show the operator what a backfill would be landing on top of.
+    """
+    if not target_dir.exists() or not target_dir.is_dir():
+        return []
+    return sorted(
+        entry.name for entry in target_dir.iterdir() if entry.name not in {".git", ".DS_Store"}
+    )
 
 
 class TransactionalTracker:
@@ -114,17 +141,26 @@ def scaffold_project(
     force: bool = False,
     dry_run: bool = False,
     no_git: bool = False,
+    backfill: bool = False,
     config: Optional[Config] = None,
 ) -> Dict[str, Any]:
-    """Execute complete scaffolding lifecycle for metaproject new."""
+    """Execute complete scaffolding lifecycle for metaproject new.
+
+    `backfill=True` permits scaffolding into an occupied directory while preserving every
+    file already there: colliding template files are skipped, not overwritten. `force=True`
+    also permits an occupied directory but overwrites colliding files.
+    """
     cfg = config or load_config()
     target_dir = resolve_output(output, project_name)
+    occupied = not is_directory_empty(target_dir)
 
     # 1. Collision check
-    if not force and not is_directory_empty(target_dir):
+    if occupied and not force and not backfill:
         raise CollisionError(
-            f"Target directory '{target_dir}' exists and is not empty. Use --force to proceed."
+            f"Target directory '{target_dir}' exists and is not empty. "
+            f"Re-run interactively to confirm a backfill, or use --force to overwrite."
         )
+    is_backfill = occupied and not force
 
     # 2. Template directory resolution
     resolved_templates_dir: Path
@@ -142,7 +178,7 @@ def scaffold_project(
 
     # 3. Variable resolution
     variables = collect_variables(
-        project_name=project_name,
+        project_name=resolve_project_name(project_name, target_dir),
         title=title,
         description=description,
         author=author,
@@ -161,12 +197,25 @@ def scaffold_project(
                 target_dir.mkdir(parents=True, exist_ok=True)
                 tracker.record_created_dir(target_dir)
 
+        # Plan the tree first so pre-existing paths are known before anything is written:
+        # rollback must never delete a file the operator already had.
+        planned_paths = render_template_tree(
+            source_dir=resolved_templates_dir,
+            target_dir=target_dir,
+            variables=variables,
+            dry_run=True,
+        )
+        preserved_paths = [path for path in planned_paths if path.exists()]
+        for path in preserved_paths:
+            tracker.record_existing(path)
+
         # Render template files
         rendered_paths = render_template_tree(
             source_dir=resolved_templates_dir,
             target_dir=target_dir,
             variables=variables,
             dry_run=dry_run,
+            skip_existing=is_backfill,
         )
 
         for path in rendered_paths:
@@ -175,21 +224,36 @@ def scaffold_project(
             else:
                 tracker.record_created_file(path)
 
-        # 5. Git initialisation
+        # 5. Git initialisation. A backfill never touches an existing repository: staging
+        # and committing there would sweep the operator's own working tree into a commit
+        # they did not ask for.
+        already_git = is_git_repository(target_dir)
         git_initialized = False
-        if not no_git and not dry_run and cfg.auto_git_init:
+        if no_git or not cfg.auto_git_init:
+            git_status = "skipped"
+        elif is_backfill and already_git:
+            git_status = "existing"
+        elif dry_run:
+            git_status = "pending"
+        else:
             git_initialized = init_repository(
                 target_dir=target_dir,
                 branch=cfg.default_branch,
                 commit_message="chore: initial scaffold from metaproject",
                 author_name=variables["Author"],
             )
+            git_status = "initialized" if git_initialized else "skipped"
 
         return {
             "target_dir": target_dir,
             "variables": variables,
             "rendered_files": rendered_paths,
+            "preserved_files": (
+                [path for path in preserved_paths if path.is_file()] if is_backfill else []
+            ),
+            "backfilled": is_backfill,
             "git_initialized": git_initialized,
+            "git_status": git_status,
             "dry_run": dry_run,
         }
 

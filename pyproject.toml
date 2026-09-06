@@ -43,7 +43,7 @@ dev = [
 packages = ["src/metaproject"]
 
 [tool.hatch.build.targets.wheel.package-data]
-"metaproject" = ["templates/**"]
+"metaproject" = ["templates/**", "skill/**"]
 
 [tool.ruff]
 line-length = 100

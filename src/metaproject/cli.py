@@ -22,8 +22,21 @@ from metaproject.config import (
 )
 from metaproject.db import get_db, get_universe_summary, query_projects
 from metaproject.exceptions import CollisionError, GitError, MetaProjectError
-from metaproject.git import ensure_template_repository
-from metaproject.scaffold import scaffold_project
+from metaproject.git import ensure_template_repository, is_git_repository
+from metaproject.scaffold import (
+    is_directory_empty,
+    list_directory_entries,
+    resolve_output,
+    scaffold_project,
+)
+from metaproject.session import agent_marker, override_hint
+from metaproject.skills import (
+    CURRENT,
+    INSTALLED,
+    STALE,
+    UPDATED,
+    install_skill,
+)
 from metaproject.templates import seed_templates
 
 console = Console()
@@ -159,6 +172,48 @@ def main(
     pass
 
 
+def report_skill_install(force: bool) -> None:
+    """Install the bundled skill and narrate the outcome without failing init.
+
+    A skill that cannot be written is an inconvenience, not a reason to abandon an
+    otherwise good environment setup.
+    """
+    try:
+        result = install_skill(force=force)
+    except MetaProjectError as skill_err:
+        console.print(f"[yellow]Notice:[/] Skill installation skipped ({skill_err})")
+        return
+
+    target = result["target_dir"]
+    state = result["state"]
+    if state in (INSTALLED, UPDATED):
+        verb = "Installed" if state == INSTALLED else "Updated"
+        console.print(f"[cyan]✓ {verb} the metaproject Claude Code skill at {target}[/cyan]")
+    elif state == CURRENT:
+        console.print(f"[cyan]✓ Claude Code skill already current at {target}[/cyan]")
+    elif state == STALE:
+        console.print(
+            f"[yellow]Notice:[/] The skill at {target} differs from this release. "
+            f"Re-run with [bold cyan]--force[/bold cyan] to overwrite it."
+        )
+
+
+def print_agent_degradation_notice(what: str, action: str) -> None:
+    """Explain a TUI that did not open because an agent is driving.
+
+    Without this the printed board looks like the whole story, and an agent reports
+    "nothing to do" when what actually happened is that the interactive half was never
+    offered. Silent in a human session, so nothing changes for an operator.
+    """
+    marker = agent_marker()
+    if marker is None:
+        return
+    console.print(
+        f"[dim]Agent session: printed instead of opening {what}. "
+        f"To {action}, run this command in your own terminal. {override_hint(marker)}[/dim]"
+    )
+
+
 @app.command(name="init")
 def init_cmd(
     source_templates: Optional[Path] = typer.Argument(
@@ -183,7 +238,12 @@ def init_cmd(
         False,
         "--force",
         "-f",
-        help="Overwrite existing configuration and templates.",
+        help="Overwrite existing configuration, templates, and skill.",
+    ),
+    no_skill: bool = typer.Option(
+        False,
+        "--no-skill",
+        help="Skip installing the bundled Claude Code skill.",
     ),
 ) -> None:
     """Initialize or repair the user environment for metaproject."""
@@ -248,6 +308,10 @@ def init_cmd(
             )
     except GitError as git_err:
         console.print(f"[yellow]Notice:[/] Template store git init skipped ({git_err})")
+
+    # 1c. Install the bundled Claude Code skill so an agent knows how to drive this CLI
+    if not no_skill:
+        report_skill_install(force=force)
 
     # 2. Configure defaults
     existing_cfg = load_config(config_file) if config_file.exists() and not force else Config()
@@ -350,6 +414,85 @@ def install_cmd(
     )
 
 
+def confirm_backfill(target_dir: Path, dry_run: bool, interactive: bool) -> bool:
+    """Confirm landing templates into a directory that already holds files.
+
+    Returns True when the backfill may proceed. Non-interactive runs never proceed: the
+    operator must either confirm at the prompt or say so up front with --force.
+    """
+    entries = list_directory_entries(target_dir)
+    preview = ", ".join(entries[:8])
+    if len(entries) > 8:
+        preview += f", ... (+{len(entries) - 8} more)"
+
+    console.print(
+        Panel.fit(
+            f"[bold]{target_dir}[/bold] already contains {len(entries)} "
+            f"{'entry' if len(entries) == 1 else 'entries'}:\n"
+            f"[dim]{preview}[/dim]\n\n"
+            f"Backfilling copies the missing template files in alongside them.\n"
+            f"[green]Files that already exist are kept as-is, never overwritten.[/green]\n"
+            f"[dim]Use --force instead to overwrite colliding files.[/dim]",
+            title="[yellow]Backfill Existing Directory[/yellow]",
+        )
+    )
+
+    if dry_run:
+        console.print("[bold yellow]DRY RUN:[/] Would prompt to confirm this backfill.")
+        return True
+
+    marker = agent_marker()
+    if marker is not None:
+        console.print(
+            "[bold red]Collision Error:[/bold red] a backfill needs an operator's "
+            "confirmation, and this is an agent session. Run "
+            f"[cyan]metaproject new {target_dir}[/cyan] in your own terminal, or pass "
+            f"--force to overwrite colliding files. [dim]{override_hint(marker)}[/dim]"
+        )
+        return False
+
+    if not interactive:
+        console.print(
+            "[bold red]Collision Error:[/bold red] a backfill needs confirmation. "
+            "Re-run without --yes to confirm interactively, or pass --force to overwrite."
+        )
+        return False
+
+    answer = questionary.confirm(
+        f"Backfill templates into {target_dir}?",
+        default=False,
+    ).ask()
+    if not answer:
+        console.print("[yellow]Aborted:[/] nothing was written.")
+        return False
+    return True
+
+
+def confirm_backfill_git(target_dir: Path, interactive: bool) -> bool:
+    """Confirm git setup as a decision separate from the backfill itself."""
+    if agent_marker() is not None:
+        return False
+
+    if is_git_repository(target_dir):
+        console.print(
+            f"[cyan]Notice:[/] {target_dir} is already a git repository — "
+            f"leaving it untouched (no init, no commit)."
+        )
+        return False
+
+    if not interactive:
+        return False
+
+    answer = questionary.confirm(
+        f"Also set up git in {target_dir} (init and commit everything currently there)?",
+        default=False,
+    ).ask()
+    if not answer:
+        console.print("[cyan]Notice:[/] skipping git setup.")
+        return False
+    return True
+
+
 @app.command(name="new")
 def new_cmd(
     project_name: str = typer.Argument(
@@ -411,6 +554,21 @@ def new_cmd(
     """Scaffold a new project directory and generate standard SDLC boilerplate."""
     interactive = not yes
 
+    # Backfill: the operator pointed `new` at a directory that already holds work. Landing
+    # templates there needs an explicit yes, and wiring up git needs a second one.
+    target_dir = resolve_output(output, project_name)
+    backfill = not force and not is_directory_empty(target_dir)
+
+    if backfill:
+        if not confirm_backfill(target_dir, dry_run=dry_run, interactive=interactive):
+            raise typer.Exit(code=1)
+        if (
+            not dry_run
+            and not no_git
+            and not confirm_backfill_git(target_dir, interactive=interactive)
+        ):
+            no_git = True
+
     try:
         result = scaffold_project(
             project_name=project_name,
@@ -423,6 +581,7 @@ def new_cmd(
             force=force,
             dry_run=dry_run,
             no_git=no_git,
+            backfill=backfill,
         )
     except CollisionError as exc:
         console.print(f"[bold red]Collision Error:[/bold red] {exc}")
@@ -434,12 +593,16 @@ def new_cmd(
     target_dir = result["target_dir"]
     variables = result["variables"]
     rendered = result["rendered_files"]
-    git_init = result["git_initialized"]
+    preserved = result["preserved_files"]
+    git_status = result["git_status"]
 
+    verb = "backfilled" if result["backfilled"] else "scaffolded"
     if dry_run:
-        console.print(f"[bold yellow]DRY RUN:[/] Would create project at [bold]{target_dir}[/]")
+        console.print(
+            f"[bold yellow]DRY RUN:[/] Would have {verb} project at [bold]{target_dir}[/]"
+        )
     else:
-        console.print(f"[bold green]Successfully scaffolded project at:[/] [bold]{target_dir}[/]")
+        console.print(f"[bold green]Successfully {verb} project at:[/] [bold]{target_dir}[/]")
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")
     table.add_column("Relative Path", style="cyan")
@@ -452,11 +615,25 @@ def new_cmd(
 
     console.print(table)
 
+    if preserved:
+        kept = Table(title="Kept (Already Present)", show_header=True, header_style="bold magenta")
+        kept.add_column("Relative Path", style="cyan")
+        for item in sorted(preserved):
+            kept.add_row(str(item.relative_to(target_dir)))
+        console.print(kept)
+
+    git_summary = {
+        "initialized": "Yes (branch main)",
+        "existing": "Left existing repository untouched",
+        "pending": "Would initialize",
+        "skipped": "Skipped",
+    }.get(git_status, "Skipped")
+
     summary = (
         f"[bold]Project Title:[/bold] {variables['ProjectTitle']}\n"
         f"[bold]Author:[/bold] {variables['Author']}\n"
         f"[bold]Date:[/bold] {variables['Date']}\n"
-        f"[bold]Git Initialized:[/bold] {'Yes (branch main)' if git_init else 'Skipped'}"
+        f"[bold]Git:[/bold] {git_summary}"
     )
     console.print(Panel.fit(summary, title="Project Details"))
 
@@ -751,12 +928,14 @@ def review_cmd(
     # ledger are this command's knowledge, not the TUI's, so they are handed over.
     ignored_count = len(load_ignored())
 
-    # Degrades exactly like the `learn` reviewer: --no-tui, TERM=dumb, or a non-TTY
-    # stdout prints the board and stops, so scripted and CI use needs no special flag.
+    # Degrades exactly like the `learn` reviewer: --no-tui, an agent session, TERM=dumb,
+    # or a non-TTY stdout prints the board and stops, so scripted, CI, and agent use
+    # needs no special flag.
     if not tui_enabled(no_tui=no_tui):
         from metaproject.review_tui import review_table
 
         console.print(review_table(results, target, templates_path, ignored_count))
+        print_agent_degradation_notice("the interactive board", "remediate drift")
         return
 
     outcome = run_board(
@@ -949,6 +1128,71 @@ def apply_one(db, proposal_id: int, templates_dir: Path, yes: bool, edited_body=
     return True
 
 
+def rebuild_scan_command(
+    target: Path,
+    all_projects: bool,
+    depth: int,
+    since: Optional[str],
+    model: Optional[str],
+    templates_dir: Path,
+) -> str:
+    """Reconstruct the `learn scan` invocation so the operator can run it verbatim."""
+    parts = ["metaproject", "learn", "scan"]
+    if all_projects:
+        parts.append("--all")
+    else:
+        # Absolute, because the operator may paste this from a different directory.
+        parts.append(str(target.expanduser().resolve()))
+    if depth != 4:
+        parts.extend(["--depth", str(depth)])
+    if since:
+        parts.extend(["--since", since])
+    if model:
+        parts.extend(["--model", model])
+    if templates_dir != Path(load_config().templates_dir).expanduser().resolve():
+        parts.extend(["--templates", str(templates_dir)])
+    return " ".join(parts)
+
+
+def refuse_scan_in_agent_session(
+    target: Path,
+    all_projects: bool,
+    depth: int,
+    since: Optional[str],
+    model: Optional[str],
+    templates_dir: Path,
+) -> None:
+    """Stop a scan an agent started, and say what to do instead.
+
+    A scan reads every project, calls a model, and sends redacted diffs off the machine.
+    Spending an operator's money and egressing their code is their decision to make, and
+    an agent that wants one should surface the command rather than run it. The refusal
+    hands over the exact invocation and points at the proposals already on disk, so the
+    agent has something useful to do either way.
+    """
+    marker = agent_marker()
+    if marker is None:
+        return
+
+    command = rebuild_scan_command(target, all_projects, depth, since, model, templates_dir)
+    console.print(
+        Panel.fit(
+            "[bold]`learn scan` needs an operator.[/bold]\n\n"
+            "It reads every project under the scan root, calls a model, and sends\n"
+            "redacted diffs off this machine — a decision that is the operator's to\n"
+            "make, not an agent's.\n\n"
+            "[bold]Hand them this command:[/bold]\n"
+            f"  [cyan]{command}[/cyan]\n\n"
+            "Proposals already recorded are readable right now:\n"
+            "  [cyan]metaproject learn list[/cyan]\n"
+            "  [cyan]metaproject learn show <id>[/cyan]\n\n"
+            f"[dim]{override_hint(marker)}[/dim]",
+            title="[yellow]Agent Session — Scan Refused[/yellow]",
+        )
+    )
+    raise typer.Exit(code=1)
+
+
 def perform_scan(
     root: Optional[Path],
     all_projects: bool,
@@ -967,6 +1211,15 @@ def perform_scan(
 
     cfg = load_config()
     target = Path(cfg.project_home) if all_projects else (root or Path.cwd())
+
+    refuse_scan_in_agent_session(
+        target=target,
+        all_projects=all_projects,
+        depth=depth,
+        since=since,
+        model=model,
+        templates_dir=templates_dir,
+    )
 
     try:
         result = scan(
@@ -1025,6 +1278,7 @@ def open_review_queue(
             "[dim]Not a terminal (or --no-tui): showing the queue instead of the "
             "reviewer. Act on it with[/dim] [cyan]metaproject learn apply <id>[/cyan]"
         )
+        print_agent_degradation_notice("the acceptance reviewer", "accept a proposal")
         return
 
     result = tui.run_review(learn_db(), rows, templates_dir, console=console)

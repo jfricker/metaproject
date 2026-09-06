@@ -50,6 +50,35 @@ The wizard will prompt for:
 
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
+#### Claude Code Skill
+`init` also installs a bundled Claude Code skill into `~/.claude/skills/metaproject/`. The
+skill teaches an agent when to reach for each command, which forms are safe to run
+unattended (`review --no-tui`, `learn list`, `universe`) and which need a human
+(`learn scan` calls a model; `learn apply` commits to your template store; a backfill asks
+two confirmations). It ships inside the package, so it travels with every install.
+
+- `metaproject init --no-skill` skips it.
+- An installed copy that differs from the release — an older version, or one you edited —
+  is left alone; `metaproject init --force` overwrites it.
+- Set `METAPROJECT_SKILL_DIR` to install somewhere other than `~/.claude/skills/metaproject`.
+
+#### Agent-Session Guards
+The skill tells an agent what to do; the CLI enforces it either way. When `metaproject`
+detects that an agent is driving it — from markers no ordinary login shell sets
+(`CLAUDECODE`, `CLAUDE_CODE`, `AI_AGENT`, `CI`) — it changes behavior:
+
+| | In an agent session |
+|---|---|
+| `review`, `learn` reviewer | Print the board or queue and exit 0, instead of opening the TUI |
+| `learn scan`, bare `learn` | Refused (exit 1); prints the command for you to run |
+| A backfill's confirmations | Refused (exit 1); `--dry-run` still previews |
+
+A TUI opened inside a tool call blocks on keystrokes that never arrive, and `learn scan`
+spends money and sends redacted diffs off the machine — that one is yours to start.
+
+`METAPROJECT_AGENT=0` forces human mode if you are working inside a harness and want your
+TUI back; `METAPROJECT_AGENT=1` forces agent mode.
+
 #### Existing Configuration Protection
 If `~/.metaproject/config.json` is already present, running `metaproject init` will not overwrite your settings or re-run the wizard. Instead, it displays your current configuration along with the status summary of your `universe.db` (total projects, active now count, and last run).
 
@@ -96,7 +125,25 @@ If you have already created a directory or ran `git init`:
 mkdir -p my-app && cd my-app
 metaproject new . --yes
 ```
-> Note: If the directory contains existing files, add `--force` to proceed. Existing non-template files are preserved.
+
+#### Backfilling a Directory That Already Has Work In It
+Pointing `new` at a directory that already contains files is a *backfill*. Metaproject shows
+you what is there and asks for two separate confirmations — one to copy the templates in, and
+one to set up git:
+
+```bash
+cd ~/bin
+metaproject new .
+```
+
+- Files that already exist are **kept as-is** and listed under "Kept (Already Present)"; only
+  the missing template files are written.
+- The project title and slug come from the directory name when you pass `.`.
+- Declining the git prompt still backfills the templates, just without `git init`/commit.
+- If the directory is already a git repository, metaproject leaves it alone entirely — no
+  re-init, no staging, no commit.
+- `--yes` cannot answer these prompts. For automation, pass `--force`, which skips both
+  confirmations and **overwrites** colliding files.
 
 #### Previewing with Dry Run
 To inspect the files and paths that would be generated without writing anything to disk:
