@@ -88,9 +88,9 @@
    - Persists project metadata in SQLite (`~/.metaproject/universe.db`) and reconciles missing/deleted projects.
    - Exposes summary metrics via `metaproject universe summary` and `get_universe_summary()`.
 
-5. **Compliance & Drift Detection (`src/metaproject/review.py`)**:
-   - Audits projects against active templates in `~/.metaproject/templates/`.
-   - Identifies missing governance files and structural drift across workspace repositories.
+5. **Compliance & Drift Detection (`src/metaproject/review.py`, `src/metaproject/review_tui.py`)**:
+   - `review.py`: audits projects against active templates in `~/.metaproject/templates/`, identifying missing governance files and content drift across workspace repositories. One audit is one `ReviewResult` — a frozen dataclass that is the single declaration of the schema, storing only what the scan observed and deriving `updatable`, `is_compliant` ("nothing is missing") and `is_clean` ("nothing missing and nothing drifted") as properties. Every comparison renders the template with the project's own variables first (shared with `learn.collect`), so substituted placeholders are never reported as drift. It also owns the two remediations — `deploy_entry` writes a missing deliverable, `update_entry` rewrites a drifted one, and neither will do the other's job — and the `~/.metaproject/review-ignore.json` ledger of projects permitted to stay out of compliance.
+   - `review_tui.py`: the `rich` compliance board behind `metaproject review`. It opens with a summary header — the aggregate score over the scan root and the template store it was measured against — above the table. The `Compliance` column has three states, each named for the defect it reports and each carrying a glyph as well as a colour (`✓ CLEAN` / `~ DRIFTED` / `! INCOMPLETE`, the last winning when a project is both), so the verdict survives `NO_COLOR` and a pipe; `Missing` and `Drifted` are counts rather than file lists because the board is a triage view. Both screens read verb-first (`u 3`, `d 2`, `i 4`, `o 1`), with the board's old number-first form (`3u`) still accepted and `?` documenting both — `OK` dismisses a project for the session and it is checked again next review, `Ignore` is durable and it is not; `u <n>` and `d <n>` are the same door onto a detail screen listing that project's missing and drifted files, where each write calls the same `review.py` function a non-interactive path would, so there is no board-only code path. A bare `u`/`d` writes nothing and `u all`/`d all` are gated on a typed confirmation; a remediation batch resolves template variables once before its first write. A viewed diff stays pinned until `c` closes it, and one taller than the screen goes to the pager. Both loops run on the alternate screen so the operator's scrollback survives, and the whole thing degrades to the printed board (header included) without a TTY, with `--no-tui`, or under `TERM=dumb`.
 
 6. **Template Learning Pipeline (`src/metaproject/learn/`)**:
    - `collect.py`: renders each template with a project's own variables and diffs it against the project's file, so substituted placeholders are not mistaken for novel content.
@@ -114,7 +114,8 @@
 - `src/metaproject/variables.py`: Template variable resolution.
 - `src/metaproject/universe.py`: Workspace universe scanning and classification.
 - `src/metaproject/db.py`: SQLite database management for the universe.
-- `src/metaproject/review.py`: Template drift detection and compliance.
+- `src/metaproject/review.py`: Template drift detection, compliance, remediation and the ignore list.
+- `src/metaproject/review_tui.py`: The `rich` compliance board and its per-project detail screen.
 - `src/metaproject/learn/`: Corroborated-proposal pipeline (`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui`).
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.

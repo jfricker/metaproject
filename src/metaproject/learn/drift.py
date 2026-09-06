@@ -28,6 +28,7 @@ This module reads `review` and writes nothing. `review.py` itself is untouched.
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -38,11 +39,18 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    Union,
 )
 
 from metaproject.learn.score import candidate_key
 
-Reviewer = Callable[..., Mapping[str, Any]]
+if TYPE_CHECKING:
+    from metaproject.review import ReviewResult
+
+Reviewer = Callable[..., Union["ReviewResult", Mapping[str, Any]]]
+"""What `collect_drift` will accept back. `review` returns a `ReviewResult`; an injected
+stand-in is allowed to return the mapping that shape was built from, and `_as_result`
+normalizes the two before anything here reads a field."""
 
 DriftKey = Tuple[str, str]
 """(absolute project path, project-relative target file)."""
@@ -103,11 +111,27 @@ EMPTY_DRIFT = DriftSignal()
 """The identity signal: scores exactly as consulting `review` not at all."""
 
 
-def _review_project(project_dir: Path, templates_dir: Optional[Path]) -> Mapping[str, Any]:
+def _review_project(project_dir: Path, templates_dir: Optional[Path]) -> "ReviewResult":
     """Call `review` for one project. Imported late so `review` stays independent."""
     from metaproject.review import review_project
 
     return review_project(project_dir, templates_dir)
+
+
+def _as_result(result: Any) -> Optional["ReviewResult"]:
+    """One type in, one type out — or nothing, for a reviewer that answered with neither.
+
+    An injected reviewer is a test double as often as it is `review` itself, so a plain
+    mapping of the same shape is adopted rather than refused. Anything else is dropped
+    on the same terms a raised exception is: a bounded bonus is not worth a scan.
+    """
+    from metaproject.review import ReviewResult
+
+    if isinstance(result, ReviewResult):
+        return result
+    if isinstance(result, Mapping):
+        return ReviewResult.from_mapping(result)
+    return None
 
 
 def collect_drift(
@@ -129,20 +153,19 @@ def collect_drift(
     for project_dir in project_dirs:
         path = Path(project_dir).expanduser().resolve()
         try:
-            result = run(path, templates)
+            result = _as_result(run(path, templates))
         except Exception:
             continue
-        if not isinstance(result, Mapping):
+        if result is None:
             continue
 
-        key_path = str(result.get("project_path") or path)
-        absent = result.get("missing_files") or []
-        if absent:
-            missing[key_path] = frozenset(str(name) for name in absent)
+        key_path = result.project_path or str(path)
+        if result.missing_files:
+            missing[key_path] = frozenset(result.missing_files)
 
-        for target_file, diff in (result.get("diffs") or {}).items():
-            found = added_lines(str(diff))
+        for target_file, diff in result.diffs.items():
+            found = added_lines(diff)
             if found:
-                lines[(key_path, str(target_file))] = frozenset(found)
+                lines[(key_path, target_file)] = frozenset(found)
 
     return DriftSignal(lines=lines, missing=missing)

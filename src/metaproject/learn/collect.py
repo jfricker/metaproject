@@ -79,6 +79,18 @@ def _resolved_author(config_author: str) -> str:
     return resolve_author(config_author or None, None)
 
 
+def _drop_unfilled_placeholder(value: str) -> str:
+    """Treat a still-unfilled `{Placeholder}` as absent rather than as real content.
+
+    A freshly scaffolded project's `intent.md` still carries `{Problem description}`
+    under `## Problem`, and `universe.extract_description` reads it literally. Feeding
+    that back in as a variable renders the placeholder *into* the comparison text, so
+    every such project appears to have drifted from the very template it came from.
+    """
+    text = (value or "").strip()
+    return "" if text.startswith("{") and text.endswith("}") else text
+
+
 def project_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
     """Resolve the template variables a project would have been scaffolded with.
 
@@ -90,8 +102,8 @@ def project_variables(project_dir: Path, config: Optional[Config] = None) -> Dic
     author = _resolved_author(config.author if config else "")
     return collect_variables(
         project_name=project_dir.name,
-        title=extract_title(project_dir),
-        description=extract_description(project_dir),
+        title=_drop_unfilled_placeholder(extract_title(project_dir)),
+        description=_drop_unfilled_placeholder(extract_description(project_dir)),
         author=author,
         config=config,
         interactive=False,
@@ -159,7 +171,7 @@ def iter_target_files(project_dir: Path, targets: Sequence[str]) -> List[str]:
     return sorted(set(found))
 
 
-def _render_template(template_file: Path, variables: Dict[str, Any]) -> str:
+def render_template(template_file: Path, variables: Dict[str, Any]) -> str:
     """Render a template with a project's variables, falling back to its raw text."""
     raw = template_file.read_text(encoding="utf-8", errors="replace")
     try:
@@ -228,7 +240,7 @@ def collect_project(
             template_text = ""
         else:
             kind = "edit"
-            template_text = normalize_text(_render_template(template_file, variables))
+            template_text = normalize_text(render_template(template_file, variables))
 
         added = _added_lines(template_text, project_text)
         if not added:

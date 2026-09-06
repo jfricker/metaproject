@@ -685,14 +685,61 @@ def review_cmd(
         "--depth",
         help="Maximum subdirectory traversal depth for --all (default: 1).",
     ),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="Print the board and exit instead of opening the interactive actions.",
+    ),
+    show_ignored: bool = typer.Option(
+        False,
+        "--show-ignored",
+        help="Include projects on the ignore list in the review.",
+    ),
+    list_ignored: bool = typer.Option(
+        False,
+        "--list-ignored",
+        help="Print the ignore list and exit.",
+    ),
+    unignore: bool = typer.Option(
+        False,
+        "--unignore",
+        help="Remove the target project from the ignore list and exit.",
+    ),
 ) -> None:
     """Analyze projects against central templates to detect missing files and drift."""
-    from metaproject.review import review_project, review_workspace
+    from metaproject.learn.tui import tui_enabled
+    from metaproject.review import (
+        load_ignored,
+        review_project,
+        review_workspace,
+        unignore_project,
+    )
+    from metaproject.review_tui import run_board
 
     target = (project_dir or Path.cwd()).resolve()
 
+    if list_ignored:
+        entries = load_ignored()
+        if not entries:
+            console.print("[dim]No projects are being ignored.[/dim]")
+            return
+        console.print(Panel("\n".join(entries), title="Ignored projects", border_style="dim"))
+        return
+
+    if unignore:
+        if unignore_project(target):
+            console.print(f"[green]No longer ignored:[/green] {target}")
+        else:
+            console.print(f"[yellow]{target} was not on the ignore list.[/yellow]")
+        return
+
     if all_projects:
-        results = review_workspace(target, templates_path, max_depth=depth)
+        results = review_workspace(
+            target,
+            templates_path,
+            max_depth=depth,
+            include_ignored=show_ignored,
+        )
     else:
         results = [review_project(target, templates_path)]
 
@@ -700,35 +747,43 @@ def review_cmd(
         console.print(f"[yellow]No projects discovered for review in {target}[/yellow]")
         return
 
-    table = Table(
-        title=f"Project Drift & Governance Review ({len(results)} projects)",
-        show_header=True,
-        header_style="bold magenta",
+    # The board leads with the score and what was audited; the scan root and the ignore
+    # ledger are this command's knowledge, not the TUI's, so they are handed over.
+    ignored_count = len(load_ignored())
+
+    # Degrades exactly like the `learn` reviewer: --no-tui, TERM=dumb, or a non-TTY
+    # stdout prints the board and stops, so scripted and CI use needs no special flag.
+    if not tui_enabled(no_tui=no_tui):
+        from metaproject.review_tui import review_table
+
+        console.print(review_table(results, target, templates_path, ignored_count))
+        return
+
+    outcome = run_board(
+        results,
+        templates_path,
+        console=console,
+        scan_root=target,
+        ignored_count=ignored_count,
     )
-    table.add_column("Project", style="bold cyan")
-    table.add_column("Compliance", justify="center")
-    table.add_column("Missing Files", style="red")
-    table.add_column("Template Drift", style="yellow")
 
-    for res in results:
-        compliance = (
-            "[bold green]PASS[/bold green]" if res["is_compliant"] else "[bold red]DRIFT[/bold red]"
-        )
-        missing = ", ".join(res["missing_files"]) if res["missing_files"] else "[dim]None[/dim]"
-        drift_files = ", ".join(res["diffs"].keys()) if res["diffs"] else "[dim]None[/dim]"
-        table.add_row(res["project_name"], compliance, missing, drift_files)
-
-    console.print(table)
-
-    # Print recommendations if any
-    all_recs = []
-    for res in results:
-        for rec in res["recommendations"]:
-            all_recs.append(f"[bold]{res['project_name']}:[/bold] {rec}")
-
-    if all_recs:
-        rec_text = "\n".join(f"• {r}" for r in all_recs)
-        console.print(Panel(rec_text, title="Actionable Recommendations", border_style="yellow"))
+    # Printed to the normal screen the alternate screen just restored. `OK 2` on its own
+    # was unreadable: the whole point of OK is that it recorded nothing, and a closing
+    # line that does not say so invites the operator to read it as Ignore.
+    console.print()
+    console.print(f"[bold]Review complete[/bold] [dim]·[/dim] {target}")
+    console.print(f"  Deployed  {len(outcome.deployed)} missing deliverable(s)")
+    console.print(f"  Updated   {len(outcome.updated)} drifted file(s)")
+    console.print(
+        f"  Ignored   {len(outcome.ignored)} project(s) "
+        "[dim]— recorded; not reviewed again until --unignore[/dim]"
+    )
+    console.print(
+        f"  OK        {len(outcome.dismissed)} project(s) "
+        "[dim]— this session only; audited again on the next review[/dim]"
+    )
+    for problem in outcome.errors:
+        console.print(f"[red]{problem}[/red]")
 
 
 # --------------------------------------------------------------------------- learn

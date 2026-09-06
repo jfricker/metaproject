@@ -99,7 +99,7 @@ def test_full_lifecycle_and_performance(
         ],
     )
     assert review_res.exit_code == 0
-    assert "PASS" in review_res.output
+    assert "DRIFTED" in review_res.output
 
     # 5. LEARN
     # The legacy line-diff harvester is deleted (plan.md §1.1). As of Phase 5 a bare

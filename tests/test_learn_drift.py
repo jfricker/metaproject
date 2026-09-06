@@ -113,6 +113,36 @@ def test_collect_drift_records_missing_files_without_scoring_them(workspace) -> 
     assert not signal.reports(kiln, "CLAUDE.md", ["anything at all"])
 
 
+def test_an_injected_reviewer_may_answer_with_a_plain_mapping(workspace) -> None:
+    """The boundary `ReviewResult.from_mapping` exists for: a stand-in returning a dict.
+
+    `review` returns a `ReviewResult`, but `reviewer` is injectable precisely so a caller
+    can substitute something cheaper, and a dict of the same shape must not be silently
+    read as no findings at all.
+    """
+    atlas = workspace.projects / "atlas"
+
+    def dict_reviewer(project_dir, templates_dir=None):
+        return {
+            "project_path": str(project_dir),
+            "missing_files": ["CLAUDE.md"],
+            "diffs": {"AGENTS.md": "+++ a/AGENTS.md\n+- Run `make check` before every commit.\n"},
+        }
+
+    signal = collect_drift([atlas], workspace.templates, reviewer=dict_reviewer)
+
+    assert signal.missing[str(atlas)] == frozenset({"CLAUDE.md"})
+    assert signal.reports(str(atlas), "AGENTS.md", ["- Run `make check` before every commit."])
+
+
+def test_a_reviewer_answering_with_neither_shape_is_skipped(workspace) -> None:
+    """Anything that is not a result is dropped, on the same terms an exception is."""
+    projects = sorted(p for p in workspace.projects.iterdir() if p.is_dir())
+    signal = collect_drift(projects, workspace.templates, reviewer=lambda *_: "not a result")
+    assert signal.pairs == frozenset()
+    assert not signal.missing
+
+
 def test_a_failing_review_is_not_fatal_to_a_scan(workspace) -> None:
     """`learn` must not lose a whole scan because one project could not be reviewed."""
 

@@ -160,7 +160,9 @@ metaproject universe --list --format csv
 
 ### 4. Auditing Template Drift (`metaproject review`)
 
-As central templates evolve or projects customize their workflow, `metaproject review` checks compliance against the latest standard deliverables and detects structural drift in shared governance files (like `AGENTS.md`):
+As central templates evolve or projects customize their workflow, `metaproject review`
+checks compliance against the latest standard deliverables and detects content drift in
+every standard file that a template backs:
 
 ```bash
 # Review current project
@@ -168,13 +170,96 @@ metaproject review
 
 # Audit all projects across subdirectories
 metaproject review ~/Projects --all
+
+# Descend further than the default single level
+metaproject review ~/Projects --all --depth 3
 ```
 
-Output displays:
-- **Compliance Status**: `PASS` if all standard deliverables exist, or `DRIFT` if missing.
-- **Missing Files**: Explicitly flags any missing files (e.g. `HANDOFF.md`, `CLAUDE.md`).
-- **Template Drift**: Highlights modifications in governance files against standard templates.
-- **Actionable Recommendations**: Clear next steps to bring projects up to date.
+Each template is rendered *with that project's own variables* before it is compared, so a
+project's own name and description are never mistaken for drift.
+
+#### The compliance board
+
+`review` opens with the score and what was audited, prints the
+`Project Drift & Governance Review` table, and on a terminal stays open on it:
+
+```
+╭─ Project Drift & Governance Review ───────────────────────────────────────────╮
+│ 3 projects · ✓ CLEAN 1 · ~ DRIFTED 1 · ! INCOMPLETE 1 · 2 on the ignore list  │
+│ scanned /Users/you/Projects against /Users/you/.metaproject/templates         │
+╰───────────────────────────────────────────────────────────────────────────────╯
+```
+
+| Column | Meaning |
+|---|---|
+| `#` | Row number — the handle you type to select a project. |
+| `Compliance` | `CLEAN`, `DRIFTED` or `INCOMPLETE` — see below. |
+| `Missing` | How many standard deliverables the project does not have. |
+| `Drifted` | How many existing files no longer match their rendered template. |
+
+| State | Meaning |
+|---|---|
+| `✓ CLEAN` | Nothing missing, nothing drifted — the project matches its templates exactly. |
+| `~ DRIFTED` | Every deliverable exists, but one or more have diverged in content. |
+| `! INCOMPLETE` | At least one standard deliverable is missing. A project that is both incomplete and drifted reads `INCOMPLETE`. |
+
+Each state carries a **glyph as well as a colour**, so the verdict survives `NO_COLOR`, a
+piped log and a colourblind reader.
+
+The board is a triage view: it tells you *which project to open next*, and the file names
+themselves are on the detail screen one keystroke away.
+
+Commands are **verb first**, the same on both screens: `u 2`, `d 2`, `i 2`, `o 2` (a bare
+`2` opens the project). The older number-first forms — `2u`, `2 u` — still work, and `?`
+prints the whole command list.
+
+| Action | What it does |
+|---|---|
+| **Open** (`u <n>`, `d <n>`, `<n>`) | Opens the project's detail screen, where its missing and drifted files are listed and every write happens. |
+| **Ignore** (`i <n>`) | Records the project as allowed to stay out of compliance. It leaves the board **and is not checked again** until `--unignore`. |
+| **OK** (`o <n>`) | Dismisses the project from this board. Nothing is recorded, so it **is checked again next review**. |
+
+**OK and Ignore are different decisions.** OK is "not now" and lasts only for this
+session; Ignore is "not ever" and is written to the ignore ledger. The closing summary
+printed when you quit says which of the two each project got.
+
+The detail screen lists the project's missing and drifted deliverables, numbered, and is
+where the writes happen:
+
+| Command | What it does |
+|---|---|
+| `d <n>` / `d all` | Deploy the numbered missing deliverable, or every one. `d all` asks first. |
+| `u <n>` / `u all` | Update the numbered drifted file from its rendered template, or every one. Overwrites, and `u all` asks first. |
+| `v <n>` | Show the unified diff for a drifted file. It stays pinned while you act on it; one taller than the screen opens in your pager. |
+| `v` | The same, when exactly one file has drifted. |
+| `c` | Close the pinned diff. |
+| `o` | OK — dismiss this project for now; it is checked again next review. |
+| `i` | Ignore this project; it is not checked again until `--unignore`. |
+| `?` | Print the command list. |
+| `b` | Back to the board. |
+| `q` | Quit. |
+
+A bare `d` or `u` **writes nothing**: it asks you to name a row or say `all`, because
+"update this project" is not a thing you can mean by accident.
+
+`Deploy` never overwrites an existing file and `Update` never creates a missing one —
+they are separate verbs precisely so a reviewed file cannot be silently clobbered.
+
+Both screens run on the terminal's alternate screen, so quitting hands your scrollback
+back exactly as it was.
+
+#### Managing the ignore list
+
+```bash
+metaproject review --list-ignored              # show what is being skipped
+metaproject review ~/Projects/legacy --unignore  # start reviewing it again
+metaproject review ~/Projects --all --show-ignored  # audit everything, ignore list included
+```
+
+#### Scripted use
+
+The board degrades exactly like the `learn` reviewer — `--no-tui`, `TERM=dumb`, or a
+non-TTY stdout prints the table and exits — so CI and pipelines need no special flag.
 
 ---
 
