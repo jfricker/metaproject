@@ -116,17 +116,20 @@ def extract_description(project_dir: Path) -> str:
         try:
             lines = readme_path.read_text(encoding="utf-8", errors="ignore").splitlines()
             found_header = False
+            in_code_fence = False
             for line in lines:
                 clean = line.strip()
+                if clean.startswith("```"):
+                    # Track the fence rather than only skipping its delimiters, or the
+                    # first shell command in a Quick Start block becomes the description.
+                    in_code_fence = not in_code_fence
+                    continue
+                if in_code_fence:
+                    continue
                 if clean.startswith("# "):
                     found_header = True
                     continue
-                if (
-                    found_header
-                    and clean
-                    and not clean.startswith("#")
-                    and not clean.startswith("```")
-                ):
+                if found_header and clean and not clean.startswith("#"):
                     return clean
         except Exception:
             pass
