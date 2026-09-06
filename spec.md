@@ -109,7 +109,8 @@ metaproject/
 │       ├── git.py              # Git initialisation helpers
 │       ├── universe.py         # Workspace scanner, classification & metadata extraction
 │       ├── db.py               # SQLite schema, connections, summary & upsert queries
-│       ├── review.py           # Drift review engine
+│       ├── review.py           # Drift review engine, remediation & ignore list
+│       ├── review_tui.py       # Compliance board + per-project detail screen
 │       ├── learn/               # Template learning pipeline
 │       │   ├── __init__.py      # Public API: scan(), review(), apply(), reject()
 │       │   ├── collect.py       # Render-and-diff evidence gathering per project × target
@@ -132,7 +133,7 @@ metaproject/
     ├── test_learn_store.py     # Proposal ledger, suppression, resurfacing tests
     ├── test_learn_apply.py     # Template patching and commit tests
     ├── test_learn_tui.py       # Keybinding-to-subcommand equivalence tests
-    ├── test_review.py          # Drift review tests
+    ├── test_review.py          # Drift review, remediation, ignore list & board tests
     ├── test_scaffold.py        # Scaffolding & init guard tests
     ├── test_templates.py       # Template engine tests
     └── test_universe.py        # Universe scanning & summary tests
@@ -262,20 +263,86 @@ Scaffolds a new project directory and generates boilerplate files.
   ```
 
 ### 5.3 `metaproject review`
-Analyzes an existing project against current templates to identify drift or missing files.
+Analyzes an existing project against current templates to identify drift or missing files, and offers the operator the remediation for each finding.
 
 - **Usage**:
   ```bash
-  metaproject review [project-dir] [--all] [--templates <path>]
+  metaproject review [project-dir] [--all] [--depth N] [--templates <path>] [--no-tui]
+  metaproject review [project-dir] --unignore
+  metaproject review --list-ignored
   ```
 - **Arguments & Options**:
   - `<project-dir>`: Project directory to review (default: current working directory `./`).
   - `--all`: Review all subdirectories of the target directory. When `--all` is specified, traversal continues descending into subdirectories even if the root itself is a project root.
+  - `--depth N`: Maximum subdirectory traversal depth for `--all` (default: `1`, i.e. immediate subdirectories only).
   - `--templates <path>`: Template directory to compare against (default: `~/.metaproject/templates`).
-- **Output**:
-  - Missing standard files (e.g. project lacks `HANDOFF.md` or `docs/`).
-  - Structural diffs between current project files and the latest template version.
-  - Actionable recommendations to update files.
+  - `--no-tui`: Print the board and exit instead of opening the interactive actions.
+  - `--show-ignored`: Include ignored projects in the audit.
+  - `--list-ignored`: Print the ignore list and exit.
+  - `--unignore`: Remove the target project from the ignore list and exit.
+
+#### 5.3.1 Drift detection
+Every standard deliverable that a template backs is compared, not only `AGENTS.md`. The template is **rendered with that project's own variables** before the comparison (the same rule `learn` follows — see §5.4.2), so placeholder substitution is never reported as drift. Directory deliverables (`docs`) are a presence check only.
+
+A review reports one `ReviewResult` per project (`review.py`). It stores only what the scan observed — `project_name`, `project_path`, `templates_dir`, `missing_files`, `deployable`, `diffs`, `is_ignored` — and derives everything it concludes: `updatable` is the sorted keys of `diffs`, and the two verdicts are properties. A verdict that can be stored is a verdict that can be stored wrong.
+
+`is_compliant` means "nothing is missing". Drift is reported but is not by itself non-compliance: a project is expected to add to its templates. `is_clean` is the stronger claim — nothing missing *and* nothing drifted — and it is what the `Compliance` column's three states are drawn from:
+
+| State | Condition |
+|---|---|
+| `✓ CLEAN` | `is_clean` — the project matches its rendered templates exactly. |
+| `~ DRIFTED` | `is_compliant` but drifted — every deliverable exists, some have diverged in content. |
+| `! INCOMPLETE` | A standard deliverable is missing. It wins over `DRIFTED`: a file that is not there cannot be reconciled, so it is the defect the row is named for. |
+
+Each state word names the *defect*, not a grade — a row that says `DRIFTED` has drifted and a row that says `INCOMPLETE` is missing something. Each also carries a **glyph**, because a state told apart only by colour is not told apart at all under `NO_COLOR`, in a pipe, or by a colourblind operator; `rich` strips the style and the character keeps the meaning. The same glyphs mark the per-file `missing` / `drifted` states on the detail screen.
+
+#### 5.3.2 The compliance board
+The `Project Drift & Governance Review` table is the operator's working surface, and it is a **triage** view: it answers "which project do I open next", not "which files". Its columns are a row number, `Project`, `Compliance`, and right-aligned `Missing` and `Drifted` **counts** — the file names live on the detail screen, numbered and actionable, so the board never carries a wrapping list of them.
+
+Above the table sits the **summary header**: the aggregate (total projects, how many are clean, drifted and incomplete, and how many are on the ignore list) over the scan context (the root that was scanned and the template store it was compared against). A governance report that opens with a bare row count makes the operator total the column themselves, and a verdict that does not name what it measured cannot be acted on. `review_cmd` supplies the scan root and the ignore count; every part is optional and the header degrades a line at a time, so a caller that knows none of it still gets a board.
+
+Commands are **verb first on both screens** (`u 3`, `d 2`, `i 4`, `o 1`; a bare `3` opens the project), matching the detail screen, vim and git, so muscle memory survives the screen transition. The board also still accepts its former number-first grammar (`3u`, `3 u`) — both forms parse to the same selection — and `?` prints the verb list and both grammars.
+
+| Action | Effect |
+|---|---|
+| **Open** (`u <n>`, `d <n>`, `<n>`) | Open the project's detail screen. `u` and `d` are the same door: they were once two "focuses" that dimmed a different column and changed no behaviour. |
+| **Ignore** (`i <n>`) | Record the project as permitted to stay out of compliance. It leaves the board immediately and is excluded from **every future review** until `--unignore`. |
+| **OK** (`o <n>`) | Dismiss the project from this board. Nothing is recorded, so it **is checked again on the next review**. |
+
+**OK and Ignore must not be conflated.** They are the two halves of "I do not want to look at this": OK is session-local and unrecorded, Ignore is durable and written to the ledger. `BoardResult.actioned` counts writes and Ignore decisions but never dismissals, because a dismissal changed nothing. The closing summary `review_cmd` prints on exit states the difference in words rather than leaving `OK 2` to be misread as a recorded decision.
+
+#### 5.3.3 The detail screen
+Lists the selected project's missing and drifted deliverables as one continuously numbered list, missing first. Commands:
+
+| Command | Effect |
+|---|---|
+| `d <n>` / `d all` | Deploy the numbered missing deliverable, or every one. `d all` is gated on a typed confirmation. |
+| `u <n>` / `u all` | Update the numbered drifted file from its rendered template (overwrites), or every one. `u all` is gated on a typed confirmation that names the loss. |
+| `v <n>` | Show the unified diff for a drifted file. It stays **pinned** until `c` closes it or the write it argued for lands; a diff taller than the screen goes to `console.pager()` first. |
+| `v` | The same, when exactly one file has drifted — the only row on offer is not an ambiguous request. |
+| `c` | Close the pinned diff. |
+| `o` | OK — dismiss this project for now; checked again next review. |
+| `i` | Ignore this project; not checked again until `--unignore`. |
+| `?` | Print the command list. |
+| `b` | Back to the board. |
+| `q` | Quit. |
+
+A bare `d` or `u` **selects nothing and writes nothing**; it asks the operator to name a row or say `all`. Folding a missing argument into `all` is how a single keystroke came to overwrite every drifted file in a project unasked.
+
+**Deploy** refuses to write over an existing path and **Update** refuses to create a missing one; they are separate verbs so that a reviewed file cannot be silently clobbered. A batch resolves template variables **once, before its first write**: resolving per file would let an early write change how a later one renders, and the board would then report files it had just written as drifted.
+
+Every action is durable when it is typed — nothing is buffered, and quitting loses nothing. The board is an interface to `review.py`'s engine, never a second implementation of it.
+
+#### 5.3.3.1 Presentation
+Both loops run on the terminal's **alternate screen** (`console.screen()`), so the session ends with the operator's scrollback intact rather than scrolled away by `console.clear()`. The **notice line is painted every frame**, notice or not: it holds its position so the key bar never moves, and a message survives until a command produces a new one instead of being wiped by the next repaint.
+
+The palette is deliberately narrow — cyan is the one structural accent (panels, project names, paths), red/yellow/green mean compliance state and nothing else, and bold marks the *key* an operator types rather than the label beside it. Seven competing channels made none of them mean anything.
+
+#### 5.3.4 The ignore list
+A JSON ledger at `~/.metaproject/review-ignore.json` (`{"version": 1, "projects": [...]}`), holding absolute project paths. A malformed or unreadable ledger is treated as empty rather than raised: an operator who cannot parse their own ignore file must still be able to run a review.
+
+#### 5.3.5 Degradation
+Identical to `learn`'s reviewer (§5.4.5): `--no-tui`, `TERM=dumb`, or a non-TTY stdout prints the board and exits. Scripted and CI use therefore needs no special flag.
 
 ### 5.4 `metaproject learn`
 

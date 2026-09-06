@@ -256,8 +256,9 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   - `src/metaproject/learn/drift.py` (new): `review` findings reduced to a scoring
     signal. Public surface: `added_lines`, `DriftSignal` (`lines`, `missing`, `pairs`,
     `reports`), `EMPTY_DRIFT`, `collect_drift`. It calls `review.review_project` behind
-    a late import and a `reviewer=` seam, and **`src/metaproject/review.py` is
-    byte-unchanged** (R10).
+    a late import and a `reviewer=` seam, and **`src/metaproject/review.py` was
+    byte-unchanged** by this phase (R10). It now reads a `ReviewResult`, normalizing an
+    injected reviewer's answer through `ReviewResult.from_mapping` first.
   - `src/metaproject/learn/score.py`: added `DRIFT_BOOST = 0.25`, `drift_factor()`, a
     `drift: bool = False` parameter on `weigh_project`, and a `drift: Optional[
     DriftLookup]` parameter on `group_candidates`. `DriftLookup` is a `Protocol`, so
@@ -326,9 +327,87 @@ TDD per plan.md/AGENTS.md. Tests written before implementation for each delivera
   pack/object files. This was a real regression caught by `test_e2e.py`, not a
   hypothetical — future template-tree walkers (e.g. `learn`'s `collect.py`) need the same
   guard.
-- `review.get_template_source` iterates `templates_dir.iterdir()` (top-level only) and
-  name-matches via `transform_template_name`; `.git` never matches a standard deliverable
-  name so it's harmless there — no change needed.
+- `review.resolve_template_entry` walks the template store component by component,
+  name-matching via `transform_template_name`, and explicitly skips `.git` — it must,
+  because unlike the old top-level-only lookup it can descend. It returns directories as
+  well as files, which is what makes `docs` deployable as a rendered tree;
+  `get_template_source` is now a thin alias over it.
+- **`review` renders before diffing too.** `review.review_project` compares against
+  `collect.render_template(...)` output, not raw template text — the same invariant
+  `learn` follows. A raw comparison marks every scaffolded project as drifted on every
+  file that carries a placeholder; `test_review_scaffolded_project_reports_no_drift`
+  guards it.
+- **A remediation batch resolves variables once, before its first write**
+  (`review.resolve_variables`). `extract_title` / `extract_description` read the project's
+  own `README.md` and `intent.md`, so resolving per file lets a file written early in a
+  Deploy batch change how the next one renders — and the board then reports as drifted the
+  files it just wrote. `test_deployed_files_do_not_immediately_report_as_drifted` guards
+  the fixed point.
+- **Deploy and Update are separate verbs on purpose.** `deploy_entry` refuses a path that
+  exists; `update_entry` refuses one that does not. Merging them into a single "sync"
+  is how a reviewed file gets silently clobbered.
+- **OK and Ignore are separate decisions on purpose.** `OK` (`ACTION_OK`) is session-local
+  and writes nothing, so the project is audited again on the next review; `Ignore` writes
+  to `review-ignore.json` and the project is not audited again until `--unignore`.
+  Recording a dismissal, or counting one in `BoardResult.actioned`, silently converts
+  "not now" into "not ever" — the one behaviour the two actions exist to keep apart.
+- **The result schema is `review.ReviewResult`, declared once.** It is frozen and stores
+  only observations (`missing_files`, `deployable`, `diffs`, `is_ignored`, plus the three
+  path/name fields); `updatable` and both verdicts are properties, so no consumer can be
+  handed a record whose conclusions disagree with its evidence, and a typo'd field is a
+  type error rather than a `KeyError` at paint time. `ReviewResult.from_mapping` is the
+  one boundary where a result-shaped dict is still accepted — `learn.drift` takes an
+  injected `reviewer`, and a stand-in for it returns a dict.
+- `is_clean` (nothing missing **and** nothing drifted) is a stronger claim than
+  `is_compliant` (nothing missing); it was `is_pristine` until the states were renamed,
+  and the engine's word now matches the board's. The `Compliance` column reads
+  `CLEAN` / `DRIFTED` / `INCOMPLETE` off the pair, and each word names the defect rather
+  than grading the project: the old `PASS` was shown for a drifted project and the old
+  `DRIFT` for one that was missing files, while `Drift` was simultaneously a column
+  heading.
+- The board carries **counts**, not file names. It is a triage view answering "which
+  project next"; the names are on the detail screen, numbered and actionable, and
+  comma-joining them onto the board wrapped every row while duplicating that screen.
+- Both screens read **verb-first** (`u 3`, `d 2`), because a board that was number-first
+  (`3u`) while the detail screen was verb-first broke muscle memory at every transition.
+  `parse_board_command` still accepts `3u` and `3 u` silently — same result, no notice —
+  so scripted input and habit keep working.
+- **A state is never signalled by colour alone.** `CLEAN` / `DRIFTED` / `INCOMPLETE` and
+  the per-file `missing` / `drifted` each carry a glyph (`✓`, `~`, `!`), so the verdict
+  reaches a colourblind operator, a `NO_COLOR` terminal and a piped board intact. Detect
+  nothing by hand: `rich` strips the style and the character survives on its own.
+- **One accent, and three colours that mean exactly one thing.** Cyan is the structural
+  accent (panels, project names, paths); red/yellow/green are compliance state and
+  nothing else; bold marks the *key* an operator types, never the label beside it. The
+  magenta headers, cyan names, dim, and wholly-bold key bars were seven channels
+  competing to be the important one, which left none of them meaning anything.
+- The board opens with a **summary header**: the aggregate score over the scan root and
+  the template store compared against. Its arguments are all optional and it degrades a
+  line at a time, and the store falls back to the `templates_dir` the results themselves
+  record — so the header can never name a store the audit did not use.
+- Both loops run on the **alternate screen** (`alt_screen`), not `console.clear()`, which
+  scrolled the operator's session history away for good. It is not re-entrant in `rich`:
+  the helper no-ops when `console.is_alt_screen` is already true, because an inner
+  `run_detail` exiting would otherwise drop the board back to the normal screen
+  mid-session. `clear=False` — how every test drives the loops — keeps the inline path.
+- The **notice line is painted every frame**, notice or not, and survives until a command
+  produces a new one. Clearing it after a single repaint meant a failed write scrolled
+  past unread, and painting it conditionally moved the key bar down the screen.
+- A **viewed diff stays pinned** until `c` closes it or the write it argued for lands.
+  Resetting `diff_for` per frame made the evidence vanish at the exact moment the
+  operator typed the `u 3` it justified. A diff taller than the screen goes to
+  `console.pager()` — but only when `clear=True` **and** stdout is a TTY, or a scripted
+  session would block on `less` forever.
+- Board `u <n>` and `d <n>` are **one door**. The old `focus` parameter dimmed a column
+  of the detail table and changed no behaviour whatsoever; every verb on that screen
+  behaved identically under both.
+- `collect.project_variables` drops a still-unfilled `{Placeholder}` extracted from a
+  project's own `intent.md`/`README.md`. Without this, a scaffolded project's
+  `## Problem` section feeds `{Problem description}` back in as a variable value and the
+  project appears drifted from the template it came from.
+- `universe.extract_description` tracks fenced code blocks rather than only skipping the
+  fence delimiters — otherwise the first shell command in a README Quick Start block
+  becomes the project description, and then renders into every comparison.
 - `db.init_schema` pattern: each table is independently guarded by its own
   `if "<table>" not in db.table_names()` block, so partial-upgrade databases (e.g. one
   that somehow has `learn_proposals` but not `learn_evidence`) still self-heal on the next
