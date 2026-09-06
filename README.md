@@ -1,6 +1,6 @@
 # MetaProject
 
-A CLI tool for scaffolding and managing agentic projects and templates following the AI-native SDLC playbook.
+A CLI tool for setting up and managing agentic projects. Template based system to maintain consistency across projects. Learn mode reviews changes over time and recommends updates to the templates.
 
 ## Features
 - **Instant Scaffolding (`metaproject new`)**: Scaffold projects with full SDLC documentation and automatic git initialization.
