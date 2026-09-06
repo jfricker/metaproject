@@ -96,7 +96,25 @@ If you have already created a directory or ran `git init`:
 mkdir -p my-app && cd my-app
 metaproject new . --yes
 ```
-> Note: If the directory contains existing files, add `--force` to proceed. Existing non-template files are preserved.
+
+#### Backfilling a Directory That Already Has Work In It
+Pointing `new` at a directory that already contains files is a *backfill*. Metaproject shows
+you what is there and asks for two separate confirmations — one to copy the templates in, and
+one to set up git:
+
+```bash
+cd ~/bin
+metaproject new .
+```
+
+- Files that already exist are **kept as-is** and listed under "Kept (Already Present)"; only
+  the missing template files are written.
+- The project title and slug come from the directory name when you pass `.`.
+- Declining the git prompt still backfills the templates, just without `git init`/commit.
+- If the directory is already a git repository, metaproject leaves it alone entirely — no
+  re-init, no staging, no commit.
+- `--yes` cannot answer these prompts. For automation, pass `--force`, which skips both
+  confirmations and **overwrites** colliding files.
 
 #### Previewing with Dry Run
 To inspect the files and paths that would be generated without writing anything to disk:

@@ -227,7 +227,7 @@ Scaffolds a new project directory and generates boilerplate files.
   - `--description, -d <desc>`: One-line project summary.
   - `--author, -a <name>`: Author name (default: from config or `git config user.name`).
   - `--yes, -y`: Non-interactive mode; accepts all default values without prompting.
-  - `--force, -f`: Allow scaffolding into an existing, non-empty directory.
+  - `--force, -f`: Allow scaffolding into an existing, non-empty directory, overwriting colliding files.
   - `--dry-run`: Display all actions and file contents that would be created without writing to disk.
   - `--no-git`: Skip `git init` and initial commit.
 
@@ -239,9 +239,19 @@ Scaffolds a new project directory and generates boilerplate files.
        * --output is an existing directory -> <output>/<project-name>
        * --output does not exist or ends in / -> create <output> as the exact project root
   2. Safety check:
-     - If target_dir contains non-hidden files and not force -> ABORT
      - Allow target_dir containing solitary .git/ or .DS_Store (e.g. if git init was run beforehand)
+     - If target_dir contains non-hidden files -> BACKFILL (see below), or ABORT if unconfirmed
+  2b. Backfill (target_dir already holds the operator's work):
+     - Show what occupies target_dir, then ask the operator to confirm the backfill.
+     - Ask a second, separate confirmation before any git setup.
+     - Declining the first prompt writes nothing; declining the second scaffolds without git.
+     - `--yes` cannot answer these prompts: a non-interactive backfill must pass `--force`.
+     - Colliding files are kept as-is and reported; only missing template files are written.
+     - `--force` skips both prompts and overwrites colliding files instead of keeping them.
+     - If target_dir is already a git repository, a backfill never re-inits, stages, or commits.
   3. Collect variables:
+     - project_name of `.` (or `./`, `..`) names a destination, not a project: the target
+       directory's own name is used for ProjectTitle and ProjectSlug.
      - ProjectTitle = title or prompt(default=titlecase(project_name))
      - ProjectDescription = description or prompt()
      - Author = author or config.author or git_config("user.name")
@@ -639,8 +649,10 @@ Templates are processed using Jinja2. To support existing templates while allowi
 ## 7. Safety, Permissions, & Invariants
 
 1. **Non-destructive Overwrite Guard**:
-   - `metaproject` must never write files into a non-empty directory without `--force`.
+   - `metaproject` must never write files into a non-empty directory without either `--force` or an explicit interactive backfill confirmation.
+   - A confirmed backfill keeps every colliding file exactly as it is; only missing template files are written.
    - Even with `--force`, existing files not present in the template are never deleted; colliding files are explicitly overwritten.
+   - Rollback never deletes a file that existed before the run, including one overwritten by `--force`.
    - **Empty Directory Definition**: A directory containing no non-hidden files, allowing a solitary `.git/` directory and `.DS_Store`.
    - **Transactional Rollback**: On a failed scaffold, only delete paths created during *this* run; never `rmtree` an existing pre-created directory.
 2. **Filesystem Confinement**:

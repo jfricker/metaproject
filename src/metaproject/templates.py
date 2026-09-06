@@ -128,8 +128,13 @@ def render_template_tree(
     target_dir: Path,
     variables: Dict[str, Any],
     dry_run: bool = False,
+    skip_existing: bool = False,
 ) -> List[Path]:
     """Walk source_dir, transform names, mirror empty directories, and render files.
+
+    When skip_existing is True, a template file whose destination already exists is left
+    untouched and omitted from the returned list. This is the backfill mode used when
+    scaffolding into a directory the operator already has work in.
 
     Returns list of paths created/written within target_dir.
     """
@@ -156,6 +161,9 @@ def render_template_tree(
                 dest_item.mkdir(parents=True, exist_ok=True)
             created_paths.append(dest_item)
         else:
+            if skip_existing and dest_item.exists():
+                continue
+
             if not dry_run:
                 dest_item.parent.mkdir(parents=True, exist_ok=True)
 

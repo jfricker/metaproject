@@ -22,8 +22,13 @@ from metaproject.config import (
 )
 from metaproject.db import get_db, get_universe_summary, query_projects
 from metaproject.exceptions import CollisionError, GitError, MetaProjectError
-from metaproject.git import ensure_template_repository
-from metaproject.scaffold import scaffold_project
+from metaproject.git import ensure_template_repository, is_git_repository
+from metaproject.scaffold import (
+    is_directory_empty,
+    list_directory_entries,
+    resolve_output,
+    scaffold_project,
+)
 from metaproject.templates import seed_templates
 
 console = Console()
@@ -350,6 +355,72 @@ def install_cmd(
     )
 
 
+def confirm_backfill(target_dir: Path, dry_run: bool, interactive: bool) -> bool:
+    """Confirm landing templates into a directory that already holds files.
+
+    Returns True when the backfill may proceed. Non-interactive runs never proceed: the
+    operator must either confirm at the prompt or say so up front with --force.
+    """
+    entries = list_directory_entries(target_dir)
+    preview = ", ".join(entries[:8])
+    if len(entries) > 8:
+        preview += f", ... (+{len(entries) - 8} more)"
+
+    console.print(
+        Panel.fit(
+            f"[bold]{target_dir}[/bold] already contains {len(entries)} "
+            f"{'entry' if len(entries) == 1 else 'entries'}:\n"
+            f"[dim]{preview}[/dim]\n\n"
+            f"Backfilling copies the missing template files in alongside them.\n"
+            f"[green]Files that already exist are kept as-is, never overwritten.[/green]\n"
+            f"[dim]Use --force instead to overwrite colliding files.[/dim]",
+            title="[yellow]Backfill Existing Directory[/yellow]",
+        )
+    )
+
+    if dry_run:
+        console.print("[bold yellow]DRY RUN:[/] Would prompt to confirm this backfill.")
+        return True
+
+    if not interactive:
+        console.print(
+            "[bold red]Collision Error:[/bold red] a backfill needs confirmation. "
+            "Re-run without --yes to confirm interactively, or pass --force to overwrite."
+        )
+        return False
+
+    answer = questionary.confirm(
+        f"Backfill templates into {target_dir}?",
+        default=False,
+    ).ask()
+    if not answer:
+        console.print("[yellow]Aborted:[/] nothing was written.")
+        return False
+    return True
+
+
+def confirm_backfill_git(target_dir: Path, interactive: bool) -> bool:
+    """Confirm git setup as a decision separate from the backfill itself."""
+    if is_git_repository(target_dir):
+        console.print(
+            f"[cyan]Notice:[/] {target_dir} is already a git repository — "
+            f"leaving it untouched (no init, no commit)."
+        )
+        return False
+
+    if not interactive:
+        return False
+
+    answer = questionary.confirm(
+        f"Also set up git in {target_dir} (init and commit everything currently there)?",
+        default=False,
+    ).ask()
+    if not answer:
+        console.print("[cyan]Notice:[/] skipping git setup.")
+        return False
+    return True
+
+
 @app.command(name="new")
 def new_cmd(
     project_name: str = typer.Argument(
@@ -411,6 +482,21 @@ def new_cmd(
     """Scaffold a new project directory and generate standard SDLC boilerplate."""
     interactive = not yes
 
+    # Backfill: the operator pointed `new` at a directory that already holds work. Landing
+    # templates there needs an explicit yes, and wiring up git needs a second one.
+    target_dir = resolve_output(output, project_name)
+    backfill = not force and not is_directory_empty(target_dir)
+
+    if backfill:
+        if not confirm_backfill(target_dir, dry_run=dry_run, interactive=interactive):
+            raise typer.Exit(code=1)
+        if (
+            not dry_run
+            and not no_git
+            and not confirm_backfill_git(target_dir, interactive=interactive)
+        ):
+            no_git = True
+
     try:
         result = scaffold_project(
             project_name=project_name,
@@ -423,6 +509,7 @@ def new_cmd(
             force=force,
             dry_run=dry_run,
             no_git=no_git,
+            backfill=backfill,
         )
     except CollisionError as exc:
         console.print(f"[bold red]Collision Error:[/bold red] {exc}")
@@ -434,12 +521,16 @@ def new_cmd(
     target_dir = result["target_dir"]
     variables = result["variables"]
     rendered = result["rendered_files"]
-    git_init = result["git_initialized"]
+    preserved = result["preserved_files"]
+    git_status = result["git_status"]
 
+    verb = "backfilled" if result["backfilled"] else "scaffolded"
     if dry_run:
-        console.print(f"[bold yellow]DRY RUN:[/] Would create project at [bold]{target_dir}[/]")
+        console.print(
+            f"[bold yellow]DRY RUN:[/] Would have {verb} project at [bold]{target_dir}[/]"
+        )
     else:
-        console.print(f"[bold green]Successfully scaffolded project at:[/] [bold]{target_dir}[/]")
+        console.print(f"[bold green]Successfully {verb} project at:[/] [bold]{target_dir}[/]")
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")
     table.add_column("Relative Path", style="cyan")
@@ -452,11 +543,25 @@ def new_cmd(
 
     console.print(table)
 
+    if preserved:
+        kept = Table(title="Kept (Already Present)", show_header=True, header_style="bold magenta")
+        kept.add_column("Relative Path", style="cyan")
+        for item in sorted(preserved):
+            kept.add_row(str(item.relative_to(target_dir)))
+        console.print(kept)
+
+    git_summary = {
+        "initialized": "Yes (branch main)",
+        "existing": "Left existing repository untouched",
+        "pending": "Would initialize",
+        "skipped": "Skipped",
+    }.get(git_status, "Skipped")
+
     summary = (
         f"[bold]Project Title:[/bold] {variables['ProjectTitle']}\n"
         f"[bold]Author:[/bold] {variables['Author']}\n"
         f"[bold]Date:[/bold] {variables['Date']}\n"
-        f"[bold]Git Initialized:[/bold] {'Yes (branch main)' if git_init else 'Skipped'}"
+        f"[bold]Git:[/bold] {git_summary}"
     )
     console.print(Panel.fit(summary, title="Project Details"))
 
