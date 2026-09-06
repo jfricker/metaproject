@@ -666,18 +666,34 @@ Templates are processed using Jinja2. To support existing templates while allowi
    - Prevent path traversal attacks in project names (e.g., `../../etc`).
 3. **Fail-Safe Rollback**:
    - If an error occurs during template rendering before git initialization, prompt or cleanup partial generation to avoid dirty partial states.
-4. **`learn` Egress Guard** (data leaving the machine):
+4. **Agent-Session Guards**:
+   - The CLI detects whether a person or an agent is driving it, from environment markers
+     no ordinary login shell sets (`CLAUDECODE`, `CLAUDE_CODE`, `AI_AGENT`, `CI`).
+   - In an agent session the interactive TUIs never open: `review` and the `learn`
+     acceptance reviewer print their board or table and exit zero, naming the marker. A
+     full-screen loop inside a tool call blocks on keystrokes that never arrive, and a
+     harness that allocates a pty defeats the TTY check on its own.
+   - `learn scan` (and the bare `learn [ROOT]` form, which scans) is refused with exit 1.
+     It spends the operator's money and egresses their diffs; the refusal prints the exact
+     command for the operator to run.
+   - A backfill's confirmations are refused with exit 1 and a handover message. `--dry-run`
+     still previews, because it writes nothing.
+   - `METAPROJECT_AGENT` overrides detection in both directions: `0` forces human mode,
+     any other truthy value forces agent mode.
+   - Every guard degrades to something useful. A person misdetected as an agent loses
+     interactivity, never work.
+5. **`learn` Egress Guard** (data leaving the machine):
    - Only redacted **diffs** are sent to the model — never whole project files.
    - Anything matched by the project's `.gitignore` is excluded.
    - A hard denylist is excluded regardless of `.gitignore`: `.env*`, `*.pem`, `*.key`, `id_*`, `*credentials*`, `*secret*`.
    - High-entropy strings and known token shapes are redacted from surviving diffs.
    - The file list to be sent is displayed and confirmed once per session; `--yes` bypasses for non-interactive use.
-5. **`learn` Write Guard**:
+6. **`learn` Write Guard**:
    - A scan never mutates a template. Mutation happens only via `apply`, from a persisted proposal.
    - `apply` refuses to run when the template repository has uncommitted changes.
    - Every applied proposal is an individual commit; accepts are never batched.
    - Model output is treated as data, never as instructions. A proposal's body is inserted as template text; it is never executed, and never interpreted as a directive to the tool.
-6. **Template Walker & Variable Whitelist Guard**:
+7. **Template Walker & Variable Whitelist Guard**:
    - Only rewrite known whitelisted variables (`ProjectTitle`, `Author`, `Date`, etc.), leaving all other curly braces untouched.
    - Template walker must sniff or filter binary files (images, icons) to copy verbatim rather than decoding as UTF-8.
    - Ensure the template engine mirrors empty directories like `docs/` (or place `.gitkeep` inside `docs.template/`).

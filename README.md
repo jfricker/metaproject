@@ -62,6 +62,23 @@ two confirmations). It ships inside the package, so it travels with every instal
   is left alone; `metaproject init --force` overwrites it.
 - Set `METAPROJECT_SKILL_DIR` to install somewhere other than `~/.claude/skills/metaproject`.
 
+#### Agent-Session Guards
+The skill tells an agent what to do; the CLI enforces it either way. When `metaproject`
+detects that an agent is driving it — from markers no ordinary login shell sets
+(`CLAUDECODE`, `CLAUDE_CODE`, `AI_AGENT`, `CI`) — it changes behavior:
+
+| | In an agent session |
+|---|---|
+| `review`, `learn` reviewer | Print the board or queue and exit 0, instead of opening the TUI |
+| `learn scan`, bare `learn` | Refused (exit 1); prints the command for you to run |
+| A backfill's confirmations | Refused (exit 1); `--dry-run` still previews |
+
+A TUI opened inside a tool call blocks on keystrokes that never arrive, and `learn scan`
+spends money and sends redacted diffs off the machine — that one is yours to start.
+
+`METAPROJECT_AGENT=0` forces human mode if you are working inside a harness and want your
+TUI back; `METAPROJECT_AGENT=1` forces agent mode.
+
 #### Existing Configuration Protection
 If `~/.metaproject/config.json` is already present, running `metaproject init` will not overwrite your settings or re-run the wizard. Instead, it displays your current configuration along with the status summary of your `universe.db` (total projects, active now count, and last run).
 

@@ -9,6 +9,7 @@ Anything marked **interactive** prompts or opens a TUI and needs a human at the 
 - [review](#review)
 - [learn](#learn)
 - [universe](#universe)
+- [Agent-session guards](#agent-session-guards)
 - [Non-interactive recipes](#non-interactive-recipes)
 - [Where state lives](#where-state-lives)
 
@@ -63,11 +64,12 @@ alone — no init, no staging, no commit.
 
 ## review
 
-`metaproject review [PROJECT_DIR]` — **interactive TUI unless `--no-tui`**
+`metaproject review [PROJECT_DIR]` — interactive TUI for a person; prints the board and
+exits in an agent session (see [Agent-session guards](#agent-session-guards)).
 
 | Flag | Effect |
 |---|---|
-| `--no-tui` | Print the board and exit — use this |
+| `--no-tui` | Print the board and exit explicitly |
 | `--all` | Review every project found under the directory |
 | `--depth <int>` | Traversal depth for `--all` (default 1) |
 | `--templates <path>` | Compare against a different template store |
@@ -93,7 +95,7 @@ one, `i <n>` ignore a project durably, `o <n>` dismiss it for this session only,
 |---|---|---|
 | `learn list` | read-only | Table of proposals: id, target file, title, evidence count, score |
 | `learn show <id>` | read-only | Rationale, proposed body, contributing projects |
-| `learn scan [ROOT]` | **calls a model, sends data off-machine** | Collect drift and synthesize proposals |
+| `learn scan [ROOT]` | **refused in an agent session**; calls a model, sends data off-machine | Collect drift and synthesize proposals |
 | `learn apply <id>` | **writes and commits a template** | Splice the proposal into its target section |
 | `learn edit <id>` | **interactive** | Open the proposed body in `$EDITOR`; saving applies it |
 | `learn reject <id>` | writes to the ledger | Suppress by content hash (`--forget` clears it) |
@@ -136,6 +138,28 @@ A project root is anything with a git repo, a `.metaproject` marker, or marker f
 
 ---
 
+## Agent-session guards
+
+The CLI detects that an agent rather than a person is driving it, and refuses the things
+that need an operator. Detection reads environment markers no ordinary login shell sets:
+`CLAUDECODE`, `CLAUDE_CODE`, `AI_AGENT`, `CI`.
+
+| Behavior | In an agent session |
+|---|---|
+| `review` board | Printed, then exits 0, with a line naming the marker |
+| `learn` acceptance reviewer | The queue table, then exits 0 |
+| `learn scan` / bare `learn [ROOT]` | Refused, exit 1, printing the command to hand over |
+| A backfill's two confirmations | Refused, exit 1; `--dry-run` still previews |
+| Everything else | Unchanged |
+
+`METAPROJECT_AGENT` overrides detection in both directions: `0` forces human mode (an
+operator working inside a harness gets their TUI back), any other truthy value forces
+agent mode (useful for testing, or a harness that sets no marker of its own).
+
+These guards are for the operator's benefit. Relaying a refusal — "this one needs you,
+here is the command" — is the intended response; setting `METAPROJECT_AGENT=0` to get
+around one is not.
+
 ## Non-interactive recipes
 
 ```bash
@@ -145,11 +169,11 @@ metaproject new <name> --title "<Title>" --description "<one line>" --yes
 # Preview a scaffold or backfill without writing
 metaproject new . --dry-run
 
-# Audit this project
-metaproject review --no-tui
+# Audit this project (prints the board in an agent session)
+metaproject review
 
 # Audit a whole workspace tree
-metaproject review ~/Projects --all --depth 2 --no-tui
+metaproject review ~/Projects --all --depth 2
 
 # What has the learn pipeline already proposed?
 metaproject learn list
@@ -167,6 +191,7 @@ metaproject universe --list --all --format json
 | `~/.metaproject/templates/` | The template store — a git repository |
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
+| `~/.claude/skills/metaproject/` | This skill, installed by `init` |
 
 Template files carry a `.template` infix that is stripped on render:
 `AGENTS.template.md` → `AGENTS.md`, `.gitignore.template` → `.gitignore`,

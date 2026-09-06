@@ -36,23 +36,36 @@ it yourself.
 
 ## Running it as an agent
 
-Two commands (`review` and `learn`) open full-screen interactive TUIs when they detect a
-terminal. That is right for a human and wrong for you: a TUI in a tool call blocks
-waiting for keystrokes that never come, and returns a screenful of escape sequences. Use
-the non-interactive forms instead — they exist precisely so automation and humans share
-one code path:
+The CLI can tell that an agent is driving it — Claude Code and similar harnesses set
+markers like `CLAUDECODE` and `AI_AGENT` in the environment — and it changes its own
+behavior accordingly. You do not have to remember to be careful; the guards are in the
+tool. What you do need is to recognize what they are telling you when they fire.
 
-```bash
-metaproject review --no-tui                # the board, printed, then exits
-metaproject learn list                     # proposals as a table
-metaproject learn show <id>                # one proposal in full
-```
+**The interactive TUIs never open.** `review` and `learn`'s acceptance loop print their
+board or table and exit instead, with a line saying so. This is not a failure and the
+exit code is zero — a full-screen loop inside a tool call would block on keystrokes that
+never arrive. `--no-tui` does the same thing explicitly and is still worth passing when
+you want the intent on the record.
 
-`metaproject new` also prompts unless you supply the values it would ask for. Give it
-`--title`, `--description`, and `--author`, or pass `--yes` to accept defaults.
+**`learn scan` is refused outright**, with exit code 1. It reads every project, calls a
+model, and sends redacted diffs off the machine; spending the operator's money and
+egressing their code is their decision. The refusal prints the exact command to hand
+over — pass it on rather than trying to work around it. Proposals already recorded stay
+readable through `learn list` and `learn show`, so there is usually still something
+useful you can do.
 
-Read-only and safe to run whenever they would help: `review --no-tui`, `universe`,
-`learn list`, `learn show`, and any `--dry-run`.
+**A backfill is refused** for the same reason: its two confirmations need a person.
+`--dry-run` still previews it, which is how you show the operator what would happen.
+
+When a guard fires, relay it — "this needs you to run it, here is the command" — instead
+of reaching for `--force` or `METAPROJECT_AGENT=0`. Those exist for the operator, not for
+you; using them is how an agent turns a deliberate safety rail into an incident.
+
+`metaproject new` still prompts for title, description, and author unless you supply them
+or pass `--yes`. Give it what it needs and it runs unattended.
+
+Read-only and safe to run whenever they would help: `review`, `universe`, `learn list`,
+`learn show`, and any `--dry-run`.
 
 ## Scaffolding a new project
 
@@ -88,9 +101,9 @@ both *and overwrites colliding files*. So:
 ## Auditing a project against the templates
 
 ```bash
-metaproject review --no-tui              # this project
-metaproject review /path/to/project --no-tui
-metaproject review --all --depth 2 --no-tui   # every project under the tree
+metaproject review                       # this project
+metaproject review /path/to/project
+metaproject review --all --depth 2       # every project under the tree
 ```
 
 Each project reports one of three states, and the distinction is worth keeping straight
@@ -125,11 +138,12 @@ Two operations deserve real restraint:
 
 - **`learn scan`** gathers evidence from every project and calls a model (`claude -p`) to
   synthesize proposals. It costs time and money, and it sends redacted diffs off the
-  machine. Never run it on your own initiative — surface the command and let the user
-  decide.
+  machine. The CLI refuses it in an agent session — surface the command it prints and let
+  the user decide.
 - **`learn apply <id>`** rewrites a template and commits it. That template governs every
-  project scaffolded from here on. Read the proposal with `show`, tell the user what it
-  would change and why, and let them accept it.
+  project scaffolded from here on. Nothing stops you mechanically, so the restraint has to
+  come from you: read the proposal with `show`, tell the user what it would change and
+  why, and let them accept it.
 
 `learn reject <id>` suppresses a proposal by content hash so it stops resurfacing.
 

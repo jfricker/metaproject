@@ -119,6 +119,7 @@
 - `src/metaproject/learn/`: Corroborated-proposal pipeline (`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui`).
 - `src/metaproject/skill/`: The bundled Claude Code skill (`SKILL.md` plus `references/`), shipped as package data.
 - `src/metaproject/skills.py`: Installs that skill into `~/.claude/skills/metaproject/` during `init`.
+- `src/metaproject/session.py`: Agent-session detection (`CLAUDECODE`, `AI_AGENT`, `CI`, `METAPROJECT_AGENT`) behind the TUI, scan, and backfill guards.
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.
 
