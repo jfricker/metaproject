@@ -167,7 +167,7 @@ metaproject/
       "HANDOFF.md", ".gitignore", "docs/", "Makefile", "pyproject.toml"
     ],
     "resurface_factor": 2.0,
-    "model": null,
+    "model": "claude-haiku-4-5-20251001",
     "activity_weights": {
       "Active Now": 1.0, "Active Near": 0.8, "Active Far": 0.6,
       "Idle": 0.4, "Ancient": 0.2, "Archived": 0.1
@@ -176,7 +176,7 @@ metaproject/
 }
 ```
 
-`learn.model` is `null` by default, meaning `claude -p` chooses. `learn.activity_weights` values are provisional; see [intent.md § Open questions](file:///Users/johnfricker/Projects/MetaProject/intent.md).
+`learn.model` defaults to `claude-haiku-4-5-20251001`, so a scan costs little even at one call per target file (§5.4.3); set it to `null` to let `claude -p` choose, or to another model name to override. `learn.activity_weights` values are provisional; see [intent.md § Open questions](file:///Users/johnfricker/Projects/MetaProject/intent.md).
 
 ---
 
