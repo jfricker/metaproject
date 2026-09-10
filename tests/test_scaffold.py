@@ -570,3 +570,61 @@ def test_cli_new_backfill_accepting_git_initializes_repository(
         check=True,
     )
     assert "initial scaffold from metaproject" in log.stdout
+
+
+def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:
+    """Scaffolding lays out .agents/skills/ and symlinks .claude/skills to it."""
+    target = tmp_path / "linked_proj"
+    cfg = Config(author="Jane Dev", default_branch="main")
+
+    res = scaffold_project(
+        project_name="linked_proj",
+        output=target,
+        config=cfg,
+        interactive=False,
+        no_git=True,
+    )
+
+    skills_link = target / ".claude" / "skills"
+    assert res["skills_link"] == skills_link
+    assert (target / ".agents" / "skills").is_dir()
+    assert skills_link.is_symlink()
+    assert skills_link.resolve() == (target / ".agents" / "skills").resolve()
+
+
+def test_scaffold_dry_run_skips_skills_link(tmp_path: Path) -> None:
+    """Dry run previews the link path without touching the filesystem."""
+    target = tmp_path / "dry_link_proj"
+    res = scaffold_project(
+        project_name="dry_link_proj",
+        output=target,
+        dry_run=True,
+        interactive=False,
+        no_git=True,
+    )
+    assert res["skills_link"] == target / ".claude" / "skills"
+    assert not (target / ".claude").exists()
+    assert not (target / ".agents").exists()
+
+
+def test_scaffold_backfill_preserves_existing_skills_link(tmp_path: Path) -> None:
+    """A backfill never replaces an operator's existing .claude/skills entry."""
+    target = tmp_path / "occupied_link"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    existing = target / ".claude" / "skills"
+    existing.parent.mkdir()
+    existing.symlink_to(target / "elsewhere")
+
+    res = scaffold_project(
+        project_name="occupied_link",
+        output=str(target) + "/",
+        config=Config(author="Jane Dev", default_branch="main"),
+        interactive=False,
+        no_git=True,
+        backfill=True,
+    )
+
+    assert res["skills_link"] is None
+    assert existing.is_symlink()
+    assert existing.resolve() == (target / "elsewhere").resolve()

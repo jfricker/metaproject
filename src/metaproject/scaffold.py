@@ -130,6 +130,36 @@ class TransactionalTracker:
                 pass
 
 
+def link_agent_skills(
+    target_dir: Path,
+    tracker: TransactionalTracker,
+    dry_run: bool = False,
+    skip_existing: bool = False,
+) -> Optional[Path]:
+    """Create the agent-skills layout: .agents/skills/ plus a .claude/skills symlink to it.
+
+    Equivalent to `mkdir -p .claude && mkdir -p .agents/skills &&
+    ln -s ../.agents/skills .claude/skills`, but tracked for rollback and
+    skipped on backfill when the operator already has a .claude/skills entry.
+    """
+    agents_skills_dir = target_dir / ".agents" / "skills"
+    claude_dir = target_dir / ".claude"
+    skills_link = claude_dir / "skills"
+
+    if skip_existing and (skills_link.exists() or skills_link.is_symlink()):
+        return None
+
+    if not dry_run:
+        for directory in (agents_skills_dir, claude_dir):
+            if not directory.exists():
+                directory.mkdir(parents=True, exist_ok=True)
+                tracker.record_created_dir(directory)
+        if not (skills_link.exists() or skills_link.is_symlink()):
+            skills_link.symlink_to(Path("..") / ".agents" / "skills")
+            tracker.record_created_file(skills_link)
+    return skills_link
+
+
 def scaffold_project(
     project_name: str,
     output: Optional[str | Path] = None,
@@ -224,7 +254,15 @@ def scaffold_project(
             else:
                 tracker.record_created_file(path)
 
-        # 5. Git initialisation. A backfill never touches an existing repository: staging
+        # 5. Agent-skills layout: .agents/skills/ with .claude/skills symlinked to it.
+        skills_link = link_agent_skills(
+            target_dir=target_dir,
+            tracker=tracker,
+            dry_run=dry_run,
+            skip_existing=is_backfill,
+        )
+
+        # 6. Git initialisation. A backfill never touches an existing repository: staging
         # and committing there would sweep the operator's own working tree into a commit
         # they did not ask for.
         already_git = is_git_repository(target_dir)
@@ -252,6 +290,7 @@ def scaffold_project(
                 [path for path in preserved_paths if path.is_file()] if is_backfill else []
             ),
             "backfilled": is_backfill,
+            "skills_link": skills_link,
             "git_initialized": git_initialized,
             "git_status": git_status,
             "dry_run": dry_run,

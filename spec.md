@@ -270,12 +270,17 @@ Scaffolds a new project directory and generates boilerplate files.
        a. Strip '.template' from filename (e.g., 'AGENTS.template.md' -> 'AGENTS.md')
        b. Check if file is binary (images/fonts): if binary, copy bytes verbatim
        c. If text: rewrite only whitelisted {VarName} placeholders, render Jinja2, write to target
-  6. Git initialization (if not --no-git):
+  6. Agent-skills layout (equivalent to `mkdir -p .claude && mkdir -p .agents/skills
+     && ln -s ../.agents/skills .claude/skills`, tracked for rollback):
+     - Create `.agents/skills/` and `.claude/` if absent.
+     - Symlink `.claude/skills` -> `../.agents/skills` if no `.claude/skills` entry exists yet.
+     - A backfill never replaces an existing `.claude/skills` entry.
+  7. Git initialization (if not --no-git):
      a. Pre-flight check git identity (user.name and user.email); fall back to author from config or warn
      b. Execute: git init -b <default_branch> (with fallback to git init && git checkout -b)
      c. Execute: git add .
      d. Execute: git commit -m "chore: initial scaffold from metaproject"
-  7. Print success summary with next steps.
+  8. Print success summary with next steps.
   ```
 
 ### 5.3 `metaproject review`
