@@ -492,6 +492,18 @@ def _default_confirm(prompt: str) -> bool:
     return answer in ("y", "yes")
 
 
+def _ask_to_send(
+    prompt_text: str,
+    assume_yes: bool = False,
+    confirm_fn: Optional[Callable[[str], bool]] = None,
+) -> bool:
+    """Ask once, unless `--yes` bypasses the prompt entirely."""
+    if assume_yes:
+        return True
+    ask = confirm_fn or _default_confirm
+    return bool(ask(prompt_text))
+
+
 def confirm_send(
     manifest: SendManifest,
     assume_yes: bool = False,
@@ -502,7 +514,20 @@ def confirm_send(
     Callers are responsible for asking only once per session (spec.md §7.4); this
     function does not remember, so that a refusal is never cached into an approval.
     """
-    if assume_yes:
-        return True
-    ask = confirm_fn or _default_confirm
-    return bool(ask(f"{manifest.render()}\nSend this to the model?"))
+    return _ask_to_send(f"{manifest.render()}\nSend this to the model?", assume_yes, confirm_fn)
+
+
+def confirm_file_send(
+    target_file: str,
+    manifest: SendManifest,
+    assume_yes: bool = False,
+    confirm_fn: Optional[Callable[[str], bool]] = None,
+) -> bool:
+    """Show one target file's slice of the manifest and ask whether to send it.
+
+    The per-file counterpart to `confirm_send`: same manifest rendering, same `--yes`
+    bypass, but scoped to one bundle and asked once per file instead of once per run.
+    """
+    return _ask_to_send(
+        f"{manifest.render()}\nSend `{target_file}` to the model?", assume_yes, confirm_fn
+    )

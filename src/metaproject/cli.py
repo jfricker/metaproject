@@ -1247,9 +1247,11 @@ def perform_scan(
         f"[bold green]Scanned {result.projects_scanned} projects[/bold green] "
         f"({result.files_scanned} files with drift) → {result.created} proposals recorded."
     )
+    if result.declined:
+        console.print(f"[dim]Skipped by you: {', '.join(result.declined)}[/dim]")
     if result.skipped:
         console.print(
-            f"[yellow]Run marked '{result.status}'. Skipped target files: "
+            f"[yellow]Run marked '{result.status}'. Skipped target files (model failed): "
             f"{', '.join(result.skipped)}[/yellow]"
         )
     return result

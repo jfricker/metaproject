@@ -371,8 +371,8 @@ Reference: [intent.md § Design: `metaproject learn`](file:///Users/johnfricker/
 | Stage | Determinism | Behavior |
 |---|---|---|
 | 1. Collect | Deterministic | Enumerate projects from `universe.db`. For each project × target file, render the template with that project's variables and diff against the project's actual file. The rendered-then-diffed delta is the evidence unit, which removes placeholder-substitution false positives. |
-| 2. Guard | Deterministic | Filter `.gitignore` matches and a hard denylist; redact high-entropy strings; confirm the send list with the operator once per session. |
-| 3. Synthesize | Model | One `claude -p` call **per target file**, carrying every project's redacted diff for that file. Returns structured proposals. Chunk-and-reduce when a bundle exceeds the context budget. |
+| 2. Guard | Deterministic | Filter `.gitignore` matches and a hard denylist; redact high-entropy strings; print withheld paths once, informationally. |
+| 3. Synthesize | Model | For each target file, confirm that file's slice of the send list with the operator (send or skip); a skip costs no call and no evidence for that file leaves the machine. A sent file becomes one `claude -p` call carrying every project's redacted diff for that file. Returns structured proposals. Chunk-and-reduce when a bundle exceeds the context budget. |
 | 4. Record | Deterministic | Persist proposals and per-project evidence rows to `universe.db`. |
 | 5. Review | Operator | Diff TUI (default) or the queue subcommands. |
 | 6. Apply | Deterministic | Patch the template, commit to the template git repository. |
@@ -687,7 +687,7 @@ Templates are processed using Jinja2. To support existing templates while allowi
    - Anything matched by the project's `.gitignore` is excluded.
    - A hard denylist is excluded regardless of `.gitignore`: `.env*`, `*.pem`, `*.key`, `id_*`, `*credentials*`, `*secret*`.
    - High-entropy strings and known token shapes are redacted from surviving diffs.
-   - The file list to be sent is displayed and confirmed once per session; `--yes` bypasses for non-interactive use.
+   - Each target file's slice of the send list is displayed and confirmed separately, before that file's evidence is sent; `--yes` bypasses every prompt for non-interactive use.
 6. **`learn` Write Guard**:
    - A scan never mutates a template. Mutation happens only via `apply`, from a persisted proposal.
    - `apply` refuses to run when the template repository has uncommitted changes.

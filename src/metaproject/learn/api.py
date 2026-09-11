@@ -21,7 +21,7 @@ from metaproject.config import Config, load_config
 from metaproject.db import get_db
 from metaproject.learn.collect import collect_project, iter_project_dirs
 from metaproject.learn.drift import DriftSignal, collect_drift
-from metaproject.learn.guard import SendManifest, confirm_send, guard_evidence
+from metaproject.learn.guard import SendManifest, build_manifest, confirm_file_send, guard_evidence
 from metaproject.learn.score import drift_factor, project_age_days, weigh_project
 from metaproject.learn.store import (
     RUN_FAILED,
@@ -32,7 +32,7 @@ from metaproject.learn.store import (
 )
 from metaproject.learn.store import reject_proposal as _reject_proposal
 from metaproject.learn.store import start_run as _start_run
-from metaproject.learn.synth import normalize_excerpt, synthesize
+from metaproject.learn.synth import Bundle, normalize_excerpt, synthesize
 from metaproject.universe import resolve_project_timestamp
 
 reject_proposal = _reject_proposal
@@ -52,6 +52,7 @@ class ScanResult:
     skipped: Tuple[str, ...]
     manifest: Optional[SendManifest]
     aborted: bool = False
+    declined: Tuple[str, ...] = ()
 
 
 def parse_since(value: Optional[str], now: Optional[float] = None) -> Optional[float]:
@@ -136,7 +137,26 @@ def scan(
     guarded = guard_evidence(records)
     files_scanned = len({(r.project_path, r.target_file) for r in guarded.records})
 
-    if not confirm_send(guarded.manifest, assume_yes=yes, confirm_fn=confirm_fn):
+    # Exclusion is structural (gitignore/denylist/binary), never a per-file choice, so
+    # it's printed once as a notice before any per-file prompt, not asked about.
+    if guarded.excluded:
+        print(build_manifest([], guarded.excluded).render())
+
+    def confirm_bundle(bundle: Bundle) -> bool:
+        manifest = build_manifest(list(bundle.records), [])
+        return confirm_file_send(bundle.target_file, manifest, assume_yes=yes, confirm_fn=confirm_fn)
+
+    result = synthesize(
+        guarded.records,
+        config=config,
+        model=model,
+        runner=runner,
+        confirm_fn=confirm_bundle,
+    )
+
+    target_files = {r.target_file for r in guarded.records}
+    aborted = bool(target_files) and set(result.declined) == target_files
+    if aborted:
         _finish(db, run_id, len(projects), files_scanned, 0, RUN_FAILED)
         return ScanResult(
             run_id=run_id,
@@ -149,14 +169,8 @@ def scan(
             skipped=(),
             manifest=guarded.manifest,
             aborted=True,
+            declined=result.declined,
         )
-
-    result = synthesize(
-        guarded.records,
-        config=config,
-        model=model,
-        runner=runner,
-    )
 
     # `review`'s own findings, gathered after the egress gate: they are read from the
     # local filesystem and never sent anywhere, and a declined scan should do no work.
@@ -216,6 +230,7 @@ def scan(
         status=result.status,
         skipped=result.skipped,
         manifest=guarded.manifest,
+        declined=result.declined,
     )
 
 

@@ -1,6 +1,6 @@
 # Per-file confirm in `learn scan`
 
-**Status**: draft, not yet implemented.
+**Status**: implemented.
 
 ## Context
 
