@@ -16,7 +16,8 @@ approved.
 ## Inputs
 
 - Approved `spec.md` and `design.md`.
-- This repo's `CLAUDE.md` (conventions) and any relevant `.claude/skills/` policies.
+- This repo's `CLAUDE.md` (conventions) and any relevant organization policy skills
+  (installed as other plugins, or the project's own `.claude/skills/` if any exist).
 
 ## Process
 

@@ -11,7 +11,8 @@ description of the system.
 (`write-intent` → `generate-spec` → `generate-design` → `generate-plan` →
 `implement-plan` → `execute-tests` → `wrapup`), adapted from
 https://claude.com/blog/the-ai-native-sdlc-playbook per `AGENTS.md`. Each stage is a
-`.claude/skills/<name>/SKILL.md`. `wrapup` is the only stage that writes to this file,
+`skills/<name>/SKILL.md`, packaged as the `sdlc-skills` Claude Code plugin (`README.md`).
+`wrapup` is the only stage that writes to this file,
 to `docs/DESIGN-INVARIANTS.md`, and to `docs/VERIFIED-FACTS.md`.
 
 ```mermaid
