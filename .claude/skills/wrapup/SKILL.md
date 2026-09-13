@@ -33,8 +33,13 @@ PR — if any of those are still outstanding, the cycle isn't done; send the use
    one `intent.md`-shaped thing could be meant, or the merge isn't obviously landed).
 2. Derive an archive slug from `intent.md`'s title and today's date:
    `docs/archive/YYYY-MM-DD-<slugified-title>/`.
-3. `git mv` (or move + `git add`) each of `intent.md`, `spec.md`, `design.md`, `plan.md`,
-   and `HANDOFF.md` (if present) into that archive directory, preserving history.
+3. Confirm `docs/archive/` already exists and is tracked (`git ls-files docs/archive/`
+   should list at least `docs/archive/.gitkeep`) — this is a precondition of the repo,
+   not something this step creates. If it's missing, stop and tell the user rather than
+   `mkdir -p`-ing it into existence; a missing archive root means the repo scaffold is
+   broken and needs fixing outside `wrapup`'s scope. Once confirmed, `git mv` (or move +
+   `git add`) each of `intent.md`, `spec.md`, `design.md`, `plan.md`, and `HANDOFF.md`
+   (if present) into the derived archive directory, preserving history.
 4. Remove worktrees created for this cycle: for each one listed by `git worktree list`
    under `.claude/worktrees/` that belongs to this cycle, run
    `git worktree remove <path>` (add `--force` only after confirming with the user there's

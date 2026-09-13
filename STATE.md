@@ -10,6 +10,11 @@
       generate-design, generate-plan, implement-plan, execute-tests, wrapup — covering
       the full loop from https://claude.com/blog/the-ai-native-sdlc-playbook as adapted
       by AGENTS.md.
+- [x] Test cycle (docs/archive/ gap): created `docs/archive/.gitkeep` and updated
+      `wrapup`'s SKILL.md Process step 3 to check `docs/archive/` exists before `git mv`,
+      instead of assuming it. Ran the full write-intent → generate-spec →
+      generate-design → generate-plan → implement-plan sequence live to validate the
+      skills themselves. `execute-tests` and `wrapup` still to run on this cycle.
 
 ## Design invariants (regression guards)
 - `generate-spec`/`generate-design`/`generate-plan` own the canonical blank templates
