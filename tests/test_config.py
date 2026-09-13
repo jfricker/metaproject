@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from metaproject.config import Config, LearnConfig, load_config, save_config
+from metaproject.config import DEFAULT_LEARN_MODEL, Config, LearnConfig, load_config, save_config
 from metaproject.exceptions import ConfigError
 from metaproject.templates import get_bundled_templates_dir, seed_templates
 
@@ -36,7 +36,7 @@ def test_default_learn_config() -> None:
         "pyproject.toml",
     ]
     assert cfg.learn.resurface_factor == 2.0
-    assert cfg.learn.model is None
+    assert cfg.learn.model == DEFAULT_LEARN_MODEL
     assert cfg.learn.activity_weights == {
         "Active Now": 1.0,
         "Active Near": 0.8,

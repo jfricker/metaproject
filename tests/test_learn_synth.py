@@ -705,3 +705,41 @@ def test_no_evidence_produces_no_calls_and_a_clean_run():
     assert fake.calls == 0
     assert result.status == RUN_OK
     assert result.proposals == ()
+
+
+# ------------------------------------------------------------- per-file confirm_fn
+
+
+def test_a_declined_bundle_produces_no_runner_call_and_lands_in_declined():
+    records = [record("atlas", "AGENTS.md")]
+    fake = FakeClaude()
+    result = synthesize(records, runner=fake, confirm_fn=lambda _bundle: False)
+    assert fake.calls == 0
+    assert result.declined == ("AGENTS.md",)
+    assert result.proposals == ()
+    assert result.skipped == ()
+
+
+def test_a_mixed_accept_decline_only_calls_the_runner_for_the_accepted_bundle():
+    records = [
+        record("atlas", "AGENTS.md"),
+        record("atlas", "README.md", lines=["- A readme line."]),
+    ]
+    fake = FakeClaude()
+
+    def confirm(bundle: Bundle) -> bool:
+        return bundle.target_file == "AGENTS.md"
+
+    result = synthesize(records, runner=fake, confirm_fn=confirm)
+
+    assert fake.calls == 1
+    assert result.declined == ("README.md",)
+    assert {p.target_file for p in result.proposals} == {"AGENTS.md"}
+
+
+def test_confirm_fn_defaulting_to_none_preserves_todays_behavior():
+    records = [record("atlas", "AGENTS.md")]
+    fake = FakeClaude()
+    result = synthesize(records, runner=fake)
+    assert fake.calls == 1
+    assert result.declined == ()

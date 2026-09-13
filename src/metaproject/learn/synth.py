@@ -132,6 +132,7 @@ class SynthResult:
     calls_by_target: Mapping[str, int]
     skipped: Tuple[str, ...]
     discarded: int
+    declined: Tuple[str, ...] = ()
 
     @property
     def calls(self) -> int:
@@ -643,6 +644,7 @@ def synthesize(
     budget_bytes: int = DEFAULT_BUDGET_BYTES,
     runner: Optional[Runner] = None,
     binary: Optional[str] = None,
+    confirm_fn: Optional[Callable[[Bundle], bool]] = None,
 ) -> SynthResult:
     """Synthesize proposals from guarded evidence: one call per target file.
 
@@ -652,6 +654,10 @@ def synthesize(
     `runner` exists so every test can mock the subprocess. When it is absent the
     `claude` binary is resolved *first*, before any evidence is assembled, so a missing
     binary fails having done nothing at all.
+
+    `confirm_fn`, when given, is asked once per bundle before any chunking or model
+    call for that bundle; a bundle it declines produces no `claude -p` calls and lands
+    in `SynthResult.declined` instead of contributing proposals or a `skipped` entry.
     """
     if runner is None:
         claude_path = resolve_claude(binary)
@@ -665,9 +671,14 @@ def synthesize(
     proposals: List[Proposal] = []
     calls_by_target: Dict[str, int] = {}
     skipped: List[str] = []
+    declined: List[str] = []
     discarded = 0
 
     for bundle in bundle_evidence(records):
+        if confirm_fn is not None and not confirm_fn(bundle):
+            declined.append(bundle.target_file)
+            continue
+
         counter = [0]
         chunks = chunk_bundle(bundle, budget_bytes)
         index = _evidence_index(bundle)
@@ -720,4 +731,5 @@ def synthesize(
         calls_by_target=calls_by_target,
         skipped=tuple(skipped),
         discarded=discarded,
+        declined=tuple(declined),
     )

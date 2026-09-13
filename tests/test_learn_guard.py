@@ -14,6 +14,7 @@ from metaproject.learn.guard import (
     REDACTION_PLACEHOLDER,
     GitignoreMatcher,
     build_manifest,
+    confirm_file_send,
     confirm_send,
     contains_secret,
     exclusion_reason,
@@ -333,6 +334,44 @@ def test_confirm_send_asks_once_and_honors_refusal() -> None:
     assert len(calls) == 1
 
     assert confirm_send(manifest, confirm_fn=lambda _p: False) is False
+
+
+def test_confirm_file_send_bypassed_by_yes(workspace) -> None:
+    """`--yes` bypasses the per-file confirmation too."""
+    manifest = build_manifest([], [])
+
+    def refuse(_prompt: str) -> bool:
+        raise AssertionError("confirmation must not be requested under --yes")
+
+    assert confirm_file_send("AGENTS.md", manifest, assume_yes=True, confirm_fn=refuse) is True
+
+
+def test_confirm_file_send_asks_once_and_honors_refusal() -> None:
+    """Without --yes the operator is asked once per file, and a refusal stops that file."""
+    manifest = build_manifest([], [])
+    calls: list[str] = []
+
+    def accept(prompt: str) -> bool:
+        calls.append(prompt)
+        return True
+
+    assert confirm_file_send("AGENTS.md", manifest, confirm_fn=accept) is True
+    assert len(calls) == 1
+
+    assert confirm_file_send("AGENTS.md", manifest, confirm_fn=lambda _p: False) is False
+
+
+def test_confirm_file_send_prompt_names_the_target_file() -> None:
+    """The prompt is scoped to the file being sent, not the whole run."""
+    manifest = build_manifest([], [])
+    seen: list[str] = []
+
+    def accept(prompt: str) -> bool:
+        seen.append(prompt)
+        return True
+
+    confirm_file_send("README.md", manifest, confirm_fn=accept)
+    assert "README.md" in seen[0]
 
 
 # --------------------------------------------------------------------------- no model

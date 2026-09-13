@@ -486,6 +486,50 @@ def test_scan_declined_at_the_manifest_sends_nothing(tmp_path: Path) -> None:
     assert result.created == 0
 
 
+def test_scan_per_file_confirm_accepts_one_file_and_declines_another(tmp_path: Path) -> None:
+    """Per-file confirm: declining one target file leaves the other's proposals intact."""
+    ws = build_workspace(tmp_path, git_init_templates=True, only=["atlas", "kiln", "beacon"])
+    db = get_db(tmp_path / "universe.db")
+
+    payload = {
+        "proposals": [
+            {
+                "title": "Require a green check before every commit",
+                "rationale": "Every project states the same pre-commit convention.",
+                "proposed_body": C2_LINE,
+                "target_section": "## Testing instructions",
+                "source_lines": [C2_LINE],
+            }
+        ]
+    }
+
+    seen_declined_target: List[str] = []
+
+    def confirm_fn(prompt: str) -> bool:
+        if "Makefile" in prompt:
+            seen_declined_target.append("Makefile")
+            return False
+        return True
+
+    result = scan(
+        ws.projects,
+        templates_dir=ws.templates,
+        db=db,
+        yes=False,
+        confirm_fn=confirm_fn,
+        runner=fake_runner(payload),
+    )
+
+    assert seen_declined_target == ["Makefile"]
+    assert result.aborted is False
+    assert result.declined == ("Makefile",)
+
+    from metaproject.learn import review
+
+    queue = review(db)
+    assert {row["target_file"] for row in queue} == {"AGENTS.md"}
+
+
 def test_c27_applied_content_is_not_re_proposed(tmp_path: Path) -> None:
     """C27: after an accept, the contributing projects match the template again."""
     ws = build_workspace(tmp_path, git_init_templates=True, only=list(C2_PROJECTS))

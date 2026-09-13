@@ -27,6 +27,10 @@ DEFAULT_LEARN_TARGETS = [
     "pyproject.toml",
 ]
 
+# The `learn` pipeline's default model: fast and cheap, since each scan can issue one
+# call per target file (spec.md §5.4.3). Set `learn.model` to override.
+DEFAULT_LEARN_MODEL = "claude-haiku-4-5-20251001"
+
 DEFAULT_ACTIVITY_WEIGHTS = {
     "Active Now": 1.0,
     "Active Near": 0.8,
@@ -59,7 +63,7 @@ class LearnConfig:
 
     targets: list[str] = field(default_factory=lambda: list(DEFAULT_LEARN_TARGETS))
     resurface_factor: float = 2.0
-    model: str | None = None
+    model: str | None = DEFAULT_LEARN_MODEL
     activity_weights: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_ACTIVITY_WEIGHTS)
     )

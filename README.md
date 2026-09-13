@@ -325,8 +325,8 @@ are separate acts, and only the accept step writes.
 | Stage | Who decides | What happens |
 |---|---|---|
 | 1. Collect | Code | Each template is rendered *with that project's own variables*, then diffed against the project's real file. Because the placeholders are substituted first, your project name is not mistaken for a novel contribution. |
-| 2. Guard | Code | `.gitignore` matches and a hard denylist are dropped; credential-shaped and high-entropy strings are redacted; you are shown a manifest of exactly what would leave the machine, and confirm it once per session. |
-| 3. Synthesize | Model | One `claude -p` call per target file, carrying every project's redacted diff for that file. Oversized bundles are chunked and reduced. |
+| 2. Guard | Code | `.gitignore` matches and a hard denylist are dropped; credential-shaped and high-entropy strings are redacted. Withheld paths are printed once, informationally. |
+| 3. Synthesize | Model | For each target file, you are shown that file's slice of the send manifest and asked to send it or skip it; a skip costs no call. A sent file becomes one `claude -p` call carrying every project's redacted diff for that file. Oversized bundles are chunked and reduced. |
 | 4. Record | Code | Proposals and per-project evidence land in `~/.metaproject/universe.db`. |
 | 5. Review | You | The acceptance TUI, or the queue subcommands. |
 | 6. Apply | Code | The template is patched under the named section and committed. |
@@ -349,9 +349,10 @@ metaproject learn ~/Projects
 metaproject learn --all --yes --no-tui
 ```
 
-Before anything is sent, `learn` prints the send manifest — every project and file whose
-redacted diff would leave the machine, its size in bytes, and every path that was withheld
-with the reason — and waits for confirmation. `--yes` skips that prompt for
+Before any file's evidence is sent, `learn` prints that file's slice of the manifest —
+every project's redacted diff, its size in bytes — and waits for a send/skip decision, one
+file at a time. Withheld paths (gitignore, denylist, binary) are printed once up front,
+informationally, since they are never a per-file choice. `--yes` skips every prompt for
 non-interactive use.
 
 #### Scanning without reviewing
@@ -429,7 +430,8 @@ entirely.
   that writes templates. This is structural, not a convention.
 - **You approve the egress.** Only rendered *diffs* leave the machine, never whole files,
   and only after `.gitignore` filtering, denylisting, redaction, and your confirmation of
-  the manifest.
+  that file's slice of the manifest — asked once per target file, so declining one file
+  never withholds evidence for another.
 - **Model output is data, never instruction.** Replies are parsed against a fixed schema;
   unknown keys are dropped, unparseable output is discarded rather than salvaged, and a
   proposal body becomes template text only — it is never executed and cannot change what
