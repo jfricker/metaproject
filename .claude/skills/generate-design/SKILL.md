@@ -19,6 +19,9 @@ distinct inputs (per this repo's `AGENTS.md`).
 ## Inputs
 
 - Approved `spec.md`.
+- `ARCHITECTURE.md` and `docs/DESIGN-INVARIANTS.md`, if they exist — read them first so
+  the design fits the system's established structure and doesn't violate an invariant
+  a prior cycle already settled.
 - The existing codebase: explore actual patterns and conventions in use (don't design in
   a vacuum) — use `Explore` or direct search tools as needed.
 

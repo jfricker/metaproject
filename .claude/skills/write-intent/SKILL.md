@@ -19,6 +19,9 @@ design, or code work starts.
 ## Inputs
 
 - The user's raw description of the problem (however rough).
+- `ARCHITECTURE.md` and `docs/VERIFIED-FACTS.md`, if they exist — check them so the
+  intent is framed against what's already known about the system, instead of
+  rediscovering it.
 - The existing `intent.md` template at the repo root (title/author/date/status header,
   Problem / Proposed outcome / Affected users and systems / Scope / Resolved decisions /
   Constraints / Open questions).

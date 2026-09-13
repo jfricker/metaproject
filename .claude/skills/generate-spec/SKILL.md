@@ -17,6 +17,9 @@ in a review weeks later.
 ## Inputs
 
 - Approved `intent.md`.
+- `docs/VERIFIED-FACTS.md` and `docs/DESIGN-INVARIANTS.md`, if they exist — a fact or
+  invariant recorded there from a prior cycle doesn't need re-investigating or
+  re-deriving here.
 - Any available organization/policy skills relevant to the change (security, compliance,
   brand, UX, accessibility) — check the available-skills listing and load ones that
   apply before writing requirements, so policy shapes the spec instead of being

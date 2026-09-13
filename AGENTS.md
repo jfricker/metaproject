@@ -23,3 +23,15 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
 
 ### plan.md
  The agent will be instructed by the operated to create an implementation plan based up on the spec.md and any design artifacts. 
+
+### design.md
+ The agent will be instructed to create a technical design from an approved spec.md — affected components, data flow, alternatives, trade-offs — which plan.md then consumes alongside spec.md.
+
+### Pull requests are optional
+ A cycle may land as a PR or be committed straight to `main`, operator's choice. `wrapup` asks the operator which happened for the cycle it's closing rather than assuming either way, and won't archive/reset until the operator confirms the work is actually complete and committed.
+
+### ARCHITECTURE.md
+ A long-lived, root-level index that never resets between cycles. `wrapup` updates it at the end of every cycle: an entry in its cycle index linking to that cycle's archived spec.md/design.md, a one-line summary, and (when the cycle changed structure) an update to its mermaid diagram(s). Over time ARCHITECTURE.md becomes the sum of every cycle's specifications plus the on-the-fly decisions and choices made along the way — read it before `generate-design` to avoid re-deriving context that's already settled.
+
+### docs/DESIGN-INVARIANTS.md and docs/VERIFIED-FACTS.md
+ Long-lived, append-only companions to STATE.md's "Design invariants (regression guards)" and "Verified facts (do not re-investigate)" sections. STATE.md itself resets to blank at the end of every cycle (`wrapup`), so before it does, `wrapup` appends whatever those two sections hold — dated and linked to the cycle's archive — onto these two files instead of letting the knowledge disappear. Read them at the start of `generate-spec`/`generate-design`/`generate-plan` so a fact verified in one cycle doesn't get re-investigated in the next.
