@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: End-of-cycle archive and reset. Archives intent.md, spec.md, design.md, plan.md, and HANDOFF.md into docs/archive/, appends STATE.md's Design invariants and Verified facts into the long-lived docs/DESIGN-INVARIANTS.md and docs/VERIFIED-FACTS.md, updates ARCHITECTURE.md's cycle index, removes worktrees created for the cycle, and resets those docs (plus STATE.md) back to blank templates so main is ready for the next write-intent cycle. Touches only SDLC documents, ARCHITECTURE.md, docs/DESIGN-INVARIANTS.md, docs/VERIFIED-FACTS.md, docs/archive/, and worktrees — never source code or tests. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: End-of-cycle archive and reset. First resolves STATE.md's Open items carried into plan.md with the operator (discard, carry forward into the next intent.md, or send the cycle back to implement-plan if genuinely unfinished) — only then archives intent.md, spec.md, design.md, plan.md, and HANDOFF.md into docs/archive/, appends STATE.md's Design invariants and Verified facts into the long-lived docs/DESIGN-INVARIANTS.md and docs/VERIFIED-FACTS.md, updates ARCHITECTURE.md's cycle index, removes worktrees created for the cycle, and resets those docs (plus STATE.md) back to blank templates so main is ready for the next write-intent cycle. Touches only SDLC documents, ARCHITECTURE.md, docs/DESIGN-INVARIANTS.md, docs/VERIFIED-FACTS.md, docs/archive/, and worktrees — never source code or tests. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # wrapup
@@ -35,26 +35,44 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
 
 1. Confirm with the user which cycle is being closed if it's at all ambiguous (more than
    one `intent.md`-shaped thing could be meant).
-2. **PRs are optional in this workflow (per `AGENTS.md`) — don't assume either way.**
+2. **Resolve STATE.md's "Open items carried into plan.md" before anything else — this
+   can abort the whole wrapup, so do it before touching any file.**
+   - If the section is empty, skip to step 3.
+   - If it has content, for each item work out *why it's still open*: check whether
+     `plan.md`/`implement-plan`'s actual work addressed it, whether `execute-tests`
+     touched it, or whether it was never picked up at all. Don't just relay the raw
+     text — show the operator the item plus your assessment of its status.
+   - Ask the operator, per item, to choose one:
+     - **Discard** — no longer relevant; drop it.
+     - **Carry forward** — it's real but out of scope for this cycle; it gets seeded
+       into the next `intent.md`'s Open questions section (step 7), linked back to this
+       cycle's archive, so `write-intent` starts the next cycle with it already in view.
+     - **Return to implement-plan** — the cycle isn't actually finished; this item needs
+       real work, not a note. If the operator picks this for *any* item, **stop the
+       entire wrapup run here** — archive nothing, reset nothing, hand back to
+       `implement-plan` instead.
+   - Only proceed past this step once every item has a discard/carry-forward decision
+     (or the return-to-implement-plan exit has already happened).
+3. **PRs are optional in this workflow (per `AGENTS.md`) — don't assume either way.**
    Ask the operator whether this cycle went through a PR:
    - If yes, verify it's merged before continuing.
    - If no, get explicit confirmation from the operator that the cycle's work is
      finished and committed (to `main` or wherever they're closing it from).
    Do not archive/reset until this is confirmed one way or the other.
-3. Derive an archive slug from `intent.md`'s title and today's date:
+4. Derive an archive slug from `intent.md`'s title and today's date:
    `docs/archive/YYYY-MM-DD-<slugified-title>/`.
-4. Confirm `docs/archive/` already exists and is tracked (`git ls-files docs/archive/`
+5. Confirm `docs/archive/` already exists and is tracked (`git ls-files docs/archive/`
    should list at least `docs/archive/.gitkeep`) — this is a precondition of the repo,
    not something this step creates. If it's missing, stop and tell the user rather than
    `mkdir -p`-ing it into existence; a missing archive root means the repo scaffold is
    broken and needs fixing outside `wrapup`'s scope. Once confirmed, `git mv` (or move +
    `git add`) each of `intent.md`, `spec.md`, `design.md`, `plan.md`, and `HANDOFF.md`
    (if present) into the derived archive directory, preserving history.
-5. Remove worktrees created for this cycle: for each one listed by `git worktree list`
+6. Remove worktrees created for this cycle: for each one listed by `git worktree list`
    under `.claude/worktrees/` that belongs to this cycle, run
    `git worktree remove <path>` (add `--force` only after confirming with the user
    there's nothing uncommitted worth keeping in it).
-6. **Preserve long-lived knowledge before it's lost to the STATE.md reset:**
+7. **Preserve long-lived knowledge before it's lost to the STATE.md reset:**
    - If STATE.md's **Design invariants (regression guards)** section has content,
      append it to `docs/DESIGN-INVARIANTS.md` under a new dated heading linking to this
      cycle's archive directory (see template below). Skip if the section is empty.
@@ -65,11 +83,14 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
      Affected components / Data flow sections describe a structural change, amend
      `ARCHITECTURE.md`'s existing mermaid diagram(s) to reflect it — update in place,
      don't regenerate from scratch each cycle.
-7. Recreate blank templates at the repo root for `intent.md`, `spec.md`, `design.md`,
+8. Recreate blank templates at the repo root for `intent.md`, `spec.md`, `design.md`,
    `plan.md`, using the same blank shapes defined in `write-intent`, `generate-spec`,
    `generate-design`, and `generate-plan` respectively (don't invent a divergent shape
-   here — reuse those).
-8. Reset `STATE.md`'s checklist back to:
+   here — reuse those) — **except**: if step 2 produced any "carry forward" items, seed
+   the new `intent.md`'s **Open questions** section with them instead of leaving it
+   blank, each one linked back to the cycle it came from
+   (`docs/archive/YYYY-MM-DD-<slug>/`).
+9. Reset `STATE.md`'s checklist back to:
    ```markdown
    # <Project> — State
 
@@ -87,9 +108,9 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    ## Verified facts (do not re-investigate)
    ```
    Keep the project title line as it already reads; don't rename the project. This is
-   safe now because step 6 already preserved the invariants/facts elsewhere.
-9. Commit the archive + long-lived doc updates + reset as one commit (e.g.
-   `chore: archive <slug> cycle, reset SDLC docs`).
+   safe now because step 7 already preserved the invariants/facts elsewhere.
+10. Commit the archive + long-lived doc updates + reset as one commit (e.g.
+    `chore: archive <slug> cycle, reset SDLC docs`).
 
 ## Blank templates
 
@@ -130,17 +151,24 @@ never reset — wrapup appends to it at the end of every cycle.
 
 ## Output artifact
 
-- `docs/archive/YYYY-MM-DD-<slug>/{intent,spec,design,plan}.md` (+ `HANDOFF.md` if it
-  existed).
-- `ARCHITECTURE.md` with a new cycle-index row (and diagram update if applicable).
-- `docs/DESIGN-INVARIANTS.md` / `docs/VERIFIED-FACTS.md` with a new dated section, if
-  STATE.md had content to preserve.
-- Root `intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md` reset to blank
-  templates.
-- No worktrees left over from the closed cycle.
+- Either: a completed wrapup —
+  - `docs/archive/YYYY-MM-DD-<slug>/{intent,spec,design,plan}.md` (+ `HANDOFF.md` if it
+    existed).
+  - `ARCHITECTURE.md` with a new cycle-index row (and diagram update if applicable).
+  - `docs/DESIGN-INVARIANTS.md` / `docs/VERIFIED-FACTS.md` with a new dated section, if
+    STATE.md had content to preserve.
+  - Root `intent.md` (Open questions possibly seeded with carried-forward items),
+    `spec.md`, `design.md`, `plan.md`, `STATE.md` reset to blank templates.
+  - No worktrees left over from the closed cycle.
+- Or: an early exit back to `implement-plan` — nothing archived, nothing reset,
+  triggered by the operator choosing "return to implement-plan" on an open item in
+  step 2.
 
 ## Stop conditions / human gate
 
+- Never resolve STATE.md's Open items yourself — every item gets an explicit
+  discard/carry-forward/return-to-implement-plan decision from the operator, and a
+  single "return to implement-plan" halts the whole run before anything is touched.
 - Never assume a PR happened or that it merged — ask the operator (PRs are optional
   here); proceed only once they confirm the cycle's work is actually complete.
 - Never delete a worktree with uncommitted or unmerged work without explicit

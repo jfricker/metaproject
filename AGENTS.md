@@ -35,3 +35,6 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
 
 ### docs/DESIGN-INVARIANTS.md and docs/VERIFIED-FACTS.md
  Long-lived, append-only companions to STATE.md's "Design invariants (regression guards)" and "Verified facts (do not re-investigate)" sections. STATE.md itself resets to blank at the end of every cycle (`wrapup`), so before it does, `wrapup` appends whatever those two sections hold — dated and linked to the cycle's archive — onto these two files instead of letting the knowledge disappear. Read them at the start of `generate-spec`/`generate-design`/`generate-plan` so a fact verified in one cycle doesn't get re-investigated in the next.
+
+### STATE.md's "Open items carried into plan.md"
+ Before `wrapup` resets STATE.md, it resolves this section with the operator first — for each item, showing its own assessment of why the item is still open, then asking the operator to discard it, carry it forward into the next `intent.md`'s Open questions, or send the cycle back to `implement-plan` because it isn't actually finished. A single "return to implement-plan" halts the whole wrapup before anything is archived or reset.
