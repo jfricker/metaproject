@@ -5,14 +5,35 @@ description: Start a new SDLC cycle by brainstorming a raw problem statement (an
 
 # write-intent
 
-Stage 1 of the SDLC loop (`docs`/`AGENTS.md`): capture intent once, in the
-originator's own words, as a version-controlled artifact — before any requirements,
-design, or code work starts.
+Stage 1 of the SDLC loop: capture intent once, in the originator's own words, as a
+version-controlled artifact — before any requirements, design, or code work starts.
+
+## Conventions (metaproject)
+
+- **Session assumption**: a `SessionStart` hook already checked that metaproject ≥
+  0.7.0 is installed and `.metaproject.json` exists; this skill doesn't re-check. If
+  the session-start `[sdlc-skills]` notice reported a failure, stop and repeat its fix
+  instead of proceeding. If a metaproject command fails anyway, stop and show the user
+  its output.
+- **Documents come from metaproject**: working documents are templated by metaproject,
+  not by this skill. Create a missing one with `metaproject backfill <file>`
+  (create-only — it never overwrites); `metaproject backfill` with no files creates
+  every missing scaffolded deliverable at once. `HANDOFF.md` is on-demand:
+  `metaproject backfill HANDOFF.md`.
+- **Blank rule**: a cycle document (intent/spec/design/plan) is blank iff its first
+  `# ` heading contains `<Title>`.
+- **Status vocabulary**: `Draft`, `Approved`, `Complete`, `Cancelled`, `Deferred`,
+  `Superseded`. Header fields are `Author`, `Derived from` (not on intent.md),
+  `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
+  `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
+  `Approved`. Never set it to `Approved` yourself.
+- Tick STATE.md Process item 1 once this stage is done.
 
 ## When to use
 
 - The user has a problem statement, idea, ticket, or incident and wants to start work.
-- `intent.md` at the repo root is currently blank/templated (no active cycle in flight).
+- `intent.md` at the repo root is blank per the blank rule above, or missing — if
+  missing, run `metaproject backfill intent.md` first, then confirm it's blank.
 - Do **not** use this to resume work on an already-approved `intent.md` — that belongs
   to `generate-spec` onward.
 
@@ -28,9 +49,10 @@ design, or code work starts.
 
 ## Process
 
-1. **Brainstorm, don't transcribe.** Load the `brainstorming` skill's approach: ask
-   questions until the problem, proposed outcome, affected systems, and constraints are
-   concrete — don't just restate what the user typed.
+1. **Brainstorm, don't transcribe.** If the `brainstorming` skill is available, load
+   its approach; either way, ask questions until the problem, proposed outcome,
+   affected systems, and constraints are concrete — don't just restate what the user
+   typed.
 2. Draft `intent.md` in place, filling every section:
    - **Problem** — what's wrong or missing, for whom.
    - **Proposed outcome** — what "done" looks like, observably.
