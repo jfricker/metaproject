@@ -72,6 +72,23 @@ def added_lines(diff: str) -> Tuple[str, ...]:
     return tuple(out)
 
 
+def structure_keys(headings: Iterable[str]) -> Tuple[str, ...]:
+    """Normalize `review`'s missing-heading lines the same way `added_lines` does diffs.
+
+    `result.structure[target_file]` is the working deliverable's missing heading lines
+    (e.g. `"## Constraints"`, the same shape `structure.propose` groups removals by).
+    `review` never reports an *extra* heading — only what a template has and the
+    project no longer carries — so there is nothing here for `add_heading` to consult
+    (R-LRN-4): this function, and the caller that feeds it, only ever see removals.
+    """
+    out: List[str] = []
+    for line in headings or ():
+        key = candidate_key(line)
+        if key:
+            out.append(key)
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class DriftSignal:
     """What `review` reports, in the shape scoring can consult.
@@ -167,5 +184,16 @@ def collect_drift(
             found = added_lines(diff)
             if found:
                 lines[(key_path, target_file)] = frozenset(found)
+
+        # Working deliverables: a heading `review` reports missing corroborates the
+        # matching `remove_heading` evidence `collect` already gathered (R-LRN-4).
+        # `diffs` and `structure` never share a target file (governance vs. working),
+        # so this can only ever add a key, never overwrite one `diffs` just set.
+        for target_file, missing_headings in result.structure.items():
+            found = structure_keys(missing_headings)
+            if not found:
+                continue
+            pair = (key_path, target_file)
+            lines[pair] = lines.get(pair, frozenset()) | frozenset(found)
 
     return DriftSignal(lines=lines, missing=missing)
