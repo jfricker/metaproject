@@ -16,7 +16,7 @@ from metaproject.git import (
     has_uncommitted_changes,
     is_git_repository,
 )
-from metaproject.variables import titlecase
+from metaproject.identity import fallback_identity, read_identity
 
 IGNORED_DIRECTORIES = {
     ".git",
@@ -71,70 +71,27 @@ def is_archived_path(path: Path) -> bool:
 
 
 def extract_title(project_dir: Path) -> str:
-    """Extract project title from README.md, intent.md, or directory name."""
-    readme_path = project_dir / "README.md"
-    if readme_path.exists():
-        try:
-            for line in readme_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                clean = line.strip()
-                if clean.startswith("# "):
-                    return clean[2:].strip()
-        except Exception:
-            pass
+    """Extract project title: `.metaproject.json` first, else manifest fallback (R-ID-3).
 
-    intent_path = project_dir / "intent.md"
-    if intent_path.exists():
-        try:
-            for line in intent_path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                clean = line.strip()
-                if clean.startswith("# "):
-                    title_part = clean[2:].split("-")[0].strip()
-                    if title_part:
-                        return title_part
-        except Exception:
-            pass
-
-    return titlecase(project_dir.name)
+    `intent.md` is never consulted and a hyphenated title is never truncated.
+    """
+    identity = read_identity(project_dir)
+    if identity is not None:
+        return identity.title
+    title, _description = fallback_identity(project_dir)
+    return title
 
 
 def extract_description(project_dir: Path) -> str:
-    """Extract one-line description from intent.md, README.md, or empty string."""
-    intent_path = project_dir / "intent.md"
-    if intent_path.exists():
-        try:
-            lines = intent_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            for i, line in enumerate(lines):
-                if line.strip().startswith("## Problem") and i + 1 < len(lines):
-                    desc = lines[i + 1].strip()
-                    if desc and not desc.startswith("#"):
-                        return desc
-        except Exception:
-            pass
+    """Extract project description: `.metaproject.json` first, else manifest fallback.
 
-    readme_path = project_dir / "README.md"
-    if readme_path.exists():
-        try:
-            lines = readme_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-            found_header = False
-            in_code_fence = False
-            for line in lines:
-                clean = line.strip()
-                if clean.startswith("```"):
-                    # Track the fence rather than only skipping its delimiters, or the
-                    # first shell command in a Quick Start block becomes the description.
-                    in_code_fence = not in_code_fence
-                    continue
-                if in_code_fence:
-                    continue
-                if clean.startswith("# "):
-                    found_header = True
-                    continue
-                if found_header and clean and not clean.startswith("#"):
-                    return clean
-        except Exception:
-            pass
-
-    return ""
+    `intent.md` is never consulted (R-ID-3).
+    """
+    identity = read_identity(project_dir)
+    if identity is not None:
+        return identity.description
+    _title, description = fallback_identity(project_dir)
+    return description
 
 
 def get_newest_mtime_in_dir(path: Path, max_files: int = 500) -> float:

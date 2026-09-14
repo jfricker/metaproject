@@ -1,8 +1,10 @@
 """Variable resolution, normalization, and metadata collection for MetaProject."""
 
 import datetime
+import functools
 import os
 import re
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import questionary
@@ -48,8 +50,14 @@ def collect_variables(
     author: Optional[str] = None,
     config: Optional[Config] = None,
     interactive: bool = False,
+    created: Optional[datetime.date] = None,
 ) -> Dict[str, Any]:
-    """Collect and resolve all whitelisted template variables."""
+    """Collect and resolve all whitelisted template variables.
+
+    `Date`/`Year` render from `created` when given (R-ID-2: a project with a recorded
+    identity renders from its scaffold date, not today); otherwise they render from the
+    current date, which is the only case `metaproject new` needs.
+    """
     slug = slugify(project_name)
     resolved_title = title.strip() if title and title.strip() else titlecase(project_name)
     resolved_desc = description.strip() if description and description.strip() else ""
@@ -80,9 +88,9 @@ def collect_variables(
             if prompt_author:
                 resolved_author = prompt_author.strip()
 
-    now = datetime.datetime.now()
-    date_str = now.strftime("%Y-%m-%d")
-    year_str = str(now.year)
+    reference_date = created if created is not None else datetime.datetime.now().date()
+    date_str = reference_date.strftime("%Y-%m-%d")
+    year_str = str(reference_date.year)
 
     variables: Dict[str, Any] = {
         "ProjectTitle": resolved_title,
@@ -97,3 +105,45 @@ def collect_variables(
     }
 
     return variables
+
+
+@functools.lru_cache(maxsize=8)
+def _resolved_author(config_author: str) -> str:
+    """Resolve the author once per distinct configured value, not once per project."""
+    return resolve_author(config_author or None, None)
+
+
+def project_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
+    """Resolve the template variables a project would have been scaffolded with.
+
+    Identity comes from `.metaproject.json` when present (R-ID-2): title, description,
+    author, and `created` (so `{Date}`/`{Year}` render from the scaffold date, not
+    today). Otherwise title/description fall back to `identity.fallback_identity` and
+    `created` is left unset so `collect_variables` uses today.
+    """
+    from metaproject.identity import fallback_identity, read_identity
+
+    project_dir = Path(project_dir)
+    identity = read_identity(project_dir)
+
+    if identity is not None:
+        return collect_variables(
+            project_name=project_dir.name,
+            title=identity.title,
+            description=identity.description,
+            author=identity.author,
+            config=config,
+            interactive=False,
+            created=identity.created,
+        )
+
+    title, description = fallback_identity(project_dir)
+    author = _resolved_author(config.author if config else "")
+    return collect_variables(
+        project_name=project_dir.name,
+        title=title,
+        description=description,
+        author=author,
+        config=config,
+        interactive=False,
+    )
