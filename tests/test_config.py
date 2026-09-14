@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from metaproject.config import Config, LearnConfig, load_config, save_config
+from metaproject import deliverables
+from metaproject.config import DEFAULT_LEARN_TARGETS, Config, LearnConfig, load_config, save_config
 from metaproject.exceptions import ConfigError
 from metaproject.templates import get_bundled_templates_dir, seed_templates
 
@@ -24,13 +25,18 @@ def test_default_learn_config() -> None:
     cfg = Config()
     assert isinstance(cfg.learn, LearnConfig)
     assert cfg.learn.targets == [
-        "README.md",
         "AGENTS.md",
         "CLAUDE.md",
-        "intent.md",
-        "STATE.md",
-        "HANDOFF.md",
+        "README.md",
         ".gitignore",
+        "intent.md",
+        "spec.md",
+        "design.md",
+        "plan.md",
+        "STATE.md",
+        "ARCHITECTURE.md",
+        "docs/DESIGN-INVARIANTS.md",
+        "docs/VERIFIED-FACTS.md",
         "docs/",
         "Makefile",
         "pyproject.toml",
@@ -47,6 +53,16 @@ def test_default_learn_config() -> None:
     }
 
 
+def test_default_learn_targets_cover_declared_and_untemplated_targets() -> None:
+    """DEFAULT_LEARN_TARGETS = every learn_targets() deliverable, plus the untemplated
+    and directory targets kept from the prior default (spec.md R-LRN-3)."""
+    assert set(deliverables.learn_targets()) <= set(DEFAULT_LEARN_TARGETS)
+    assert "HANDOFF.md" not in DEFAULT_LEARN_TARGETS
+    assert "docs/" in DEFAULT_LEARN_TARGETS
+    assert "Makefile" in DEFAULT_LEARN_TARGETS
+    assert "pyproject.toml" in DEFAULT_LEARN_TARGETS
+
+
 def test_config_round_trip_without_learn_key(tmp_path: Path) -> None:
     """A config file written without a 'learn' key still loads and gets learn defaults."""
     config_file = tmp_path / "config.json"
@@ -60,7 +76,7 @@ def test_config_round_trip_without_learn_key(tmp_path: Path) -> None:
     assert loaded.author == "Bob"
     assert isinstance(loaded.learn, LearnConfig)
     assert loaded.learn.resurface_factor == 2.0
-    assert loaded.learn.targets[0] == "README.md"
+    assert loaded.learn.targets[0] == "AGENTS.md"
 
 
 def test_config_round_trip_with_learn_key(tmp_path: Path) -> None:
