@@ -65,11 +65,13 @@ def test_full_lifecycle_and_performance(
     assert (project_target / "AGENTS.md").exists()
     assert (project_target / "intent.md").exists()
     assert (project_target / "STATE.md").exists()
-    assert (project_target / "HANDOFF.md").exists()
     assert (project_target / "CLAUDE.md").exists()
     assert (project_target / ".gitignore").exists()
     assert (project_target / "docs").exists()
     assert (project_target / ".git").exists()
+    assert (project_target / ".metaproject.json").exists()
+    # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
+    assert not (project_target / "HANDOFF.md").exists()
 
     # 3. UNIVERSE
     db_path = config_dir / "universe.db"

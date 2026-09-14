@@ -64,9 +64,15 @@ def scripted(commands: List[str]) -> Callable[[], str]:
 
 
 def one_drifted_project(root: Path, name: str = "one_drift") -> Path:
-    """A scaffolded project with exactly one drifted file and nothing missing."""
+    """A scaffolded project with exactly one drifted file and nothing missing.
+
+    `scaffold_project` no longer creates the on-demand `HANDOFF.md` (spec.md R-CLS-5);
+    `review.py`'s own notion of "missing" is unchanged until B2, so it is deployed here
+    to keep this fixture's "nothing missing" contract until then.
+    """
     proj = root / name
     scaffold_project(project_name=name, output=proj, interactive=False, no_git=True)
+    deploy_entry(proj, "HANDOFF.md")
     (proj / "AGENTS.md").write_text("# local rules\nNever use make!\n", encoding="utf-8")
     return proj
 
@@ -92,6 +98,9 @@ def test_review_compliant_project(tmp_path: Path) -> None:
         interactive=False,
         no_git=True,
     )
+    # `new` no longer scaffolds the on-demand HANDOFF.md (spec.md R-CLS-5); review's own
+    # STANDARD_DELIVERABLES still requires it until B2, so deploy it here.
+    deploy_entry(proj, "HANDOFF.md")
 
     review = review_project(proj)
     assert review.is_compliant is True
@@ -398,6 +407,7 @@ def test_the_state_word_names_the_defect(tmp_path: Path) -> None:
     """CLEAN / DRIFTED / INCOMPLETE, and the worse of the two defects wins."""
     clean_dir = tmp_path / "clean_proj"
     scaffold_project(project_name="clean_proj", output=clean_dir, interactive=False, no_git=True)
+    deploy_entry(clean_dir, "HANDOFF.md")
     clean = review_project(clean_dir)
     assert clean.is_clean is True
     assert compliance_cell(clean) == STATE_CLEAN
@@ -475,6 +485,7 @@ def test_the_header_leads_with_the_score_and_the_scan_context(tmp_path: Path) ->
         interactive=False,
         no_git=True,
     )
+    deploy_entry(workspace / "clean_proj", "HANDOFF.md")
     one_drifted_project(workspace, "drifted_proj")
     make_drifting_project(workspace, "incomplete_proj")
 

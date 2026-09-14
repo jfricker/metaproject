@@ -14,7 +14,7 @@
 - [x] A2. markdown.py
 - [x] A3. identity.py + variable resolution
 - [x] A4. placeholder warnings + render exclusions
-- [ ] B1. scaffold writes identity, skips on-demand
+- [x] B1. scaffold writes identity, skips on-demand
 - [ ] B2. review classes
 - [ ] B3. backfill_missing + `metaproject backfill`
 - [ ] B4. TUI + CLI surfaces

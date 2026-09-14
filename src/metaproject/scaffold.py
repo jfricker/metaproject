@@ -2,17 +2,24 @@
 and project generation.
 """
 
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from metaproject import __version__
 from metaproject.config import Config, load_config
+from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
+from metaproject.identity import IDENTITY_FILE, Identity, write_identity
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
 from metaproject.variables import collect_variables
 
 # Argument forms that mean "scaffold into this directory" rather than naming a project.
 CWD_ALIASES = {".", "./", ".\\", "..", "../", "..\\"}
+
+# On-demand deliverables (e.g. HANDOFF.md) are never scaffolded by `new` (R-CLS-5).
+_ON_DEMAND_PATHS = tuple(d.path for d in DELIVERABLES if d.cls is DeliverableClass.ON_DEMAND)
 
 
 def resolve_output(
@@ -206,7 +213,9 @@ def scaffold_project(
         except (PermissionError, OSError):
             resolved_templates_dir = get_bundled_templates_dir()
 
-    # 3. Variable resolution
+    # 3. Variable resolution. `created` is fixed here so it is the single date used both
+    # for the rendered `{Date}`/`{Year}` and for `.metaproject.json`'s `created` field.
+    created = date.today()
     variables = collect_variables(
         project_name=resolve_project_name(project_name, target_dir),
         title=title,
@@ -214,6 +223,7 @@ def scaffold_project(
         author=author,
         config=cfg,
         interactive=interactive,
+        created=created,
     )
 
     # 4. Scaffolding with transactional rollback
@@ -234,25 +244,49 @@ def scaffold_project(
             target_dir=target_dir,
             variables=variables,
             dry_run=True,
+            exclude=_ON_DEMAND_PATHS,
         ).paths
         preserved_paths = [path for path in planned_paths if path.exists()]
         for path in preserved_paths:
             tracker.record_existing(path)
 
         # Render template files
-        rendered_paths = render_template_tree(
+        render_report = render_template_tree(
             source_dir=resolved_templates_dir,
             target_dir=target_dir,
             variables=variables,
             dry_run=dry_run,
             skip_existing=is_backfill,
-        ).paths
+            exclude=_ON_DEMAND_PATHS,
+        )
+        rendered_paths = render_report.paths
 
         for path in rendered_paths:
             if path.is_dir():
                 tracker.record_created_dir(path)
             else:
                 tracker.record_created_file(path)
+
+        # 4a. Project identity (`.metaproject.json`), written before git init so the
+        # initial commit includes it (R-ID-1). A backfill never overwrites an existing
+        # identity file; dry-run lists the path it would create but writes nothing.
+        identity_path = target_dir / IDENTITY_FILE
+        identity_file: Optional[Path] = None
+        if not identity_path.exists():
+            identity_file = identity_path
+            rendered_paths.append(identity_path)
+            if not dry_run:
+                write_identity(
+                    target_dir,
+                    Identity(
+                        title=variables["ProjectTitle"],
+                        description=variables["ProjectDescription"],
+                        author=variables["Author"],
+                        created=created,
+                        metaproject_version=__version__,
+                    ),
+                )
+                tracker.record_created_file(identity_path)
 
         # 5. Agent-skills layout: .agents/skills/ with .claude/skills symlinked to it.
         skills_link = link_agent_skills(
@@ -294,6 +328,8 @@ def scaffold_project(
             "git_initialized": git_initialized,
             "git_status": git_status,
             "dry_run": dry_run,
+            "warnings": render_report.warnings,
+            "identity_file": identity_file,
         }
 
     except Exception as exc:

@@ -1,5 +1,6 @@
 """Tests for scaffolding engine, path resolution, git integration, rollback, and CLI commands."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from typer.testing import CliRunner
 from metaproject import cli
 from metaproject.cli import app
 from metaproject.config import Config
-from metaproject.exceptions import CollisionError
+from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.scaffold import (
     is_directory_empty,
     resolve_output,
@@ -105,13 +106,16 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         "AGENTS.md",
         "intent.md",
         "STATE.md",
-        "HANDOFF.md",
         "CLAUDE.md",
         ".gitignore",
         "docs",
+        ".metaproject.json",
     ]
     for expected in expected_files:
         assert (target / expected).exists(), f"Missing expected deliverable: {expected}"
+
+    # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
+    assert not (target / "HANDOFF.md").exists()
 
     # Verify content substitution
     readme_content = (target / "README.md").read_text(encoding="utf-8")
@@ -127,6 +131,123 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         check=True,
     )
     assert "chore: initial scaffold from metaproject" in git_log.stdout
+
+    # The initial commit includes .metaproject.json (spec.md R-ID-1).
+    committed_files = subprocess.run(
+        ["git", "-C", str(target), "show", "--stat", "--oneline", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert ".metaproject.json" in committed_files
+
+
+def test_scaffold_writes_identity_file(tmp_path: Path) -> None:
+    """A fresh scaffold writes `.metaproject.json` with the five required fields."""
+    target = tmp_path / "identity_proj"
+    cfg = Config(author="Jane Dev", default_branch="main")
+
+    res = scaffold_project(
+        project_name="identity_proj",
+        output=target,
+        title="Identity Project",
+        description="Checks identity write",
+        config=cfg,
+        interactive=False,
+        no_git=True,
+    )
+
+    identity_path = target / ".metaproject.json"
+    assert res["identity_file"] == identity_path
+    assert "warnings" in res
+
+    data = json.loads(identity_path.read_text(encoding="utf-8"))
+    assert set(data.keys()) == {
+        "title",
+        "description",
+        "author",
+        "created",
+        "metaproject_version",
+    }
+    assert data["title"] == "Identity Project"
+    assert data["description"] == "Checks identity write"
+    assert data["author"] == "Jane Dev"
+    # `created` is the same date used to render `{Date}` (spec.md AC-5).
+    assert data["created"] == res["variables"]["Date"]
+    assert data["metaproject_version"]
+
+
+def test_scaffold_backfill_keeps_existing_identity(tmp_path: Path) -> None:
+    """Backfill never overwrites an existing `.metaproject.json` (spec.md R-ID-1)."""
+    target = tmp_path / "has_identity"
+    target.mkdir()
+    identity_path = target / ".metaproject.json"
+    original = (
+        json.dumps(
+            {
+                "title": "Original Title",
+                "description": "Original description",
+                "author": "Original Author",
+                "created": "2020-01-01",
+                "metaproject_version": "0.1.0",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    identity_path.write_text(original, encoding="utf-8")
+
+    res = scaffold_project(
+        project_name=".",
+        output=str(target) + "/",
+        interactive=False,
+        backfill=True,
+        no_git=True,
+    )
+
+    assert identity_path.read_text(encoding="utf-8") == original
+    assert res["identity_file"] is None
+
+
+def test_scaffold_dry_run_lists_identity_file(tmp_path: Path) -> None:
+    """Dry-run lists the would-be `.metaproject.json` but writes nothing."""
+    target = tmp_path / "dry_identity"
+
+    res = scaffold_project(
+        project_name="dry_identity",
+        output=target,
+        dry_run=True,
+        interactive=False,
+    )
+
+    identity_path = target / ".metaproject.json"
+    assert identity_path in res["rendered_files"]
+    assert res["identity_file"] == identity_path
+    assert not target.exists()
+    assert not identity_path.exists()
+
+
+def test_scaffold_rollback_removes_identity_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure after the identity file is written rolls it back (no partial state)."""
+    target = tmp_path / "rollback_proj"
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("metaproject.scaffold.init_repository", _boom)
+
+    with pytest.raises(MetaProjectError):
+        scaffold_project(
+            project_name="rollback_proj",
+            output=target,
+            interactive=False,
+            no_git=False,
+        )
+
+    assert not (target / ".metaproject.json").exists()
 
 
 def test_scaffold_collision_guard(tmp_path: Path) -> None:
