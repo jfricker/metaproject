@@ -10,10 +10,10 @@
 - [ ] 7. wrapup: cycle archived
 
 ## Implementation phases
-- [ ] A1. deliverables.py
-- [ ] A2. markdown.py
-- [ ] A3. identity.py + variable resolution
-- [ ] A4. placeholder warnings + render exclusions
+- [x] A1. deliverables.py
+- [x] A2. markdown.py
+- [x] A3. identity.py + variable resolution
+- [x] A4. placeholder warnings + render exclusions
 - [ ] B1. scaffold writes identity, skips on-demand
 - [ ] B2. review classes
 - [ ] B3. backfill_missing + `metaproject backfill`
@@ -24,8 +24,8 @@
 - [ ] C4. drift signal for structure
 - [ ] D1. templates
 - [ ] D2. skill docs + README
-- [ ] D3. discovery doc
-- [ ] E1. sdlc-skills hook + Makefile
+- [x] D3. discovery doc
+- [x] E1. sdlc-skills hook + Makefile
 - [ ] E2. sdlc-skills skills
 - [ ] E3. sdlc-skills repo docs + identity + version
 - [ ] F. release on main (after merge)
@@ -49,6 +49,12 @@
   (spec R-DOC-1, 2026-09-14).
 
 ## Verified facts (do not re-investigate)
+- Running pytest inside the Claude Code sandbox: the default TMPDIR contains `claude-501`,
+  which trips the test suites' "no `claude` subprocess" guard (24 false failures). Use
+  `--basetemp=<repo>/.pytest_cache/tmp-<lane>` (outside any `claude` path); baseline
+  435 passed that way (2026-09-14).
+- `uv` needs the sandbox disabled (its cache under ~/.cache/uv is not readable); worktree
+  venvs were created unsandboxed (2026-09-14).
 - The prior "improve learn command" cycle shipped (v0.6.0, 333 tests) but was never
   wrapped up; its docs, including its full STATE.md with invariants, facts and open
   items, are archived under `docs/archive/2026-09-04-improve-learn-command/` (2026-09-13).
