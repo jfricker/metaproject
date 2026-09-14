@@ -414,7 +414,7 @@ def deploy_entry(
 
     if entry.is_dir():
         target.mkdir(parents=True, exist_ok=True)
-        written = render_template_tree(entry, target, resolved_vars)
+        written = render_template_tree(entry, target, resolved_vars).paths
         return [target, *[p for p in written if p.is_file()]]
 
     target.parent.mkdir(parents=True, exist_ok=True)
