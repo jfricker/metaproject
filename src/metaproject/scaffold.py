@@ -234,7 +234,7 @@ def scaffold_project(
             target_dir=target_dir,
             variables=variables,
             dry_run=True,
-        )
+        ).paths
         preserved_paths = [path for path in planned_paths if path.exists()]
         for path in preserved_paths:
             tracker.record_existing(path)
@@ -246,7 +246,7 @@ def scaffold_project(
             variables=variables,
             dry_run=dry_run,
             skip_existing=is_backfill,
-        )
+        ).paths
 
         for path in rendered_paths:
             if path.is_dir():

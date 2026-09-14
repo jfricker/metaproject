@@ -3,8 +3,9 @@
 import importlib.resources
 import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Collection, Dict, List, Set
 
 import jinja2
 
@@ -20,6 +21,18 @@ WHITELISTED_VARS: Set[str] = {
     "Name",
     "ProjectName",
 }
+
+# Matches single-braced {identifier} placeholders (e.g. '{ProjectTitle}') while leaving
+# doubled braces ('{{ jinja }}'), shell expansions ('${VAR}'), and JSON/CSS braces alone.
+_PLACEHOLDER_PATTERN = re.compile(r"(?<![{$])\{([a-zA-Z0-9_]+)\}(?!\})")
+
+
+@dataclass(frozen=True)
+class RenderReport:
+    """Result of rendering a template tree: what was written, and any warnings."""
+
+    paths: List[Path]
+    warnings: List[str]
 
 
 def get_bundled_templates_dir() -> Path:
@@ -97,7 +110,6 @@ def preprocess_template_string(content: str) -> str:
 
     Strictly preserves all other braces (JSON, CSS, shell ${VAR}, etc.).
     """
-    pattern = re.compile(r"(?<!\{)\{([a-zA-Z0-9_]+)\}(?!\})")
 
     def replace_whitelisted(match: re.Match) -> str:
         var_name = match.group(1)
@@ -105,7 +117,24 @@ def preprocess_template_string(content: str) -> str:
             return f"{{{{ {var_name} }}}}"
         return match.group(0)
 
-    return pattern.sub(replace_whitelisted, content)
+    return _PLACEHOLDER_PATTERN.sub(replace_whitelisted, content)
+
+
+def find_unknown_placeholders(text: str) -> List[str]:
+    """Return unique, first-appearance-ordered single-braced placeholders not whitelisted.
+
+    Uses the same regex as `preprocess_template_string` so a placeholder that would be
+    silently left untouched by rendering is exactly the one reported here.
+    """
+    seen: List[str] = []
+    seen_set: Set[str] = set()
+    for match in _PLACEHOLDER_PATTERN.finditer(text):
+        name = match.group(1)
+        if name in WHITELISTED_VARS or name in seen_set:
+            continue
+        seen_set.add(name)
+        seen.append(name)
+    return seen
 
 
 def render_template_string(template_str: str, variables: Dict[str, Any]) -> str:
@@ -129,14 +158,19 @@ def render_template_tree(
     variables: Dict[str, Any],
     dry_run: bool = False,
     skip_existing: bool = False,
-) -> List[Path]:
+    exclude: Collection[str] = (),
+) -> RenderReport:
     """Walk source_dir, transform names, mirror empty directories, and render files.
 
     When skip_existing is True, a template file whose destination already exists is left
-    untouched and omitted from the returned list. This is the backfill mode used when
+    untouched and omitted from the report. This is the backfill mode used when
     scaffolding into a directory the operator already has work in.
 
-    Returns list of paths created/written within target_dir.
+    `exclude` names transformed, project-relative posix paths (e.g. "HANDOFF.md" or
+    "docs/archive/.gitkeep") to skip; naming a directory skips its whole subtree.
+
+    Returns a `RenderReport` of paths created/written within target_dir and any
+    unknown-placeholder warnings collected while rendering.
     """
     if not source_dir.exists() or not source_dir.is_dir():
         raise TemplateError(
@@ -144,6 +178,8 @@ def render_template_tree(
         )
 
     created_paths: List[Path] = []
+    warnings: List[str] = []
+    exclude_set = set(exclude)
 
     # Walk directory tree top-down
     for item in sorted(source_dir.rglob("*")):
@@ -154,6 +190,11 @@ def render_template_tree(
             continue
         # Transform each path component: e.g. docs.template/guide.template.md -> docs/guide.md
         transformed_parts = [transform_template_name(part) for part in rel_path.parts]
+        transformed_rel = "/".join(transformed_parts)
+        if transformed_rel in exclude_set or any(
+            transformed_rel.startswith(f"{excluded}/") for excluded in exclude_set
+        ):
+            continue
         dest_item = target_dir.joinpath(*transformed_parts)
 
         if item.is_dir():
@@ -172,10 +213,12 @@ def render_template_tree(
                     shutil.copy2(item, dest_item)
             else:
                 raw_text = item.read_text(encoding="utf-8")
+                for placeholder in find_unknown_placeholders(raw_text):
+                    warnings.append(f"{rel_path.as_posix()}: unknown placeholder {{{placeholder}}}")
                 rendered_text = render_template_string(raw_text, variables)
                 if not dry_run:
                     dest_item.write_text(rendered_text, encoding="utf-8")
 
             created_paths.append(dest_item)
 
-    return created_paths
+    return RenderReport(paths=created_paths, warnings=warnings)
