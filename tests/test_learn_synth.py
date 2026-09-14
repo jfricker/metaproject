@@ -256,15 +256,9 @@ def test_a_single_oversized_record_is_split_rather_than_truncated():
 
 
 def test_c25_oversized_target_forces_chunk_and_reduce(tmp_path: Path):
-    """C25: spire/docs/reference.md is far past any budget; it chunks and reduces.
-
-    `docs/` is not a default learn target (spec.md R-LRN-3); passed explicitly here
-    since this test is about chunk-and-reduce, not the default target list.
-    """
+    """C25: spire/docs/reference.md is far past any budget; it chunks and reduces."""
     ws = build_workspace(tmp_path, only=["spire"])
-    records = guard_evidence(
-        collect_workspace(ws.projects, ws.templates, targets=["docs/"])
-    ).records
+    records = guard_evidence(collect_workspace(ws.projects, ws.templates)).records
     docs = [r for r in records if r.target_file == "docs/reference.md"]
     assert docs, "fixture must produce evidence for the oversized target"
 

@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from metaproject.config import Config, LearnConfig, load_config, save_config
+from metaproject import deliverables
+from metaproject.config import DEFAULT_LEARN_TARGETS, Config, LearnConfig, load_config, save_config
 from metaproject.exceptions import ConfigError
 from metaproject.templates import get_bundled_templates_dir, seed_templates
 
@@ -36,6 +37,9 @@ def test_default_learn_config() -> None:
         "ARCHITECTURE.md",
         "docs/DESIGN-INVARIANTS.md",
         "docs/VERIFIED-FACTS.md",
+        "docs/",
+        "Makefile",
+        "pyproject.toml",
     ]
     assert cfg.learn.resurface_factor == 2.0
     assert cfg.learn.model is None
@@ -47,6 +51,16 @@ def test_default_learn_config() -> None:
         "Ancient": 0.2,
         "Archived": 0.1,
     }
+
+
+def test_default_learn_targets_cover_declared_and_untemplated_targets() -> None:
+    """DEFAULT_LEARN_TARGETS = every learn_targets() deliverable, plus the untemplated
+    and directory targets kept from the prior default (spec.md R-LRN-3)."""
+    assert set(deliverables.learn_targets()) <= set(DEFAULT_LEARN_TARGETS)
+    assert "HANDOFF.md" not in DEFAULT_LEARN_TARGETS
+    assert "docs/" in DEFAULT_LEARN_TARGETS
+    assert "Makefile" in DEFAULT_LEARN_TARGETS
+    assert "pyproject.toml" in DEFAULT_LEARN_TARGETS
 
 
 def test_config_round_trip_without_learn_key(tmp_path: Path) -> None:

@@ -178,25 +178,16 @@ def test_symlinked_directory_is_not_traversed(tmp_path: Path) -> None:
 
 
 def test_directory_target_is_not_read_as_a_file(workspace) -> None:
-    """C28: `docs/` is a directory target; it expands rather than being opened.
-
-    `docs/` and `pyproject.toml` are no longer among the *default* learn targets
-    (spec.md R-LRN-3 excludes ad hoc, non-deliverable targets), so they are passed
-    explicitly here to exercise directory-target expansion on its own.
-    """
-    records = collect_project(
-        workspace.project("spire"), workspace.templates, targets=["AGENTS.md", "docs/"]
-    )
+    """C28: `docs/` is a directory target; it expands rather than being opened."""
+    records = collect_project(workspace.project("spire"), workspace.templates)
     targets = {rec.target_file for rec in records}
     assert "docs/" not in targets
     assert "docs/architecture.md" in targets
 
 
 def test_config_shaped_target_collected(workspace) -> None:
-    """C28: pyproject.toml collects without a template when explicitly targeted."""
-    records = collect_project(
-        workspace.project("spire"), workspace.templates, targets=["pyproject.toml"]
-    )
+    """C28: pyproject.toml is a default target and collects without a template."""
+    records = collect_project(workspace.project("spire"), workspace.templates)
     pyproject = [r for r in records if r.target_file == "pyproject.toml"]
     assert len(pyproject) == 1
     assert pyproject[0].kind == "new_template"
@@ -228,12 +219,8 @@ def test_resolve_template_matches_transformed_names(workspace) -> None:
 
 
 def test_untemplated_target_is_a_new_template_candidate(workspace) -> None:
-    """A recurring file with no template yields kind == 'new_template' (C9 groundwork).
-
-    `Makefile` is not among the default learn targets (spec.md R-LRN-3); it is passed
-    explicitly here since this test is about untemplated-target handling, not defaults.
-    """
-    records = collect_project(workspace.project("kiln"), workspace.templates, targets=["Makefile"])
+    """A recurring file with no template yields kind == 'new_template' (C9 groundwork)."""
+    records = collect_project(workspace.project("kiln"), workspace.templates)
     makefile = [r for r in records if r.target_file == "Makefile"]
     assert len(makefile) == 1
     assert makefile[0].kind == "new_template"
