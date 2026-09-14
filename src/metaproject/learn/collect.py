@@ -9,7 +9,6 @@ This stage is entirely deterministic. No model is involved.
 """
 
 import difflib
-import functools
 import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -25,12 +24,10 @@ from metaproject.templates import (
 from metaproject.universe import (
     IGNORED_DIRECTORIES,
     classify_project,
-    extract_description,
-    extract_title,
     is_project_root,
     resolve_project_timestamp,
 )
-from metaproject.variables import collect_variables
+from metaproject.variables import project_variables  # noqa: F401  (re-export)
 
 DIFF_CONTEXT_LINES = 3
 
@@ -71,43 +68,16 @@ def normalize_text(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-@functools.lru_cache(maxsize=8)
-def _resolved_author(config_author: str) -> str:
-    """Resolve the author once per distinct configured value, not once per project."""
-    from metaproject.variables import resolve_author
-
-    return resolve_author(config_author or None, None)
-
-
 def _drop_unfilled_placeholder(value: str) -> str:
     """Treat a still-unfilled `{Placeholder}` as absent rather than as real content.
 
-    A freshly scaffolded project's `intent.md` still carries `{Problem description}`
-    under `## Problem`, and `universe.extract_description` reads it literally. Feeding
-    that back in as a variable renders the placeholder *into* the comparison text, so
-    every such project appears to have drifted from the very template it came from.
+    Kept for README fallbacks: a freshly scaffolded project's README can still carry a
+    literal `{ProjectDescription}` if a template ever slips through unrendered, and
+    feeding that back in as a variable would render the placeholder *into* the
+    comparison text.
     """
     text = (value or "").strip()
     return "" if text.startswith("{") and text.endswith("}") else text
-
-
-def project_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
-    """Resolve the template variables a project would have been scaffolded with.
-
-    Title and description come from the project itself (`universe.extract_title` /
-    `extract_description`), so rendering reproduces what `metaproject new` would have
-    written for this project rather than a generic placeholder.
-    """
-    project_dir = Path(project_dir)
-    author = _resolved_author(config.author if config else "")
-    return collect_variables(
-        project_name=project_dir.name,
-        title=_drop_unfilled_placeholder(extract_title(project_dir)),
-        description=_drop_unfilled_placeholder(extract_description(project_dir)),
-        author=author,
-        config=config,
-        interactive=False,
-    )
 
 
 def resolve_template(rel_path: str, templates_dir: Path) -> Optional[Path]:

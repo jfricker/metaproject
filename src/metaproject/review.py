@@ -167,7 +167,8 @@ def rendered_template_text(
     config: Optional[Config] = None,
 ) -> str:
     """A template rendered with the variables the project would have been scaffolded with."""
-    from metaproject.learn.collect import project_variables, render_template
+    from metaproject.learn.collect import render_template
+    from metaproject.variables import project_variables
 
     return render_template(template_file, project_variables(project_dir, config))
 
@@ -373,12 +374,12 @@ def os_walk_with_depth(root: Path, max_depth: int):
 def resolve_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
     """The variable set a whole remediation batch should render with.
 
-    Resolved **once per batch, before the first write**. `extract_title` and
-    `extract_description` read the project's own `README.md` and `intent.md`, so
-    resolving per file would let a file written early in a batch change how the next one
-    renders — and the board would then report the files it had just written as drifted.
+    Resolved **once per batch, before the first write**. `variables.project_variables`
+    reads the project's own `.metaproject.json` (or its manifest fallback), so resolving
+    per file would let a file written early in a batch change how the next one renders —
+    and the board would then report the files it had just written as drifted.
     """
-    from metaproject.learn.collect import project_variables
+    from metaproject.variables import project_variables
 
     return project_variables(Path(project_dir), config or load_config())
 
