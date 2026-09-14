@@ -15,7 +15,7 @@
 - [x] A3. identity.py + variable resolution
 - [x] A4. placeholder warnings + render exclusions
 - [x] B1. scaffold writes identity, skips on-demand
-- [ ] B2. review classes
+- [x] B2. review classes
 - [ ] B3. backfill_missing + `metaproject backfill`
 - [ ] B4. TUI + CLI surfaces
 - [ ] C1. structural evidence
@@ -47,6 +47,17 @@
   deliverables get scanned (spec R-LRN-3, 2026-09-14).
 - `doctor` must also refresh the installed skill at `~/.claude/skills/metaproject/`
   (spec R-DOC-1, 2026-09-14).
+- B2 (2026-09-14): the bundled template store has no template yet for spec.md,
+  design.md, plan.md, ARCHITECTURE.md, docs/DESIGN-INVARIANTS.md, docs/VERIFIED-FACTS.md
+  (D1 does this). Until D1 lands, no project reviewed against the bundled store can
+  reach `is_clean`/`is_compliant`, because those six WORKING deliverables (plus
+  `docs/archive`, untemplated too) are always `missing_files`. Tests that need a fully
+  compliant project (AC-1, AC-5, and two pre-existing tests —
+  `test_review_compliant_project`,
+  `test_deployed_files_do_not_immediately_report_as_drifted` — which plan.md B2 said
+  should stay unmodified but could not without this) build a test-local template store
+  (`full_cycle_templates_store` in `tests/test_review.py`) with minimal templates for
+  those six files. D1 should delete that duplication once the bundled store has them.
 
 ## Verified facts (do not re-investigate)
 - Running pytest inside the Claude Code sandbox: the default TMPDIR contains `claude-501`,

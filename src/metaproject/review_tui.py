@@ -249,7 +249,7 @@ def review_table(
             res.project_name,
             compliance_cell(res),
             count_cell(len(res.missing_files), "red"),
-            count_cell(len(res.diffs), "yellow"),
+            count_cell(len(res.diffs) + len(res.structure), "yellow"),
         )
 
     return Group(summary_header(results, scan_root, templates_dir, ignored_count), table)

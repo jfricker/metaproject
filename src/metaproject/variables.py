@@ -43,6 +43,14 @@ def resolve_author(
     return os.environ.get("USER", "Developer")
 
 
+def _today() -> datetime.date:
+    """The current date. A seam: tests patch this rather than `datetime` itself so a
+    project's own `{Date}`/`{Year}` rendering can be exercised under a fixed clock
+    without touching every other caller of `datetime.datetime.now()`.
+    """
+    return datetime.datetime.now().date()
+
+
 def collect_variables(
     project_name: str,
     title: Optional[str] = None,
@@ -88,7 +96,7 @@ def collect_variables(
             if prompt_author:
                 resolved_author = prompt_author.strip()
 
-    reference_date = created if created is not None else datetime.datetime.now().date()
+    reference_date = created if created is not None else _today()
     date_str = reference_date.strftime("%Y-%m-%d")
     year_str = str(reference_date.year)
 
