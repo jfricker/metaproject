@@ -34,9 +34,7 @@ Uncommitted work: none in either worktree (this file is the only addition).
   branch `template-source-of-truth`, HEAD `8a5da49` (before this handoff commit).
 - **sdlc-skills**: `~/Projects/SDLC-skills/.claude/worktrees/template-source-of-truth`,
   branch `template-source-of-truth`, HEAD `d4fe2e3`.
-- Merged step branches, safe to remove: `.claude/worktrees/ts-a1`, `ts-a2`, `ts-a3`,
-  `ts-a4`, `ts-d3` (branches `ts-a1…ts-d3`). Remove with
-  `git worktree remove .claude/worktrees/ts-a1` etc., then `git branch -d ts-a1` etc.
+- Merged step worktrees/branches `ts-a1…ts-d3` were removed on 2026-09-14.
 - Nothing is merged to `main` in either repo. `~/.metaproject/` is untouched.
 
 ## Commands to re-run
