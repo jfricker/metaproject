@@ -149,6 +149,12 @@ def bundle_evidence(records: Sequence[EvidenceRecord]) -> List[Bundle]:
     order: List[str] = []
     grouped: Dict[str, List[EvidenceRecord]] = {}
     for rec in records:
+        if rec.kind == "structure":
+            # Heading-structure evidence is turned into proposals locally by
+            # `learn.structure`, and `api.scan` partitions it out before this function
+            # ever sees it. This check is defensive only (design.md): raw structural
+            # evidence must never reach a model prompt, even by a future caller mistake.
+            continue
         if rec.target_file not in grouped:
             grouped[rec.target_file] = []
             order.append(rec.target_file)

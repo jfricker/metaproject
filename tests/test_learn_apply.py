@@ -339,6 +339,30 @@ def test_r7_absent_section_falls_back_to_a_reviewed_append(
     assert text.rstrip().endswith("- Deploys are gated on a green `make check` and a signed tag.")
 
 
+# ------------------------------------------------------ heading proposals (plan.md C2)
+
+
+@pytest.mark.parametrize("kind", ["add_heading", "remove_heading"])
+def test_heading_proposal_kinds_refuse_cleanly_until_c3(
+    workspace, db: sqlite_utils.Database, kind: str
+) -> None:
+    """`structure.propose` (plan.md C2) can already produce `add_heading`/
+    `remove_heading` proposals; applying them is plan.md C3's job. Until then,
+    `plan_apply` must refuse with a clean `ApplyError`, never crash or silently
+    misapply a `splice`-based insertion where a removal was intended."""
+    pid = make_proposal(
+        db,
+        workspace.templates,
+        body="## Risks",
+        target_section="Risks",
+        target_file="STATE.md",
+        kind=kind,
+        title='Add "## Risks" to STATE.md',
+    )
+    with pytest.raises(ApplyError, match=kind):
+        plan_apply(db, pid, templates_dir=workspace.templates)
+
+
 def test_r7_fallback_can_be_refused_without_writing_anything(
     workspace, db: sqlite_utils.Database
 ) -> None:

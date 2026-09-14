@@ -47,6 +47,12 @@ PLACEMENT_SECTION = "section"
 PLACEMENT_APPEND = "append"
 PLACEMENT_NEW_FILE = "new_file"
 
+# `structure.propose` (plan.md C2) emits these kinds; applying them (`splice`-based
+# insertion, and a new `excise` for removal) is plan.md C3's job, not this module's yet.
+# Refusing cleanly here beats a proposal that "applies" as an accidental no-op or a
+# misplaced insertion.
+UNSUPPORTED_KINDS = frozenset({"add_heading", "remove_heading"})
+
 # Re-exported for callers that imported these from this module before they moved to
 # `metaproject.markdown`; not used directly in this file.
 __all__ = [
@@ -267,6 +273,13 @@ def plan_apply(
     row = get_proposal(db, proposal_id)
     if row is None:
         raise ApplyError(f"no proposal with id {proposal_id}")
+
+    kind = str(row.get("kind") or "edit")
+    if kind in UNSUPPORTED_KINDS:
+        raise ApplyError(
+            f"proposal {proposal_id} is a {kind!r} heading proposal; applying it is not "
+            "implemented yet (plan.md C3)."
+        )
 
     if templates_dir is None:
         config = config or load_config()

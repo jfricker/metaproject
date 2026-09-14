@@ -17,9 +17,13 @@ from typing import List, Optional
 
 import pytest
 
+from metaproject.config import Config
+from metaproject.db import get_db
 from metaproject.exceptions import ModelOutputError, ModelUnavailableError
+from metaproject.learn import scan as api_scan
 from metaproject.learn import synth
 from metaproject.learn.collect import EvidenceRecord, collect_workspace
+from metaproject.learn.drift import EMPTY_DRIFT
 from metaproject.learn.guard import guard_evidence
 from metaproject.learn.store import content_hash
 from metaproject.learn.synth import (
@@ -705,3 +709,112 @@ def test_no_evidence_produces_no_calls_and_a_clean_run():
     assert fake.calls == 0
     assert result.status == RUN_OK
     assert result.proposals == ()
+
+
+# ---------------------------------------------------- api.scan partition (plan.md C2)
+
+_STATE_BODY_CANARY = "This STATE body text must never reach the model or the guard manifest."
+
+_STATE_STRUCTURE_TEMPLATE = (
+    "# STATE.md\n\n## Process\n<process body.>\n\n## Open items\n<open items body.>\n"
+)
+
+_AGENTS_GOVERNANCE_TEMPLATE = "# AGENTS.md\n\n## Testing instructions\n<Testing instructions.>\n"
+
+
+def _api_scan_project(root: Path, name: str, agents_extra_line: str, state_text: str) -> None:
+    project_dir = root / name
+    project_dir.mkdir()
+    (project_dir / "pyproject.toml").write_text("", encoding="utf-8")  # project-root marker
+    (project_dir / "AGENTS.md").write_text(
+        _AGENTS_GOVERNANCE_TEMPLATE.rstrip("\n") + f"\n{agents_extra_line}\n", encoding="utf-8"
+    )
+    (project_dir / "STATE.md").write_text(state_text, encoding="utf-8")
+
+
+def test_structural_evidence_never_reaches_the_guard_manifest_or_a_prompt(tmp_path: Path):
+    """A scan mixing governance evidence (AGENTS.md) with structural evidence (STATE.md
+    heading changes, with body text under the new heading) must keep every byte of the
+    STATE.md body — and STATE.md as a target at all — out of the guard manifest and out
+    of every assembled prompt (R-LRN-1, STATE.md design invariants)."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    templates_dir = tmp_path / "templates"
+    templates_dir.mkdir()
+    (templates_dir / "AGENTS.template.md").write_text(_AGENTS_GOVERNANCE_TEMPLATE, encoding="utf-8")
+    (templates_dir / "STATE.template.md").write_text(_STATE_STRUCTURE_TEMPLATE, encoding="utf-8")
+
+    state_with_extra_heading = (
+        "# STATE.md\n\n## Process\n<process body.>\n\n"
+        f"## Risks\n{_STATE_BODY_CANARY}\n\n"
+        "## Open items\n<open items body.>\n"
+    )
+    for name in ("proj1", "proj2"):
+        _api_scan_project(root, name, C2_LINE, state_with_extra_heading)
+
+    db = get_db(tmp_path / "universe.db")
+    fake = FakeClaude(default=response())
+
+    result = api_scan(
+        root,
+        templates_dir=templates_dir,
+        db=db,
+        config=Config(),
+        runner=fake,
+        yes=True,
+        drift=EMPTY_DRIFT,
+    )
+
+    manifest_text = result.manifest.render()
+    assert "STATE.md" not in manifest_text
+    assert _STATE_BODY_CANARY not in manifest_text
+    assert fake.calls > 0, "the AGENTS.md governance evidence should still reach a prompt"
+    for prompt in fake.prompts:
+        assert "STATE.md" not in prompt
+        assert _STATE_BODY_CANARY not in prompt
+
+
+def test_all_structural_scan_makes_zero_runner_calls_and_requests_no_confirmation(
+    tmp_path: Path,
+):
+    """A scan whose evidence is entirely heading-structure makes no `claude` call and
+    never asks the operator to confirm an egress send (R-LRN-1)."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    templates_dir = tmp_path / "templates"
+    templates_dir.mkdir()
+    (templates_dir / "STATE.template.md").write_text(_STATE_STRUCTURE_TEMPLATE, encoding="utf-8")
+
+    state_with_extra_heading = (
+        "# STATE.md\n\n## Process\n<process body.>\n\n"
+        f"## Risks\n{_STATE_BODY_CANARY}\n\n"
+        "## Open items\n<open items body.>\n"
+    )
+    for name in ("proj1", "proj2"):
+        project_dir = root / name
+        project_dir.mkdir()
+        (project_dir / "pyproject.toml").write_text("", encoding="utf-8")
+        (project_dir / "STATE.md").write_text(state_with_extra_heading, encoding="utf-8")
+
+    db = get_db(tmp_path / "universe.db")
+    fake = FakeClaude()
+    confirm_calls: List[str] = []
+
+    result = api_scan(
+        root,
+        templates_dir=templates_dir,
+        db=db,
+        config=Config(),
+        runner=fake,
+        confirm_fn=lambda prompt: confirm_calls.append(prompt) or True,
+        drift=EMPTY_DRIFT,
+    )
+
+    assert fake.calls == 0
+    assert confirm_calls == []
+    assert result.manifest.entries == ()
+    assert result.status == RUN_OK
+    assert result.aborted is False
+    # The structural proposal still gets created despite no model call (R-LRN-1c: 2
+    # contributing projects clears the default `min_structure_evidence` gate).
+    assert result.created >= 1
