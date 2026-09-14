@@ -13,18 +13,20 @@ end-to-end scan mocks the runner.
 import json
 import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pytest
 
+from metaproject.config import Config
 from metaproject.db import get_db
-from metaproject.learn import scan
-from metaproject.learn.collect import EvidenceRecord
+from metaproject.learn import scan, structure
+from metaproject.learn.collect import EvidenceRecord, collect_project
 from metaproject.learn.drift import (
     EMPTY_DRIFT,
     DriftSignal,
     added_lines,
     collect_drift,
+    structure_keys,
 )
 from metaproject.learn.score import DRIFT_BOOST, drift_factor, group_candidates, weigh_project
 from metaproject.learn.store import get_evidence, list_proposals
@@ -152,6 +154,196 @@ def test_a_failing_review_is_not_fatal_to_a_scan(workspace) -> None:
     projects = sorted(p for p in workspace.projects.iterdir() if p.is_dir())
     signal = collect_drift(projects, workspace.templates, reviewer=exploding_reviewer)
     assert signal.pairs == frozenset()
+
+
+# ------------------------------------------------------- structural (working document) drift
+
+_BODY = "\n".join(f"Body line {i}." for i in range(5))
+
+_INTENT_TEMPLATE = (
+    f"# intent.md\n\n## Overview\n{_BODY}\n\n## Constraints\n{_BODY}\n\n## Scope\n{_BODY}\n"
+)
+
+_STATE_TEMPLATE = (
+    "# STATE.md\n\n"
+    f"## Process\n{_BODY}\n\n"
+    f"## Implementation phases\n{_BODY}\n\n"
+    f"## Open items\n{_BODY}\n"
+)
+
+
+def _structure_templates_dir(tmp_path: Path) -> Path:
+    """A shared template store carrying intent.md and STATE.md templates only."""
+    templates_dir = tmp_path / "structure_templates"
+    templates_dir.mkdir(exist_ok=True)
+    (templates_dir / "intent.template.md").write_text(_INTENT_TEMPLATE, encoding="utf-8")
+    (templates_dir / "STATE.template.md").write_text(_STATE_TEMPLATE, encoding="utf-8")
+    return templates_dir
+
+
+def _structure_project(tmp_path: Path, name: str, files: Dict[str, str]) -> Path:
+    project_dir = tmp_path / name
+    project_dir.mkdir()
+    for rel, content in files.items():
+        (project_dir / rel).write_text(content, encoding="utf-8")
+    return project_dir
+
+
+def _structure_collect(
+    project_dir: Path, templates_dir: Path, target_file: str
+) -> List[EvidenceRecord]:
+    return collect_project(
+        project_dir,
+        templates_dir,
+        targets=[target_file],
+        config=Config(),
+        classification="Active",
+    )
+
+
+def test_structure_keys_normalizes_headings_like_added_lines_normalizes_diff_content() -> None:
+    """Indentation/spacing quirks in a heading line still key the same (score.candidate_key)."""
+    assert structure_keys(["##  Constraints  "]) == ("## Constraints",)
+    assert structure_keys([]) == ()
+    assert structure_keys(["   "]) == ()
+
+
+def test_collect_drift_records_a_missing_heading_as_a_removal_key(tmp_path: Path) -> None:
+    """A working deliverable's missing heading (`result.structure`) becomes a drift key
+    for the matching `remove_heading` evidence, using the same normalization as a
+    template heading line (R-LRN-4)."""
+    templates_dir = _structure_templates_dir(tmp_path)
+    project_dir = _structure_project(
+        tmp_path,
+        "proj1",
+        {"intent.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+    )
+
+    signal = collect_drift([project_dir], templates_dir)
+
+    assert signal.reports(project_dir, "intent.md", ["## Constraints"])
+
+
+def test_collect_drift_records_no_key_for_an_extra_heading(tmp_path: Path) -> None:
+    """Additions get no drift boost: `review` never reports an extra heading as
+    missing, so there is nothing for `collect_drift` to record for it (R-LRN-4)."""
+    templates_dir = _structure_templates_dir(tmp_path)
+    project_dir = _structure_project(
+        tmp_path,
+        "alpha",
+        {
+            "STATE.md": (
+                f"# STATE.md\n\n## Process\n{_BODY}\n\n"
+                f"## Implementation phases\n{_BODY}\n\n"
+                f"## Risks\n{_BODY}\n\n"
+                f"## Open items\n{_BODY}\n"
+            )
+        },
+    )
+
+    signal = collect_drift([project_dir], templates_dir)
+
+    assert (str(project_dir), "STATE.md") not in signal.lines
+    assert not signal.reports(project_dir, "STATE.md", ["## Risks"])
+
+
+def test_drift_for_a_file_review_saw_but_collect_gathered_no_evidence_for_is_inert(
+    tmp_path: Path,
+) -> None:
+    """The same invariant `added_lines`-based drift has: a signal entry for a
+    (project, file) pair `collect` never produced evidence for contributes nothing to
+    `structure.propose` — a drift report never creates a candidate."""
+    templates_dir = _structure_templates_dir(tmp_path)
+    records: List[EvidenceRecord] = []
+    project_dirs: List[Path] = []
+    for name in ("proj1", "proj2", "proj3"):
+        project_dir = _structure_project(
+            tmp_path,
+            name,
+            {"intent.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+        )
+        project_dirs.append(project_dir)
+        records += _structure_collect(project_dir, templates_dir, "intent.md")
+
+    weights = {r.project_path: 1.0 for r in records}
+    # A phantom structural finding for a file none of the `intent.md`-only records
+    # carry evidence for. `review` really could report this (a compliant STATE.md
+    # contributes nothing, but an out-of-band STATE.md finding is simulated here to
+    # isolate the invariant without depending on a second real project).
+    phantom = DriftSignal(
+        lines={(str(project_dirs[0]), "STATE.md"): frozenset({"## Risks"})},
+        missing={},
+    )
+
+    proposals = structure.propose(records, weights, drift=phantom, min_evidence=2)
+
+    assert proposals, "the intent.md removal must still be proposed"
+    assert {p.target_file for p in proposals} == {"intent.md"}
+
+
+def test_review_structure_drift_raises_a_removal_score_over_the_same_removal_unboosted(
+    tmp_path: Path,
+) -> None:
+    """End to end with the real `review_project` reviewer: 3 projects removing
+    `## Constraints` from intent.md, corroborated by `review`'s structural result,
+    score higher than the identical, otherwise-unboosted removal — and an addition
+    proposal (`review` never reports extra headings) is unaffected. `evidence_count`
+    (contributing_paths) is unchanged either way — a drift report never creates a
+    candidate or adds a contributor (module docstring)."""
+    templates_dir = _structure_templates_dir(tmp_path)
+
+    removal_records: List[EvidenceRecord] = []
+    addition_records: List[EvidenceRecord] = []
+    project_dirs: List[Path] = []
+
+    for name in ("proj1", "proj2", "proj3"):
+        project_dir = _structure_project(
+            tmp_path,
+            name,
+            {"intent.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+        )
+        project_dirs.append(project_dir)
+        removal_records += _structure_collect(project_dir, templates_dir, "intent.md")
+
+    for name in ("alpha", "beta"):
+        project_dir = _structure_project(
+            tmp_path,
+            name,
+            {
+                "STATE.md": (
+                    f"# STATE.md\n\n## Process\n{_BODY}\n\n"
+                    f"## Implementation phases\n{_BODY}\n\n"
+                    f"## Risks\n{_BODY}\n\n"
+                    f"## Open items\n{_BODY}\n"
+                )
+            },
+        )
+        project_dirs.append(project_dir)
+        addition_records += _structure_collect(project_dir, templates_dir, "STATE.md")
+
+    records = removal_records + addition_records
+    weights = {r.project_path: 1.0 for r in records}
+
+    # The real reviewer: every removal contributor's own intent.md really is missing
+    # `## Constraints`, so `review` really does corroborate all three.
+    signal = collect_drift(project_dirs, templates_dir)
+
+    baseline = structure.propose(records, weights, min_evidence=2)
+    boosted = structure.propose(records, weights, drift=signal, min_evidence=2)
+
+    baseline_removal = next(p for p in baseline if p.kind == "remove_heading")
+    boosted_removal = next(p for p in boosted if p.kind == "remove_heading")
+    baseline_addition = next(p for p in baseline if p.kind == "add_heading")
+    boosted_addition = next(p for p in boosted if p.kind == "add_heading")
+
+    assert boosted_removal.evidence_score > baseline_removal.evidence_score
+    assert boosted_removal.evidence_score == pytest.approx(
+        baseline_removal.evidence_score * (1.0 + DRIFT_BOOST)
+    )
+    assert boosted_addition.evidence_score == pytest.approx(baseline_addition.evidence_score)
+
+    assert len(boosted_removal.contributing_paths) == len(baseline_removal.contributing_paths)
+    assert len(boosted_addition.contributing_paths) == len(baseline_addition.contributing_paths)
 
 
 # ------------------------------------------------------------------- the boost itself

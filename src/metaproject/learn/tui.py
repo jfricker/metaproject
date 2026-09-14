@@ -42,6 +42,7 @@ from metaproject.exceptions import MetaProjectError
 from metaproject.learn.apply import (
     PLACEMENT_APPEND,
     PLACEMENT_NEW_FILE,
+    PLACEMENT_REMOVE,
     ApplyPlan,
     apply_plan,
     plan_apply,
@@ -362,6 +363,11 @@ def render_candidate(
             console.print(f"[bold yellow]Warning:[/bold yellow] {plan.fallback_reason}")
         elif plan.placement == PLACEMENT_NEW_FILE:
             console.print(f"[cyan]This creates a new template file: {plan.template_file}[/cyan]")
+        elif plan.placement == PLACEMENT_REMOVE:
+            console.print(
+                f"[cyan]This removes {plan.target_section!r} and its subtree from "
+                f"{plan.template_file.name}.[/cyan]"
+            )
         elif plan.placement == PLACEMENT_APPEND:
             console.print("[dim]No target section was proposed; appending at end of file.[/dim]")
 

@@ -51,6 +51,7 @@ def test_default_learn_config() -> None:
         "Ancient": 0.2,
         "Archived": 0.1,
     }
+    assert cfg.learn.min_structure_evidence == 2
 
 
 def test_default_learn_targets_cover_declared_and_untemplated_targets() -> None:
@@ -89,6 +90,7 @@ def test_config_round_trip_with_learn_key(tmp_path: Path) -> None:
             resurface_factor=3.5,
             model="claude-opus",
             activity_weights={"Active Now": 1.0, "Archived": 0.05},
+            min_structure_evidence=5,
         ),
     )
     save_config(cfg, config_file)
@@ -98,6 +100,7 @@ def test_config_round_trip_with_learn_key(tmp_path: Path) -> None:
     assert loaded.learn.resurface_factor == 3.5
     assert loaded.learn.model == "claude-opus"
     assert loaded.learn.activity_weights == {"Active Now": 1.0, "Archived": 0.05}
+    assert loaded.learn.min_structure_evidence == 5
 
 
 def test_config_to_dict_serializes_learn_block(tmp_path: Path) -> None:

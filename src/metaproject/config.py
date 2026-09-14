@@ -58,6 +58,10 @@ class LearnConfig:
     activity_weights: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_ACTIVITY_WEIGHTS)
     )
+    min_structure_evidence: int = 2
+    """Distinct projects a heading proposal needs before `structure.propose` emits it
+    (spec.md R-LRN-1c). Deliberately gated, unlike governance proposals, which stay
+    ranked-not-gated."""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LearnConfig":

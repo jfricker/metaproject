@@ -25,6 +25,7 @@ from metaproject.learn.guard import SendManifest, confirm_send, guard_evidence
 from metaproject.learn.score import drift_factor, project_age_days, weigh_project
 from metaproject.learn.store import (
     RUN_FAILED,
+    RUN_OK,
     EvidenceDraft,
     ProposalDraft,
     list_proposals,
@@ -32,7 +33,8 @@ from metaproject.learn.store import (
 )
 from metaproject.learn.store import reject_proposal as _reject_proposal
 from metaproject.learn.store import start_run as _start_run
-from metaproject.learn.synth import normalize_excerpt, synthesize
+from metaproject.learn.structure import propose as propose_structure
+from metaproject.learn.synth import SynthResult, normalize_excerpt, synthesize
 from metaproject.universe import resolve_project_timestamp
 
 reject_proposal = _reject_proposal
@@ -113,6 +115,12 @@ def scan(
     `drift` is `review`'s findings for the scanned projects (spec.md §5.4.9); it is
     gathered from `review` when not supplied. It only ever raises the weight of a
     contribution collect already found — pass `drift.EMPTY_DRIFT` to score without it.
+
+    Records partition before the egress guard: heading-structure evidence
+    (`kind == "structure"`) never reaches `guard_evidence`, `confirm_send`, or
+    `synthesize` — it is turned into proposals locally by `learn.structure` (R-LRN-1,
+    STATE.md design invariants). If every collected record is structural, the egress
+    confirmation is never requested and no model call is made at all.
     """
     config = config or load_config()
     templates_dir = Path(templates_dir or config.templates_dir).expanduser().resolve()
@@ -133,41 +141,61 @@ def scan(
         projects.append(project_dir)
         records.extend(collect_project(project_dir, templates_dir, targets=targets, config=config))
 
-    guarded = guard_evidence(records)
-    files_scanned = len({(r.project_path, r.target_file) for r in guarded.records})
+    structural_records = [r for r in records if r.kind == "structure"]
+    egress_records = [r for r in records if r.kind != "structure"]
 
-    if not confirm_send(guarded.manifest, assume_yes=yes, confirm_fn=confirm_fn):
-        _finish(db, run_id, len(projects), files_scanned, 0, RUN_FAILED)
-        return ScanResult(
-            run_id=run_id,
-            root=str(root),
-            projects_scanned=len(projects),
-            files_scanned=files_scanned,
-            created=0,
-            proposal_ids=(),
-            status=RUN_FAILED,
-            skipped=(),
-            manifest=guarded.manifest,
-            aborted=True,
-        )
-
-    result = synthesize(
-        guarded.records,
-        config=config,
-        model=model,
-        runner=runner,
+    guarded = guard_evidence(egress_records)
+    files_scanned = len(
+        {(r.project_path, r.target_file) for r in guarded.records}
+        | {(r.project_path, r.target_file) for r in structural_records}
     )
+
+    if egress_records:
+        if not confirm_send(guarded.manifest, assume_yes=yes, confirm_fn=confirm_fn):
+            _finish(db, run_id, len(projects), files_scanned, 0, RUN_FAILED)
+            return ScanResult(
+                run_id=run_id,
+                root=str(root),
+                projects_scanned=len(projects),
+                files_scanned=files_scanned,
+                created=0,
+                proposal_ids=(),
+                status=RUN_FAILED,
+                skipped=(),
+                manifest=guarded.manifest,
+                aborted=True,
+            )
+
+        result = synthesize(
+            guarded.records,
+            config=config,
+            model=model,
+            runner=runner,
+        )
+    else:
+        # Nothing but heading-structure evidence collected: no confirmation prompt, no
+        # `claude` invocation (R-LRN-1).
+        result = SynthResult(
+            proposals=(), status=RUN_OK, calls_by_target={}, skipped=(), discarded=0
+        )
 
     # `review`'s own findings, gathered after the egress gate: they are read from the
     # local filesystem and never sent anywhere, and a declined scan should do no work.
     if drift is None:
         drift = collect_drift(projects, templates_dir)
 
-    weights = _project_weights(guarded.records, config)
+    weights = _project_weights(records, config)
     lines_by_project = _lines_by_project(guarded.records)
 
+    structural_proposals = propose_structure(
+        structural_records,
+        weights,
+        drift=drift,
+        min_evidence=config.learn.min_structure_evidence,
+    )
+
     proposal_ids: List[int] = []
-    for proposal in result.proposals:
+    for proposal in (*result.proposals, *structural_proposals):
         evidence: List[EvidenceDraft] = []
         score = 0.0
         for path in proposal.contributing_paths:

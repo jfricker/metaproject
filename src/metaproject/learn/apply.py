@@ -7,14 +7,20 @@ the smallest one that can be. Three properties are the whole point of it:
 harvested line to the end of the file under a comment banner, which is meaningless in
 Markdown and produced templates nobody wanted to read. A proposal names a
 `target_section`; the change lands at the end of that section's content, before the
-next heading.
+next heading. A heading *addition* (`add_heading`, plan.md C3) is structural the same
+way, one level up: it lands as a new sibling section immediately after its anchor
+section ends, never inside the anchor's own content.
 
 **A section that does not resolve is never faked (plan.md risk R7).** If the model
-names a heading the template does not have, `splice` does not invent it, does not guess
-at a near match, and does not quietly drop the change somewhere plausible. It falls
-back to an append at end of file and *says so* in `ApplyPlan.fallback_reason`, which
-the caller is expected to put in front of the operator — a reviewed append, never a
-silent misplacement. `allow_fallback=False` is how that review says no.
+names a heading the template does not have, `splice`/`insert_heading` does not invent
+it, does not guess at a near match, and does not quietly drop the change somewhere
+plausible. It falls back to an append at end of file and *says so* in
+`ApplyPlan.fallback_reason`, which the caller is expected to put in front of the
+operator — a reviewed append, never a silent misplacement. `allow_fallback=False` is
+how that review says no. A heading *removal* (`remove_heading`) has no such fallback:
+an unresolved section, or a section whose child heading a contributor still relies on,
+is an `ApplyError` raised out of `plan_apply` before any plan exists — deleting the
+wrong thing has no safe "reviewed" version the way misplacing an addition does.
 
 **Every accept is one commit (plan.md risk R6).** The template store is a git
 repository, the worktree must be clean before a write, and each accepted proposal
@@ -23,6 +29,7 @@ accept is therefore undone by reverting one commit, and nothing else goes with i
 """
 
 import difflib
+import re
 import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -35,10 +42,14 @@ from metaproject.exceptions import ApplyError, GitError
 from metaproject.git import get_git_identity, is_git_repository
 from metaproject.learn.collect import normalize_text, resolve_template
 from metaproject.learn.store import get_evidence, get_proposal, mark_applied, set_edited_body
+from metaproject.learn.structure import KIND_ADD_HEADING, KIND_REMOVE_HEADING
 from metaproject.markdown import (
     _FENCE_RE,
     _HEADING_RE,
+    Heading,
     Section,
+    heading_matches,
+    headings,
     iter_sections,
     normalize_heading,
 )
@@ -46,6 +57,13 @@ from metaproject.markdown import (
 PLACEMENT_SECTION = "section"
 PLACEMENT_APPEND = "append"
 PLACEMENT_NEW_FILE = "new_file"
+PLACEMENT_REMOVE = "remove"
+
+# Kinds `plan_apply` cannot yet compute a write for. Empty for now: `add_heading` and
+# `remove_heading` (plan.md C2's `structure.propose` output) both have handlers below.
+# Kept, rather than deleted, as the one place a future unsupported kind gets refused
+# cleanly instead of falling through to the `edit`/`new_template` branch by accident.
+UNSUPPORTED_KINDS: frozenset = frozenset()
 
 # Re-exported for callers that imported these from this module before they moved to
 # `metaproject.markdown`; not used directly in this file.
@@ -131,6 +149,132 @@ def splice(
     trimmed = original.rstrip("\n")
     joined = (trimmed + "\n\n" + body_block) if trimmed else body_block
     return normalize_text(joined), PLACEMENT_APPEND, reason
+
+
+# -------------------------------------------------------------- heading add / remove
+
+
+def _parse_heading_line(line: str) -> Tuple[int, str]:
+    """`(level, title)` from a `"#"*level + " " + title` line, or `(0, "")` if none."""
+    match = _HEADING_RE.match(line.strip())
+    if not match:
+        return 0, ""
+    return len(match.group(1)), match.group(2).strip()
+
+
+def _heading_present(text: str, heading_line: str) -> bool:
+    """Does the document already have a heading at this level with this title?
+
+    The addition analogue of `body_is_present`: re-applying an `add_heading` proposal
+    the template already satisfies must not duplicate the heading.
+    """
+    level, title = _parse_heading_line(heading_line)
+    if level == 0:
+        return False
+    wanted = normalize_heading(title)
+    return any(
+        section.level == level and normalize_heading(section.title) == wanted
+        for section in iter_sections(text)
+    )
+
+
+def _append_heading(text: str, heading_line: str) -> str:
+    trimmed = text.rstrip("\n")
+    joined = (trimmed + "\n\n" + heading_line) if trimmed else heading_line
+    return normalize_text(joined)
+
+
+def insert_heading(
+    text: str,
+    heading_line: str,
+    target_section: Optional[str],
+) -> Tuple[str, str, Optional[str]]:
+    """Insert a *new* heading (`heading_line`) as a sibling section, or at end of file.
+
+    Unlike `splice` (content landing inside an existing section), a heading addition
+    lands *after* its anchor section ends — before the next heading of the same or a
+    shallower level — never inside the anchor's own content (AC-11a). `target_section`
+    of `None` means no contributor's copy resolved to an anchor at all (see
+    `structure.propose`); that is not a failure to resolve a *named* section, so it
+    appends silently, with no `fallback_reason`. A *named* section that does not exist
+    in the template falls back to an append and says so, exactly like `splice` (R7).
+
+    Returns `(updated_text, placement, fallback_reason)`.
+    """
+    original = normalize_text(text)
+    heading = normalize_text(heading_line).rstrip("\n")
+    if not heading.strip():
+        return original, PLACEMENT_APPEND, None
+    if _heading_present(original, heading):
+        return original, PLACEMENT_SECTION if target_section else PLACEMENT_APPEND, None
+
+    if target_section is None or not target_section.strip():
+        return _append_heading(original, heading), PLACEMENT_APPEND, None
+
+    section = resolve_section(original, target_section)
+    if section is None:
+        reason = (
+            f"section {target_section.strip()!r} does not exist in this template; "
+            "appending at end of file instead"
+        )
+        return _append_heading(original, heading), PLACEMENT_APPEND, reason
+
+    lines = original.split("\n")
+    insert_at = section.end
+    before = lines[:insert_at]
+    after = lines[insert_at:]
+    block = [""] + [heading] if before and before[-1].strip() else [heading]
+    if after and after[0].strip():
+        block = block + [""]
+    updated = before + block + after
+    return normalize_text("\n".join(updated)), PLACEMENT_SECTION, None
+
+
+def _section_children(text: str, section: Section) -> List[Heading]:
+    """Headings nested anywhere inside `section`'s own extent (its whole subtree)."""
+    return [
+        Heading(level=candidate.level, title=candidate.title)
+        for candidate in iter_sections(text)
+        if section.heading < candidate.heading < section.end
+    ]
+
+
+def _format_heading(heading: Heading) -> str:
+    return f"{'#' * heading.level} {heading.title}"
+
+
+def _contributor_still_has(
+    db: sqlite_utils.Database,
+    proposal_id: int,
+    target_file: str,
+    child: Heading,
+) -> Optional[str]:
+    """A contributing project's name, if its own copy of `target_file` still carries
+    a heading matching `child`. A missing file never counts as containing it."""
+    for row in get_evidence(db, proposal_id):
+        project_dir = Path(str(row["project_path"]))
+        candidate = project_dir / target_file
+        if not candidate.is_file():
+            continue
+        text = candidate.read_text(encoding="utf-8", errors="replace")
+        for project_heading in headings(text):
+            if heading_matches(child, project_heading):
+                return project_dir.name
+    return None
+
+
+def excise(text: str, section: Section) -> str:
+    """Remove `section` (heading and its whole subtree), collapsing extra blank runs.
+
+    Purely mechanical: whether the removal is *safe* — no contributor still has one of
+    the section's child headings — is decided by the caller (`plan_apply`) before this
+    is reached, using the same evidence rows that produced the proposal.
+    """
+    original = normalize_text(text)
+    lines = original.split("\n")
+    remaining = lines[: section.heading] + lines[section.end :]
+    collapsed = re.sub(r"\n{3,}", "\n\n", "\n".join(remaining))
+    return normalize_text(collapsed)
 
 
 # ------------------------------------------------------------------ template targets
@@ -268,19 +412,60 @@ def plan_apply(
     if row is None:
         raise ApplyError(f"no proposal with id {proposal_id}")
 
+    kind = str(row.get("kind") or "edit")
+    if kind in UNSUPPORTED_KINDS:
+        raise ApplyError(
+            f"proposal {proposal_id} is a {kind!r} proposal; applying it is not supported."
+        )
+
     if templates_dir is None:
         config = config or load_config()
         templates_dir = Path(config.templates_dir)
     templates_dir = Path(templates_dir).expanduser().resolve()
 
+    target_file = str(row["target_file"])
+    target_section = row.get("target_section")
     template_file = resolve_template_file(row, templates_dir)
     body = proposal_body(row, edited_body)
     if not body.strip():
         raise ApplyError(f"proposal {proposal_id} has an empty body; nothing to apply")
 
-    if template_file.exists():
+    if kind == KIND_REMOVE_HEADING:
+        # No fallback here (module docstring): an unresolved section, or one a
+        # contributor still relies on, is an error raised before any plan exists.
+        if not template_file.exists():
+            raise ApplyError(
+                f"proposal {proposal_id} would remove a heading from {template_file}, "
+                "but that template does not exist."
+            )
         original = normalize_text(template_file.read_text(encoding="utf-8"))
-        updated, placement, reason = splice(original, body, row.get("target_section"))
+        section = resolve_section(original, target_section)
+        if section is None:
+            raise ApplyError(
+                f"proposal {proposal_id} names section {target_section!r} to remove from "
+                f"{target_file}, but the template has no such heading; refusing rather "
+                "than guessing what was meant to be removed."
+            )
+        for child in _section_children(original, section):
+            offender = _contributor_still_has(db, proposal_id, target_file, child)
+            if offender is not None:
+                raise ApplyError(
+                    f"proposal {proposal_id} would remove {target_section!r} from "
+                    f"{target_file}, but {offender} still has its child heading "
+                    f"{_format_heading(child)!r}; refusing to remove a section a "
+                    "contributor still relies on."
+                )
+        updated = excise(original, section)
+        placement, reason = PLACEMENT_REMOVE, None
+    elif kind == KIND_ADD_HEADING:
+        if template_file.exists():
+            original = normalize_text(template_file.read_text(encoding="utf-8"))
+        else:
+            original = ""
+        updated, placement, reason = insert_heading(original, body, target_section)
+    elif template_file.exists():
+        original = normalize_text(template_file.read_text(encoding="utf-8"))
+        updated, placement, reason = splice(original, body, target_section)
     else:
         original = ""
         updated = normalize_text(body)
@@ -288,10 +473,10 @@ def plan_apply(
 
     return ApplyPlan(
         proposal_id=int(row["id"]),
-        target_file=str(row["target_file"]),
+        target_file=target_file,
         template_file=template_file,
-        kind=str(row["kind"] or "edit"),
-        target_section=row.get("target_section"),
+        kind=kind,
+        target_section=target_section,
         placement=placement,
         body=body,
         original=original,
@@ -344,15 +529,24 @@ def commit_message(
     content_hash: str = "",
     placement: str = PLACEMENT_SECTION,
     target_section: Optional[str] = None,
+    kind: str = "edit",
+    body: str = "",
 ) -> str:
     """The commit that carries one accept, and the provenance a revert reads."""
+    if kind == KIND_REMOVE_HEADING and body.strip():
+        subject = f'learn: remove "{body.strip()}" from {target_file} (proposal #{proposal_id})'
+    elif kind == KIND_ADD_HEADING and body.strip():
+        subject = f'learn: add "{body.strip()}" to {target_file} (proposal #{proposal_id})'
+    else:
+        subject = f"learn: {title}".rstrip()
+
     where = (
         f" under {target_section.strip()!r}"
-        if placement == PLACEMENT_SECTION and target_section
+        if placement == PLACEMENT_SECTION and target_section and kind != KIND_REMOVE_HEADING
         else ""
     )
     lines = [
-        f"learn: {title}".rstrip(),
+        subject,
         "",
         f"Applies learn proposal #{proposal_id} to the {target_file} template{where}.",
     ]
@@ -433,6 +627,8 @@ def apply_plan(
         rationale=plan.rationale,
         projects=plan.contributing_projects,
         content_hash=plan.content_hash,
+        kind=plan.kind,
+        body=plan.body,
         placement=plan.placement,
         target_section=plan.target_section,
     )
