@@ -23,7 +23,6 @@ accept is therefore undone by reverting one commit, and nothing else goes with i
 """
 
 import difflib
-import re
 import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -36,73 +35,27 @@ from metaproject.exceptions import ApplyError, GitError
 from metaproject.git import get_git_identity, is_git_repository
 from metaproject.learn.collect import normalize_text, resolve_template
 from metaproject.learn.store import get_evidence, get_proposal, mark_applied, set_edited_body
+from metaproject.markdown import (
+    _FENCE_RE,
+    _HEADING_RE,
+    Section,
+    iter_sections,
+    normalize_heading,
+)
 
 PLACEMENT_SECTION = "section"
 PLACEMENT_APPEND = "append"
 PLACEMENT_NEW_FILE = "new_file"
 
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
-_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+# Re-exported for callers that imported these from this module before they moved to
+# `metaproject.markdown`; not used directly in this file.
+__all__ = [
+    "_FENCE_RE",
+    "_HEADING_RE",
+]
 
 
 # --------------------------------------------------------------- document structure
-
-
-@dataclass(frozen=True)
-class Section:
-    """One Markdown heading and the extent of the content beneath it."""
-
-    title: str
-    level: int
-    heading: int
-    """Index of the heading line."""
-    end: int
-    """Index one past the section's last content line."""
-
-
-def normalize_heading(text: str) -> str:
-    """Reduce a heading to its identity: no hashes, no case, no spacing noise.
-
-    Matching is exact on this normalized form and nothing looser. A fuzzy match is
-    exactly the silent misplacement R7 is about.
-    """
-    stripped = (text or "").strip()
-    match = _HEADING_RE.match(stripped)
-    if match:
-        stripped = match.group(2)
-    else:
-        stripped = stripped.lstrip("#").strip()
-    return " ".join(stripped.split()).casefold()
-
-
-def iter_sections(text: str) -> List[Section]:
-    """Every heading in a Markdown document, with the extent of its content.
-
-    A section ends at the next heading of the same or a shallower level, or at end of
-    file. Headings inside a fenced code block are comments, not structure.
-    """
-    lines = text.split("\n")
-    headings: List[Tuple[int, int, str]] = []
-    fenced = False
-    for index, line in enumerate(lines):
-        if _FENCE_RE.match(line):
-            fenced = not fenced
-            continue
-        if fenced:
-            continue
-        match = _HEADING_RE.match(line)
-        if match:
-            headings.append((index, len(match.group(1)), match.group(2).strip()))
-
-    sections: List[Section] = []
-    for position, (index, level, title) in enumerate(headings):
-        end = len(lines)
-        for next_index, next_level, _next_title in headings[position + 1 :]:
-            if next_level <= level:
-                end = next_index
-                break
-        sections.append(Section(title=title, level=level, heading=index, end=end))
-    return sections
 
 
 def resolve_section(text: str, target_section: Optional[str]) -> Optional[Section]:
