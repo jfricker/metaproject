@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from metaproject.config import Config
 from metaproject.learn.collect import (
     EvidenceRecord,
     collect_project,
@@ -21,6 +22,42 @@ from metaproject.learn.collect import (
 from tests.fixtures.learn_workspace.build import build_workspace
 
 C2_LINE = "- Run `make check` before every commit."
+
+_LOTS_OF_BODY_TEXT = "\n".join(
+    f"Body paragraph {i} with unrelated project prose." for i in range(20)
+)
+
+_STATE_TEMPLATE = (
+    "# STATE.md\n\n"
+    "## Process\n"
+    "{Placeholder process text.}\n\n"
+    "## Open items\n"
+    "{Placeholder open items text.}\n"
+)
+
+
+def _structure_workspace(tmp_path: Path, project_state_md: str, template: str = _STATE_TEMPLATE):
+    """A minimal project + template store scoped to STATE.md, for structure-evidence tests."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "STATE.md").write_text(project_state_md, encoding="utf-8")
+
+    templates_dir = tmp_path / "templates"
+    templates_dir.mkdir()
+    (templates_dir / "STATE.template.md").write_text(template, encoding="utf-8")
+
+    return project_dir, templates_dir
+
+
+def _collect_state(project_dir: Path, templates_dir: Path):
+    records = collect_project(
+        project_dir,
+        templates_dir,
+        targets=["STATE.md"],
+        config=Config(),
+        classification="Active",
+    )
+    return [r for r in records if r.target_file == "STATE.md"]
 
 
 @pytest.fixture
@@ -266,3 +303,137 @@ def test_diff_is_unified_and_not_the_whole_file(workspace) -> None:
     assert "+++" in agents.diff
     assert "@@" in agents.diff
     assert "### STATE.md" not in agents.diff
+
+
+# --------------------------------------------------------------------------- structural evidence
+
+
+def test_working_target_extra_heading_yields_one_structure_record(tmp_path: Path) -> None:
+    """AC-11: an extra heading in a body-heavy working doc is the only evidence, and no
+    body text appears anywhere in the record, including the diff."""
+    project_state_md = (
+        "# STATE.md\n\n"
+        "## Process\n"
+        f"{_LOTS_OF_BODY_TEXT}\n\n"
+        "## Open items\n"
+        f"{_LOTS_OF_BODY_TEXT}\n\n"
+        "## Risks\n"
+        "Some risk text that must never leak into evidence.\n"
+    )
+    project_dir, templates_dir = _structure_workspace(tmp_path, project_state_md)
+
+    records = _collect_state(project_dir, templates_dir)
+    assert len(records) == 1
+    record = records[0]
+
+    assert record.kind == "structure"
+    assert record.added_lines == ("## Risks",)
+    assert record.removed_lines == ()
+    assert "Body paragraph" not in record.diff
+    assert "risk text" not in record.diff
+    for line in record.added_lines + record.removed_lines:
+        assert "Body paragraph" not in line
+
+
+def test_working_target_removed_heading_from_nonempty_file_is_removal_evidence(
+    tmp_path: Path,
+) -> None:
+    """R-LRN-1b: a non-empty project file lacking a template heading yields removed_lines."""
+    project_state_md = f"# STATE.md\n\n## Process\n{_LOTS_OF_BODY_TEXT}\n"
+    project_dir, templates_dir = _structure_workspace(tmp_path, project_state_md)
+
+    records = _collect_state(project_dir, templates_dir)
+    assert len(records) == 1
+    record = records[0]
+
+    assert record.kind == "structure"
+    assert record.removed_lines == ("## Open items",)
+    assert record.added_lines == ()
+
+
+def test_empty_working_file_is_never_removal_evidence(tmp_path: Path) -> None:
+    """R-LRN-1b: an empty STATE.md contributes no removal evidence (no record at all)."""
+    project_dir, templates_dir = _structure_workspace(tmp_path, "   \n")
+    assert _collect_state(project_dir, templates_dir) == []
+
+
+def test_missing_working_file_is_never_removal_evidence(tmp_path: Path) -> None:
+    """R-LRN-1b: a missing STATE.md contributes no removal evidence (no record at all)."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    templates_dir = tmp_path / "templates"
+    templates_dir.mkdir()
+    (templates_dir / "STATE.template.md").write_text(_STATE_TEMPLATE, encoding="utf-8")
+
+    assert _collect_state(project_dir, templates_dir) == []
+
+
+def test_working_target_heading_level_change_is_one_removal_and_one_addition(
+    tmp_path: Path,
+) -> None:
+    """A level change on a heading title counts as one removal plus one addition."""
+    project_state_md = (
+        f"# STATE.md\n\n### Process\n{_LOTS_OF_BODY_TEXT}\n\n## Open items\n{_LOTS_OF_BODY_TEXT}\n"
+    )
+    project_dir, templates_dir = _structure_workspace(tmp_path, project_state_md)
+
+    records = _collect_state(project_dir, templates_dir)
+    assert len(records) == 1
+    record = records[0]
+
+    assert record.removed_lines == ("## Process",)
+    assert record.added_lines == ("### Process",)
+
+
+def test_working_target_with_no_template_in_store_yields_no_record(tmp_path: Path) -> None:
+    """A working target the store has no template for contributes no structural record
+    (and is never treated as a `new_template` candidate)."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "STATE.md").write_text(
+        f"# STATE.md\n\n## Risks\n{_LOTS_OF_BODY_TEXT}\n", encoding="utf-8"
+    )
+    templates_dir = tmp_path / "templates"
+    templates_dir.mkdir()
+
+    assert _collect_state(project_dir, templates_dir) == []
+
+
+def test_working_target_matching_headings_yield_no_record(tmp_path: Path) -> None:
+    """Body text alone, with matching headings, is not structural evidence (R-LRN-1)."""
+    project_state_md = (
+        f"# STATE.md\n\n## Process\n{_LOTS_OF_BODY_TEXT}\n\n## Open items\n{_LOTS_OF_BODY_TEXT}\n"
+    )
+    project_dir, templates_dir = _structure_workspace(tmp_path, project_state_md)
+    assert _collect_state(project_dir, templates_dir) == []
+
+
+def test_handoff_is_never_collected_even_when_configured(tmp_path: Path) -> None:
+    """R-LRN-3/design.md: HANDOFF.md (on-demand) is never collected, even if a config
+    explicitly lists it as a learn target."""
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    (project_dir / "HANDOFF.md").write_text(
+        "# Handoff\n\n## Extra section\nSome text.\n", encoding="utf-8"
+    )
+    templates_dir = tmp_path / "templates"
+    templates_dir.mkdir()
+    (templates_dir / "HANDOFF.template.md").write_text("# Handoff\n", encoding="utf-8")
+
+    records = collect_project(
+        project_dir,
+        templates_dir,
+        targets=["HANDOFF.md"],
+        config=Config(),
+        classification="Active",
+    )
+    assert records == []
+
+
+def test_agents_md_behavior_is_unchanged_by_structure_evidence(workspace) -> None:
+    """Governance targets (AGENTS.md) still produce body `edit` evidence, not structure."""
+    records = collect_project(workspace.project("lattice"), workspace.templates)
+    agents = [r for r in records if r.target_file == "AGENTS.md"][0]
+    assert agents.kind == "edit"
+    assert agents.removed_lines == ()
+    assert C2_LINE in agents.added_lines
