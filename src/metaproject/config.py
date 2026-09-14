@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from metaproject import deliverables
 from metaproject.exceptions import ConfigError
 
 DEFAULT_CONFIG_DIR = Path.home() / ".metaproject"
@@ -14,18 +15,10 @@ DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
 DEFAULT_TEMPLATES_DIR = DEFAULT_CONFIG_DIR / "templates"
 DEFAULT_UNIVERSE_DB = DEFAULT_CONFIG_DIR / "universe.db"
 
-DEFAULT_LEARN_TARGETS = [
-    "README.md",
-    "AGENTS.md",
-    "CLAUDE.md",
-    "intent.md",
-    "STATE.md",
-    "HANDOFF.md",
-    ".gitignore",
-    "docs/",
-    "Makefile",
-    "pyproject.toml",
-]
+# Governance + working deliverables (spec.md R-LRN-3); on-demand and directory
+# deliverables are excluded. A `config.json` that already pins `learn.targets` is left
+# untouched by this change (deferred `doctor`, FC-3).
+DEFAULT_LEARN_TARGETS = list(deliverables.learn_targets())
 
 DEFAULT_ACTIVITY_WEIGHTS = {
     "Active Now": 1.0,

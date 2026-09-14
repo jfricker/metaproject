@@ -24,16 +24,18 @@ def test_default_learn_config() -> None:
     cfg = Config()
     assert isinstance(cfg.learn, LearnConfig)
     assert cfg.learn.targets == [
-        "README.md",
         "AGENTS.md",
         "CLAUDE.md",
-        "intent.md",
-        "STATE.md",
-        "HANDOFF.md",
+        "README.md",
         ".gitignore",
-        "docs/",
-        "Makefile",
-        "pyproject.toml",
+        "intent.md",
+        "spec.md",
+        "design.md",
+        "plan.md",
+        "STATE.md",
+        "ARCHITECTURE.md",
+        "docs/DESIGN-INVARIANTS.md",
+        "docs/VERIFIED-FACTS.md",
     ]
     assert cfg.learn.resurface_factor == 2.0
     assert cfg.learn.model is None
@@ -60,7 +62,7 @@ def test_config_round_trip_without_learn_key(tmp_path: Path) -> None:
     assert loaded.author == "Bob"
     assert isinstance(loaded.learn, LearnConfig)
     assert loaded.learn.resurface_factor == 2.0
-    assert loaded.learn.targets[0] == "README.md"
+    assert loaded.learn.targets[0] == "AGENTS.md"
 
 
 def test_config_round_trip_with_learn_key(tmp_path: Path) -> None:

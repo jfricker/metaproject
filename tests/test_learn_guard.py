@@ -289,8 +289,14 @@ def test_manifest_excludes_nothing_sensitive(workspace) -> None:
 
 
 def test_manifest_render_names_projects_and_targets(workspace) -> None:
-    """The operator can see project and target for every line about to leave the machine."""
-    records = collect_project(workspace.project("kiln"), workspace.templates)
+    """The operator can see project and target for every line about to leave the machine.
+
+    `Makefile` is not a default learn target (spec.md R-LRN-3); passed explicitly since
+    this test is about manifest rendering, not the default target list.
+    """
+    records = collect_project(
+        workspace.project("kiln"), workspace.templates, targets=["AGENTS.md", "Makefile"]
+    )
     manifest = build_manifest(guard_evidence(records).records, [])
     rendered = manifest.render()
     assert "kiln" in rendered
