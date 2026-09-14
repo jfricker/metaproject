@@ -487,6 +487,106 @@ def deploy_entry(
     return [target]
 
 
+@dataclass(frozen=True)
+class BackfillResult:
+    """What one `backfill_missing` call did, or would do under `dry_run`.
+
+    Every list holds project-relative paths. A path appears in exactly one of them.
+    """
+
+    created: List[str] = field(default_factory=list)
+    skipped: List[str] = field(default_factory=list)
+    refused: List[str] = field(default_factory=list)
+    missing_template: List[str] = field(default_factory=list)
+
+
+def backfill_missing(
+    project_dir: Path,
+    files: Optional[Sequence[str]] = None,
+    templates_dir: Optional[Path] = None,
+    dry_run: bool = False,
+    config: Optional[Config] = None,
+) -> BackfillResult:
+    """Create-only remediation: write missing deliverables from the template store.
+
+    Never overwrites (R-NF-3) and never runs git — this is the create-only write path
+    agent sessions are permitted to use (FC-1), unlike `new .`'s interactive backfill.
+
+    Two modes:
+
+    - **No `files`** — every `scaffolded()` deliverable missing from the project, in
+      one call. Directory deliverables are created first (declaration order), then the
+      rest, and existence is re-checked before each write: rendering a directory
+      template (e.g. `docs/`) can create files declared later in `DELIVERABLES`, so
+      those are reported `skipped` rather than deployed a second time. A deliverable
+      with no template in the store is reported in `missing_template` — never a silent
+      fallback to the bundled store (design.md "Alternatives considered") — but every
+      other target is still created.
+    - **`files` given** — exactly those paths, which may be on-demand (`HANDOFF.md`) or
+      any other path the store has a template for. If *any* named file already exists,
+      every existing one is reported in `refused` and **nothing at all is written**. If
+      any named file has no template, every such path is reported in `missing_template`
+      and, again, nothing at all is written.
+
+    `dry_run` computes the same result without writing. Variables are resolved once, up
+    front, for the whole batch (`resolve_variables`) — never per file, or an early write
+    in the batch could change how a later one renders.
+    """
+    resolved_proj = Path(project_dir).expanduser().resolve()
+    resolved_templates = resolve_templates_dir(templates_dir)
+    cfg = config or load_config()
+    variables = resolve_variables(resolved_proj, cfg)
+
+    def write(path: str) -> None:
+        if not dry_run:
+            deploy_entry(resolved_proj, path, resolved_templates, cfg, variables)
+
+    if files:
+        named = list(dict.fromkeys(files))  # de-duplicate, keep first-seen order
+
+        existing = [path for path in named if (resolved_proj / path).exists()]
+        if existing:
+            return BackfillResult(refused=existing)
+
+        missing_template = [
+            path for path in named if resolve_template_entry(path, resolved_templates) is None
+        ]
+        if missing_template:
+            return BackfillResult(missing_template=missing_template)
+
+        for path in named:
+            write(path)
+        return BackfillResult(created=named)
+
+    from metaproject.deliverables import DELIVERABLES, DeliverableClass
+
+    directory_paths = [d.path for d in DELIVERABLES if d.cls is DeliverableClass.DIRECTORY]
+    other_paths = [
+        d.path
+        for d in DELIVERABLES
+        if d.cls not in (DeliverableClass.DIRECTORY, DeliverableClass.ON_DEMAND)
+    ]
+
+    created: List[str] = []
+    skipped: List[str] = []
+    missing_template = []
+    for path in [*directory_paths, *other_paths]:
+        target = resolved_proj / path
+        if target.exists():
+            skipped.append(path)
+            continue
+        entry = resolve_template_entry(path, resolved_templates)
+        if entry is None:
+            missing_template.append(path)
+            continue
+        write(path)
+        created.append(path)
+
+    return BackfillResult(
+        created=created, skipped=skipped, refused=[], missing_template=missing_template
+    )
+
+
 def update_entry(
     project_dir: Path,
     deliverable: str,

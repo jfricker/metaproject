@@ -2,7 +2,7 @@
 
 import shutil
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import questionary
 import typer
@@ -963,6 +963,79 @@ def review_cmd(
     )
     for problem in outcome.errors:
         console.print(f"[red]{problem}[/red]")
+
+
+@app.command(name="backfill")
+def backfill_cmd(
+    files: Optional[List[str]] = typer.Argument(
+        None,
+        help="Specific deliverables to create (e.g. HANDOFF.md). Default: every "
+        "missing deliverable `new` scaffolds.",
+    ),
+    project_dir: Optional[Path] = typer.Option(
+        None,
+        "--dir",
+        "-d",
+        help="Project directory to backfill (default: current directory).",
+    ),
+    templates_path: Optional[Path] = typer.Option(
+        None,
+        "--templates",
+        help="Template directory to create from (default: ~/.metaproject/templates).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would be created without writing to disk.",
+    ),
+) -> None:
+    """Create missing deliverables from the template store. Never overwrites, never runs git.
+
+    Unlike `new .`, this is a non-interactive, create-only write and is permitted in
+    agent sessions (R-TPL-8): it is how a skill or hook fills in a document that review
+    reports missing, without the confirmations `new .`'s backfill requires.
+    """
+    from metaproject.review import backfill_missing
+
+    target = (project_dir or Path.cwd()).resolve()
+    result = backfill_missing(
+        target, files=files or None, templates_dir=templates_path, dry_run=dry_run
+    )
+
+    verb = "Would create" if dry_run else "Created"
+    if result.created:
+        table = Table(title=verb, show_header=False)
+        table.add_column(style="green")
+        for path in result.created:
+            table.add_row(path)
+        console.print(table)
+
+    if result.skipped:
+        table = Table(title="Skipped (already exists)", show_header=False)
+        table.add_column(style="dim")
+        for path in result.skipped:
+            table.add_row(path)
+        console.print(table)
+
+    if result.refused:
+        table = Table(title="Refused — already exists, nothing written", show_header=False)
+        table.add_column(style="red")
+        for path in result.refused:
+            table.add_row(path)
+        console.print(table)
+
+    if result.missing_template:
+        table = Table(title="No template in the store", show_header=False)
+        table.add_column(style="red")
+        for path in result.missing_template:
+            table.add_row(path)
+        console.print(table)
+
+    if not (result.created or result.skipped or result.refused or result.missing_template):
+        console.print("[dim]Nothing to do.[/dim]")
+
+    if result.refused or result.missing_template:
+        raise typer.Exit(code=1)
 
 
 # --------------------------------------------------------------------------- learn

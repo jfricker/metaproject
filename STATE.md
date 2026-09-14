@@ -16,7 +16,7 @@
 - [x] A4. placeholder warnings + render exclusions
 - [x] B1. scaffold writes identity, skips on-demand
 - [x] B2. review classes
-- [ ] B3. backfill_missing + `metaproject backfill`
+- [x] B3. backfill_missing + `metaproject backfill`
 - [ ] B4. TUI + CLI surfaces
 - [ ] C1. structural evidence
 - [ ] C2. learn/structure.py + api partition
