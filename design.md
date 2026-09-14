@@ -93,8 +93,10 @@ Requirement IDs refer to spec.md. Module paths are under `src/metaproject/` unle
   - User-facing text for `new .` stops saying "backfill" (becomes "scaffold into an
     existing directory") so the word names one command; function names
     (`confirm_backfill`, `backfill=` parameter) are internal and unchanged.
-- **`config.py`** — `DEFAULT_LEARN_TARGETS = deliverables.learn_targets()`; existing
-  pinned `learn.targets` untouched (doctor, FC-3).
+- **`config.py`** — `DEFAULT_LEARN_TARGETS = [*deliverables.learn_targets(), "docs/",
+  "Makefile", "pyproject.toml"]`; existing pinned `learn.targets` untouched (doctor, FC-3).
+  *(Amended 2026-09-14 during implementation, approved by John Fricker: the original
+  `= learn_targets()` dropped learn's untemplated/config-shaped targets.)*
 - **`learn/collect.py`** — `EvidenceRecord` gains `removed_lines: Tuple[str, ...] = ()`.
   For a WORKING target, `collect_project` builds a *structural* record: `kind="structure"`,
   `added_lines` = project headings with no template match (as `"## Title"` lines),
