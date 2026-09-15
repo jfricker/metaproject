@@ -30,6 +30,7 @@ from metaproject.markdown import Heading, missing_headings
 from metaproject.templates import (
     find_unknown_placeholders,
     get_bundled_templates_dir,
+    is_junk_file_name,
     render_template_tree,
     transform_template_name,
 )
@@ -142,7 +143,7 @@ def resolve_template_entry(rel_path: str, templates_dir: Path) -> Optional[Path]
             return None
         match: Optional[Path] = None
         for item in sorted(current.iterdir()):
-            if item.name == ".git":
+            if item.name == ".git" or is_junk_file_name(item.name):
                 continue
             if transform_template_name(item.name) == part:
                 match = item

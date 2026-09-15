@@ -1,5 +1,6 @@
 """Template discovery, extraction, stripping, and rendering for MetaProject."""
 
+import fnmatch
 import importlib.resources
 import re
 import shutil
@@ -10,6 +11,26 @@ from typing import Any, Collection, Dict, List, Set
 import jinja2
 
 from metaproject.exceptions import TemplateError
+
+# OS/editor junk a template store accumulates but that is never a template or a
+# deliverable (STATE.md design invariants): exact names plus a handful of globs for
+# AppleDouble sidecars, backup files, and vim swap files. This is the single place that
+# knows the rule; every walk of the store (`render_template_tree`, `seed_templates`,
+# `review.resolve_template_entry`, `learn.collect.resolve_template`) applies it.
+JUNK_FILE_NAMES: Set[str] = {".DS_Store", "Thumbs.db", "desktop.ini"}
+JUNK_FILE_GLOBS: tuple = ("._*", "*~", ".*.swp")
+
+
+def is_junk_file_name(name: str) -> bool:
+    """True for OS/editor junk (`.DS_Store`, `Thumbs.db`, `._*`, `*~`, `.*.swp`, ...).
+
+    Never a template, never a deliverable — skipped everywhere the template store is
+    walked, the same way `.git` already is.
+    """
+    if name in JUNK_FILE_NAMES:
+        return True
+    return any(fnmatch.fnmatch(name, pattern) for pattern in JUNK_FILE_GLOBS)
+
 
 WHITELISTED_VARS: Set[str] = {
     "ProjectTitle",
@@ -58,6 +79,8 @@ def seed_templates(target_dir: Path, force: bool = False) -> List[Path]:
 
     for item in bundled_dir.rglob("*"):
         rel_path = item.relative_to(bundled_dir)
+        if any(is_junk_file_name(part) for part in rel_path.parts):
+            continue
         dest_item = target_dir / rel_path
 
         if item.is_dir():
@@ -187,6 +210,9 @@ def render_template_tree(
         # Never scaffold the template store's own .git metadata (spec.md §4.1: the
         # templates directory is itself a git repository) into a new project.
         if ".git" in rel_path.parts:
+            continue
+        # Never scaffold OS/editor junk the store has accumulated (.DS_Store, etc.).
+        if any(is_junk_file_name(part) for part in rel_path.parts):
             continue
         # Transform each path component: e.g. docs.template/guide.template.md -> docs/guide.md
         transformed_parts = [transform_template_name(part) for part in rel_path.parts]

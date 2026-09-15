@@ -39,6 +39,9 @@
   proposals for governance files stay ranked, not gated (spec R-LRN-1c).
 - A template missing from the live store is an error, never a silent fallback to the
   bundled copy (design.md).
+- Template-store walks skip OS/editor junk files (`.DS_Store`, `Thumbs.db`,
+  `desktop.ini`, `._*`, `*~`, `.*.swp`) as well as `.git`; the rule lives once in
+  `templates.is_junk_file_name` and is applied everywhere the store is walked.
 
 ## Open items carried into plan.md
 - FC-3 (spec.md): live store refresh deferred to a future `metaproject doctor` command;

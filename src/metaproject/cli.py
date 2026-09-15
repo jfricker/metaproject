@@ -443,7 +443,15 @@ def confirm_backfill(target_dir: Path, dry_run: bool, interactive: bool) -> bool
     )
 
     if dry_run:
-        console.print("[bold yellow]DRY RUN:[/] Would prompt to confirm this.")
+        marker = agent_marker()
+        if marker is not None:
+            console.print(
+                "[bold yellow]DRY RUN:[/] A real run would ask an operator to confirm "
+                "this, and would be refused outright in this agent session (no operator "
+                f"to ask). [dim]{override_hint(marker)}[/dim]"
+            )
+        else:
+            console.print("[bold yellow]DRY RUN:[/] A real run would ask you to confirm this.")
         return True
 
     marker = agent_marker()
@@ -585,7 +593,10 @@ def new_cmd(
             title=title,
             description=description,
             author=author,
-            interactive=interactive,
+            # A dry run never prompts, no matter how it is invoked: it previews, it
+            # doesn't ask. Without this, variable collection below would still open a
+            # questionary prompt during --dry-run, which aborts with no TTY (bug fix).
+            interactive=interactive and not dry_run,
             force=force,
             dry_run=dry_run,
             no_git=no_git,
@@ -628,6 +639,13 @@ def new_cmd(
             console.print("[dim]would write .metaproject.json[/dim]")
         else:
             console.print("[dim]wrote .metaproject.json[/dim]")
+
+    skills_link = result.get("skills_link")
+    if dry_run and skills_link is not None:
+        console.print(
+            f"[dim]would create agent-skills layout: {skills_link.relative_to(target_dir)} "
+            f"(-> ../.agents/skills)[/dim]"
+        )
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")
     table.add_column("Relative Path", style="cyan")
