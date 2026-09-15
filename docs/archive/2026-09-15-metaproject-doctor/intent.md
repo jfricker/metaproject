@@ -2,7 +2,7 @@
 
 **Author**: John Fricker.
 **Last updated**: 2026-09-15.
-**Status**: Approved.
+**Status**: Complete.
 **Approved by**: John Fricker (2026-09-15).
 
 ## Problem

@@ -130,3 +130,45 @@ def test_cli_init_no_skill_opts_out(runner: CliRunner, tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert not skill_dir.exists()
+
+
+def test_install_skill_prune_extra_removes_stray_files(tmp_path: Path) -> None:
+    """doctor's package-owned mode: files the bundle doesn't carry are deleted."""
+    target = tmp_path / "skills" / "metaproject"
+    install_skill(target_dir=target)
+    stray = target / "references" / "stray.md"
+    stray.write_text("# not in the bundle\n", encoding="utf-8")
+
+    result = install_skill(target_dir=target, force=True, prune_extra=True)
+
+    # Bundled content is unchanged; only the stray file differed, so state is CURRENT.
+    assert result["state"] == CURRENT
+    assert stray in result["pruned"]
+    assert not stray.exists()
+    assert is_skill_current(get_bundled_skill_dir(), target) is True
+
+
+def test_install_skill_prunes_extras_even_when_content_is_current(tmp_path: Path) -> None:
+    """A current copy with extra files still gets pruned under prune_extra."""
+    target = tmp_path / "skills" / "metaproject"
+    install_skill(target_dir=target)
+    stray = target / "stray.md"
+    stray.write_text("# not in the bundle\n", encoding="utf-8")
+
+    result = install_skill(target_dir=target, prune_extra=True)
+
+    assert result["state"] == CURRENT
+    assert not stray.exists()
+
+
+def test_install_skill_leaves_stray_files_by_default(tmp_path: Path) -> None:
+    """init's behavior is unchanged: no prune unless explicitly asked for."""
+    target = tmp_path / "skills" / "metaproject"
+    install_skill(target_dir=target)
+    stray = target / "stray.md"
+    stray.write_text("# not in the bundle\n", encoding="utf-8")
+
+    install_skill(target_dir=target, force=True)
+
+    assert stray.exists()
+    assert is_skill_current(get_bundled_skill_dir(), target) is True

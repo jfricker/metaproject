@@ -31,6 +31,31 @@ make test
 make lint
 ```
 
+## Upgrading
+
+After upgrading the installed package (e.g. `uv tool install -U .` or from PyPI), the
+copies metaproject installed outside it can lag behind: the template store at
+`~/.metaproject/templates`, `learn.targets` in `config.json`, the Claude Code skill at
+`~/.claude/skills/metaproject/`, and per-project `.metaproject.json` anchors. Run
+`metaproject doctor` to check all four and repair what's stale — each fix asks for
+confirmation first, and `--dry-run` previews findings without writing anything:
+
+```bash
+metaproject doctor --dry-run   # preview
+metaproject doctor             # diagnose, confirm each fix
+```
+
+Notes:
+
+- The template store is git-backed and yours to edit (`learn apply` commits to it):
+  doctor only *adds* templates missing from the new package and never deletes or
+  overwrites anything already there. A deliberate `metaproject init --force` remains
+  the way to force content back to the bundled defaults.
+- `learn.targets` migration is additive — newly declared deliverables are appended;
+  your own pinned targets are never removed or reordered.
+- The skill directory is package-owned: doctor reinstalls it exactly as bundled,
+  pruning stray files.
+
 ---
 
 ## Tutorial: Setup & Usage
