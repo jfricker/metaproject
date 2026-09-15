@@ -5,7 +5,7 @@
 - [x] 2. generate-spec: spec.md approved
 - [x] 3. generate-design: design.md approved
 - [x] 4. generate-plan: plan.md approved
-- [ ] 5. implement-plan: plan steps implemented
+- [x] 5. implement-plan: plan steps implemented
 - [ ] 6. execute-tests: verification green
 - [ ] 7. wrapup: cycle archived
 
@@ -27,7 +27,7 @@
 - [x] D3. discovery doc
 - [x] E1. sdlc-skills hook + Makefile
 - [x] E2. sdlc-skills skills
-- [ ] E3. sdlc-skills repo docs + identity + version
+- [x] E3. sdlc-skills repo docs + identity + version
 - [ ] F. release on main (after merge)
 
 ## Design invariants (regression guards)
