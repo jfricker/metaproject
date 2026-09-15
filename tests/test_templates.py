@@ -4,6 +4,8 @@ from pathlib import Path
 
 from metaproject.config import Config
 from metaproject.templates import (
+    RenderReport,
+    find_unknown_placeholders,
     is_binary_file,
     preprocess_template_string,
     render_template_string,
@@ -122,7 +124,8 @@ def test_render_template_tree_with_binaries_and_empty_dirs(tmp_path: Path) -> No
         "ProjectDescription": "Supersonic software",
     }
 
-    created = render_template_tree(source_dir, target_dir, vars_dict, dry_run=False)
+    report = render_template_tree(source_dir, target_dir, vars_dict, dry_run=False)
+    created = report.paths
     assert len(created) >= 4
 
     assert (target_dir / "README.md").exists()
@@ -138,3 +141,73 @@ def test_render_template_tree_with_binaries_and_empty_dirs(tmp_path: Path) -> No
 
     assert (target_dir / "logo.png").exists()
     assert (target_dir / "logo.png").read_bytes() == binary_data
+
+
+def test_find_unknown_placeholders_ignores_whitelisted_and_foreign_syntax() -> None:
+    """Whitelisted vars, jinja passthrough, shell vars, and JSON braces are not reported."""
+    text = (
+        "Hello {ProjectTitle}, by {Author}.\n"
+        "Typo appears twice: {projcet} and again {projcet}.\n"
+        "Jinja passthrough: {{ jinja }}\n"
+        "Shell: echo ${SHELL}\n"
+        'JSON block: { "name": "test", "id": 123 }\n'
+        "Spaced braces: { id }\n"
+    )
+
+    assert find_unknown_placeholders(text) == ["projcet"]
+
+
+def test_render_template_tree_reports_unknown_placeholder_warning(tmp_path: Path) -> None:
+    """A template with an unwhitelisted placeholder produces a named warning."""
+    source_dir = tmp_path / "store"
+    source_dir.mkdir()
+    (source_dir / "AGENTS.template.md").write_text(
+        "# {ProjectTitle}\nWelcome to {projcet}.", encoding="utf-8"
+    )
+    target_dir = tmp_path / "out"
+
+    report = render_template_tree(source_dir, target_dir, {"ProjectTitle": "Alpha"})
+
+    assert isinstance(report, RenderReport)
+    assert (target_dir / "AGENTS.md").exists()
+    assert report.warnings == ["AGENTS.template.md: unknown placeholder {projcet}"]
+
+
+def test_render_template_tree_excludes_file_and_directory(tmp_path: Path) -> None:
+    """`exclude` skips a named file and an entire named directory's subtree."""
+    source_dir = tmp_path / "store"
+    source_dir.mkdir()
+    (source_dir / "HANDOFF.template.md").write_text("Handoff notes", encoding="utf-8")
+    (source_dir / "AGENTS.template.md").write_text("# {ProjectTitle}", encoding="utf-8")
+    archive_dir = source_dir / "docs.template" / "archive.template"
+    archive_dir.mkdir(parents=True)
+    (archive_dir / ".gitkeep.template").write_text("", encoding="utf-8")
+    (archive_dir / "notes.template.md").write_text("notes", encoding="utf-8")
+    target_dir = tmp_path / "out"
+
+    report = render_template_tree(
+        source_dir,
+        target_dir,
+        {"ProjectTitle": "Alpha"},
+        exclude={"HANDOFF.md", "docs/archive"},
+    )
+
+    rendered_names = {p.relative_to(target_dir).as_posix() for p in report.paths}
+    assert "HANDOFF.md" not in rendered_names
+    assert not any(name.startswith("docs/archive") for name in rendered_names)
+    assert not (target_dir / "HANDOFF.md").exists()
+    assert not (target_dir / "docs" / "archive").exists()
+    assert (target_dir / "AGENTS.md").exists()
+
+
+def test_render_template_tree_dry_run_still_reports_paths(tmp_path: Path) -> None:
+    """dry_run=True reports the same planned paths without writing anything."""
+    source_dir = tmp_path / "store"
+    source_dir.mkdir()
+    (source_dir / "README.template.md").write_text("# {ProjectTitle}", encoding="utf-8")
+    target_dir = tmp_path / "out"
+
+    report = render_template_tree(source_dir, target_dir, {"ProjectTitle": "Alpha"}, dry_run=True)
+
+    assert report.paths == [target_dir / "README.md"]
+    assert not (target_dir / "README.md").exists()

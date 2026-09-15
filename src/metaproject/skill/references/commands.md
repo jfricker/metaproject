@@ -6,6 +6,7 @@ Anything marked **interactive** prompts or opens a TUI and needs a human at the 
 ## Contents
 - [init](#init)
 - [new](#new)
+- [backfill](#backfill)
 - [review](#review)
 - [learn](#learn)
 - [universe](#universe)
@@ -49,6 +50,9 @@ catalog summary instead of changing anything — a safe way to inspect the envir
 | `--dry-run` | Print what would be written; touches nothing |
 | `--no-git` | Skip `git init` and the initial commit |
 
+Also writes `.metaproject.json` (`title`, `description`, `author`, `created`,
+`metaproject_version`), tracked in the initial commit.
+
 **Path resolution:** no `--output` → `./<project-name>`; `--output` naming an existing
 directory → `<output>/<project-name>`; `--output` that does not exist or ends in `/` →
 that exact path.
@@ -56,11 +60,49 @@ that exact path.
 **`metaproject new .`** targets the current directory and takes the project name from the
 directory itself.
 
-**Backfill** (target already has files) — **interactive**: two confirmations, one for the
-templates and one for git. Colliding files are kept as-is and reported under "Kept
-(Already Present)". `--yes` cannot answer these prompts; `--force` skips both and
-overwrites. If the directory is already a git repository, a backfill leaves it entirely
-alone — no init, no staging, no commit.
+**Scaffolding into an existing directory** (target already has files) —
+**interactive**: two confirmations, one for the templates and one for git. Colliding
+files are kept as-is and reported under "Kept (Already Present)". `--yes` cannot answer
+these prompts; `--force` skips both and overwrites. If the directory is already a git
+repository, this leaves it entirely alone — no init, no staging, no commit. In an agent
+session this whole flow is refused (exit 1); use `backfill` instead for the documents an
+agent is allowed to create unattended.
+
+## backfill
+
+`metaproject backfill [FILE...] [--dir PROJECT_DIR]` — create missing deliverables from
+the template store. Never overwrites, never runs git, and is **permitted in agent
+sessions** (spec R-TPL-8) — this is how a skill or hook fills in a document `review`
+reports missing, without `new .`'s confirmations.
+
+| Flag | Effect |
+|---|---|
+| `FILE...` (positional, optional) | Specific deliverables to create, e.g. `spec.md HANDOFF.md`. Default: every deliverable `new` scaffolds that is currently missing. |
+| `--dir`, `-d <path>` | Project directory to backfill (default: current directory). |
+| `--templates <path>` | Template directory to create from (default `~/.metaproject/templates`). |
+| `--dry-run` | Preview what would be created; writes nothing. |
+
+Two modes:
+
+- **No `FILE`** — creates every currently-missing deliverable `new` would have
+  scaffolded (on-demand deliverables excluded); existing files are listed under
+  "Skipped (already exists)" rather than touched.
+- **Named `FILE`s** — creates exactly those, including on-demand ones like
+  `HANDOFF.md`. If *any* named file already exists, nothing at all is written and every
+  existing name is reported under "Refused — already exists, nothing written"; the
+  command exits non-zero. A named path with no template in the store is reported under
+  "No template in the store" and also writes nothing.
+
+Exit codes: `0` on success (including "nothing to do" when everything already exists in
+no-`FILE` mode); `1` if any named file was refused or had no template.
+
+```bash
+metaproject backfill                       # every missing scaffolded deliverable
+metaproject backfill spec.md design.md     # exactly these
+metaproject backfill HANDOFF.md            # on-demand deliverable, created by name
+metaproject backfill --dry-run             # preview only, writes nothing
+metaproject backfill spec.md               # exits 1, writes nothing, if spec.md exists
+```
 
 ## review
 
@@ -77,14 +119,26 @@ exits in an agent session (see [Agent-session guards](#agent-session-guards)).
 | `--list-ignored` | Print the ignore list and exit |
 | `--unignore` | Remove the target project from the ignore list and exit |
 
-States: `✓ CLEAN`, `~ DRIFTED` (present but differs), `! INCOMPLETE` (a template file is
+States: `✓ CLEAN` (nothing missing, nothing drifted, no working document missing a
+heading), `~ DRIFTED` (present but a governance file's content differs, or a working
+document is missing a template heading), `! INCOMPLETE` (a scaffolded deliverable is
 missing; wins when both apply). Comparison renders each template with the project's own
 variables first, so substituted placeholders are never reported as drift.
 
-Remediation is inside the TUI: `u <n>` update a drifted file, `d <n>` deploy a missing
-one, `i <n>` ignore a project durably, `o <n>` dismiss it for this session only, `?` help.
-`u all` / `d all` require a typed confirmation. The ignore ledger lives at
-`~/.metaproject/review-ignore.json`.
+Governance deliverables (`AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) are diffed
+body-for-body. Working deliverables (`intent.md`, `spec.md`, `design.md`, `plan.md`,
+`STATE.md`, `ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`) are
+checked for heading structure only — a per-file list of template headings the project
+file is missing, shown as notes on the detail screen — and are never offered for Update;
+`.metaproject.json`'s absence is reported as an informational note rather than
+`! INCOMPLETE`. A store template containing an unwhitelisted `{placeholder}` prints a
+warning naming the file and placeholder rather than failing the review.
+
+Remediation is inside the TUI: `u <n>` update a drifted governance file, `d <n>` deploy a
+missing one, `i <n>` ignore a project durably, `o <n>` dismiss it for this session only,
+`?` help. `u all` / `d all` require a typed confirmation. `update_entry` raises for a
+working deliverable — deploy (or `metaproject backfill`) is the only way to add one that
+is missing. The ignore ledger lives at `~/.metaproject/review-ignore.json`.
 
 ## learn
 
@@ -149,7 +203,8 @@ that need an operator. Detection reads environment markers no ordinary login she
 | `review` board | Printed, then exits 0, with a line naming the marker |
 | `learn` acceptance reviewer | The queue table, then exits 0 |
 | `learn scan` / bare `learn [ROOT]` | Refused, exit 1, printing the command to hand over |
-| A backfill's two confirmations | Refused, exit 1; `--dry-run` still previews |
+| Scaffolding into an existing directory (`new .`'s two confirmations) | Refused, exit 1; `--dry-run` still previews |
+| `metaproject backfill` | **Allowed** — create-only, no confirmations needed, never runs git |
 | Everything else | Unchanged |
 
 `METAPROJECT_AGENT` overrides detection in both directions: `0` forces human mode (an
@@ -166,8 +221,14 @@ around one is not.
 # Scaffold without any prompt
 metaproject new <name> --title "<Title>" --description "<one line>" --yes
 
-# Preview a scaffold or backfill without writing
+# Preview scaffolding into an existing directory without writing
 metaproject new . --dry-run
+
+# Create a specific missing document without any confirmation (agent-safe)
+metaproject backfill spec.md HANDOFF.md
+
+# Fill in every missing scaffolded deliverable in one call
+metaproject backfill
 
 # Audit this project (prints the board in an agent session)
 metaproject review
@@ -192,6 +253,7 @@ metaproject universe --list --all --format json
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
 | `~/.claude/skills/metaproject/` | This skill, installed by `init` |
+| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`, read by `review`/`learn`/`backfill`/`universe` |
 
 Template files carry a `.template` infix that is stripped on render:
 `AGENTS.template.md` → `AGENTS.md`, `.gitignore.template` → `.gitignore`,

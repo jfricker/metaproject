@@ -94,6 +94,29 @@ def test_cli_init_installs_the_skill(runner: CliRunner, tmp_path: Path) -> None:
     assert "skill" in result.output.lower()
 
 
+def test_skill_docs_cover_the_7_stage_cycle_and_classes() -> None:
+    """spec.md R-DOC-1, AC-12a: SKILL.md and documents.md name the required concepts."""
+    skill_dir = get_bundled_skill_dir()
+    skill_md = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    documents_md = (skill_dir / "references" / "documents.md").read_text(encoding="utf-8")
+
+    required_terms = [
+        "write-intent",
+        "wrapup",
+        "working",
+        "governance",
+        ".metaproject.json",
+        "<Title>",
+        "metaproject backfill",
+    ]
+    for term in required_terms:
+        assert term in skill_md, f"SKILL.md missing {term!r}"
+        assert term in documents_md, f"documents.md missing {term!r}"
+
+    commands_md = (skill_dir / "references" / "commands.md").read_text(encoding="utf-8")
+    assert "## backfill" in commands_md
+
+
 def test_cli_init_no_skill_opts_out(runner: CliRunner, tmp_path: Path) -> None:
     """--no-skill leaves the skill directory alone."""
     config_dir = tmp_path / ".metaproject"

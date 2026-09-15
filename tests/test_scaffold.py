@@ -1,5 +1,6 @@
 """Tests for scaffolding engine, path resolution, git integration, rollback, and CLI commands."""
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -9,9 +10,11 @@ from typer.testing import CliRunner
 from metaproject import cli
 from metaproject.cli import app
 from metaproject.config import Config
-from metaproject.exceptions import CollisionError
+from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.scaffold import (
+    TransactionalTracker,
     is_directory_empty,
+    link_agent_skills,
     resolve_output,
     resolve_project_name,
     scaffold_project,
@@ -104,14 +107,24 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         "README.md",
         "AGENTS.md",
         "intent.md",
+        "spec.md",
+        "design.md",
+        "plan.md",
         "STATE.md",
-        "HANDOFF.md",
         "CLAUDE.md",
+        "ARCHITECTURE.md",
         ".gitignore",
         "docs",
+        "docs/DESIGN-INVARIANTS.md",
+        "docs/VERIFIED-FACTS.md",
+        "docs/archive",
+        ".metaproject.json",
     ]
     for expected in expected_files:
         assert (target / expected).exists(), f"Missing expected deliverable: {expected}"
+
+    # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
+    assert not (target / "HANDOFF.md").exists()
 
     # Verify content substitution
     readme_content = (target / "README.md").read_text(encoding="utf-8")
@@ -127,6 +140,123 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         check=True,
     )
     assert "chore: initial scaffold from metaproject" in git_log.stdout
+
+    # The initial commit includes .metaproject.json (spec.md R-ID-1).
+    committed_files = subprocess.run(
+        ["git", "-C", str(target), "show", "--stat", "--oneline", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert ".metaproject.json" in committed_files
+
+
+def test_scaffold_writes_identity_file(tmp_path: Path) -> None:
+    """A fresh scaffold writes `.metaproject.json` with the five required fields."""
+    target = tmp_path / "identity_proj"
+    cfg = Config(author="Jane Dev", default_branch="main")
+
+    res = scaffold_project(
+        project_name="identity_proj",
+        output=target,
+        title="Identity Project",
+        description="Checks identity write",
+        config=cfg,
+        interactive=False,
+        no_git=True,
+    )
+
+    identity_path = target / ".metaproject.json"
+    assert res["identity_file"] == identity_path
+    assert "warnings" in res
+
+    data = json.loads(identity_path.read_text(encoding="utf-8"))
+    assert set(data.keys()) == {
+        "title",
+        "description",
+        "author",
+        "created",
+        "metaproject_version",
+    }
+    assert data["title"] == "Identity Project"
+    assert data["description"] == "Checks identity write"
+    assert data["author"] == "Jane Dev"
+    # `created` is the same date used to render `{Date}` (spec.md AC-5).
+    assert data["created"] == res["variables"]["Date"]
+    assert data["metaproject_version"]
+
+
+def test_scaffold_backfill_keeps_existing_identity(tmp_path: Path) -> None:
+    """Backfill never overwrites an existing `.metaproject.json` (spec.md R-ID-1)."""
+    target = tmp_path / "has_identity"
+    target.mkdir()
+    identity_path = target / ".metaproject.json"
+    original = (
+        json.dumps(
+            {
+                "title": "Original Title",
+                "description": "Original description",
+                "author": "Original Author",
+                "created": "2020-01-01",
+                "metaproject_version": "0.1.0",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    identity_path.write_text(original, encoding="utf-8")
+
+    res = scaffold_project(
+        project_name=".",
+        output=str(target) + "/",
+        interactive=False,
+        backfill=True,
+        no_git=True,
+    )
+
+    assert identity_path.read_text(encoding="utf-8") == original
+    assert res["identity_file"] is None
+
+
+def test_scaffold_dry_run_lists_identity_file(tmp_path: Path) -> None:
+    """Dry-run lists the would-be `.metaproject.json` but writes nothing."""
+    target = tmp_path / "dry_identity"
+
+    res = scaffold_project(
+        project_name="dry_identity",
+        output=target,
+        dry_run=True,
+        interactive=False,
+    )
+
+    identity_path = target / ".metaproject.json"
+    assert identity_path in res["rendered_files"]
+    assert res["identity_file"] == identity_path
+    assert not target.exists()
+    assert not identity_path.exists()
+
+
+def test_scaffold_rollback_removes_identity_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure after the identity file is written rolls it back (no partial state)."""
+    target = tmp_path / "rollback_proj"
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("metaproject.scaffold.init_repository", _boom)
+
+    with pytest.raises(MetaProjectError):
+        scaffold_project(
+            project_name="rollback_proj",
+            output=target,
+            interactive=False,
+            no_git=False,
+        )
+
+    assert not (target / ".metaproject.json").exists()
 
 
 def test_scaffold_collision_guard(tmp_path: Path) -> None:
@@ -529,7 +659,7 @@ def test_cli_new_backfill_confirms_templates_and_git_separately(
 
     assert result.exit_code == 0, result.output
     assert len(asked) == 2, asked
-    assert "Backfill templates into" in asked[0]
+    assert "Scaffold into" in asked[0]
     assert "set up git" in asked[1]
     assert (target / "AGENTS.md").exists()
     assert (target / "main.py").exists()
@@ -570,6 +700,118 @@ def test_cli_new_backfill_accepting_git_initializes_repository(
         check=True,
     )
     assert "initial scaffold from metaproject" in log.stdout
+
+
+def test_occupied_directory_wording_never_says_backfill(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`new .` into an occupied directory names the new `backfill` command, never
+    itself, so the word `backfill` names exactly one thing."""
+    import re
+
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    _confirm_queue(monkeypatch, [True])
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            ".",
+            "--output",
+            str(target) + "/",
+            "--title",
+            "Occupied",
+            "--description",
+            "d",
+            "--author",
+            "A",
+            "--no-git",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    printed = " ".join(result.output.split())
+    stripped = re.sub(r"metaproject backfill(\s+--dir\s+\S+)?", "", printed.lower())
+    assert "backfill" not in stripped
+
+
+def test_agent_refusal_points_at_the_backfill_command(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An agent refused `new .` is told about `metaproject backfill`, the create-only,
+    agent-safe way to add missing documents to a directory already under management."""
+    import re
+
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    monkeypatch.setenv("METAPROJECT_AGENT", "1")
+
+    result = runner.invoke(app, ["new", ".", "--output", str(target) + "/"])
+    printed = " ".join(result.output.split())
+
+    assert result.exit_code == 1
+    assert "metaproject backfill --dir" in printed
+    stripped = re.sub(r"metaproject backfill(\s+--dir\s+\S+)?", "", printed.lower())
+    assert "backfill" not in stripped
+
+
+def test_new_prints_unknown_placeholder_warnings(runner: CliRunner, tmp_path: Path) -> None:
+    """AC-8 (new half): a store template containing `{projcet}` produces a printed
+    warning naming the file and the placeholder."""
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    (templates / "AGENTS.template.md").write_text(
+        "# Agents\n\nHello {projcet}.\n", encoding="utf-8"
+    )
+    target = tmp_path / "demo"
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "demo",
+            "--output",
+            str(target),
+            "--templates",
+            str(templates),
+            "--yes",
+            "--no-git",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "unknown placeholder {projcet}" in result.output
+
+
+def test_new_prints_wrote_metaproject_json(runner: CliRunner, tmp_path: Path) -> None:
+    """`new` reports writing `.metaproject.json` alongside the rest of the scaffold."""
+    target = tmp_path / "demo_identity"
+
+    result = runner.invoke(
+        app,
+        ["new", "demo_identity", "--output", str(target), "--yes", "--no-git"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "wrote .metaproject.json" in result.output
+    assert (target / ".metaproject.json").exists()
+
+
+def test_new_dry_run_prints_would_write_metaproject_json(runner: CliRunner, tmp_path: Path) -> None:
+    """`--dry-run` previews the identity-file write without performing it."""
+    target = tmp_path / "demo_identity_dry"
+
+    result = runner.invoke(
+        app,
+        ["new", "demo_identity_dry", "--output", str(target), "--yes", "--no-git", "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "would write .metaproject.json" in result.output
+    assert not target.exists() or not (target / ".metaproject.json").exists()
 
 
 def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:
@@ -628,3 +870,239 @@ def test_scaffold_backfill_preserves_existing_skills_link(tmp_path: Path) -> Non
     assert res["skills_link"] is None
     assert existing.is_symlink()
     assert existing.resolve() == (target / "elsewhere").resolve()
+
+
+# --------------------------------------------------------------------------- R-ID-5
+# `.agents/skills/.gitkeep` so the layout survives commit + clone.
+
+
+def test_link_agent_skills_writes_gitkeep(tmp_path: Path) -> None:
+    """A fresh scaffold creates `.agents/skills/.gitkeep` alongside the symlink."""
+    target = tmp_path / "gitkeep_proj"
+    cfg = Config(author="Jane Dev", default_branch="main")
+
+    res = scaffold_project(
+        project_name="gitkeep_proj",
+        output=target,
+        config=cfg,
+        interactive=False,
+        no_git=True,
+    )
+
+    gitkeep = target / ".agents" / "skills" / ".gitkeep"
+    assert gitkeep.is_file()
+    assert res["skills_link"] == target / ".claude" / "skills"
+
+
+def test_scaffold_initial_commit_includes_gitkeep_and_symlink(tmp_path: Path) -> None:
+    """The initial commit created by `new` tracks both the .gitkeep and the symlink."""
+    target = tmp_path / "gitkeep_commit_proj"
+    cfg = Config(author="Jane Dev", default_branch="main")
+
+    scaffold_project(
+        project_name="gitkeep_commit_proj",
+        output=target,
+        config=cfg,
+        interactive=False,
+        no_git=False,
+    )
+
+    tracked = subprocess.run(
+        ["git", "-C", str(target), "ls-files"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+
+    assert ".agents/skills/.gitkeep" in tracked
+    assert ".claude/skills" in tracked
+
+
+def test_clone_of_scaffolded_project_has_working_skills_symlink(tmp_path: Path) -> None:
+    """After commit + clone, `.claude/skills` resolves to a real directory (R-ID-5)."""
+    target = tmp_path / "gitkeep_clone_proj"
+    cfg = Config(author="Jane Dev", default_branch="main")
+
+    scaffold_project(
+        project_name="gitkeep_clone_proj",
+        output=target,
+        config=cfg,
+        interactive=False,
+        no_git=False,
+    )
+
+    clone_dir = tmp_path / "cloned"
+    subprocess.run(
+        ["git", "clone", str(target), str(clone_dir)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    resolved = (clone_dir / ".claude" / "skills").resolve()
+    assert resolved.exists()
+    assert resolved.is_dir()
+    assert resolved == (clone_dir / ".agents" / "skills").resolve()
+
+
+def test_backfill_adds_missing_gitkeep_to_existing_layout(tmp_path: Path) -> None:
+    """A project scaffolded before this fix (link present, empty dir, no .gitkeep) gets
+    the .gitkeep added on `new .`; the symlink is untouched and nothing is overwritten."""
+    target = tmp_path / "occupied_no_gitkeep"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    agents_skills_dir = target / ".agents" / "skills"
+    agents_skills_dir.mkdir(parents=True)
+    claude_dir = target / ".claude"
+    claude_dir.mkdir()
+    skills_link = claude_dir / "skills"
+    skills_link.symlink_to(Path("..") / ".agents" / "skills")
+
+    res = scaffold_project(
+        project_name="occupied_no_gitkeep",
+        output=str(target) + "/",
+        config=Config(author="Jane Dev", default_branch="main"),
+        interactive=False,
+        no_git=True,
+        backfill=True,
+    )
+
+    assert res["skills_link"] is None
+    assert skills_link.is_symlink()
+    assert skills_link.resolve() == agents_skills_dir.resolve()
+    assert (agents_skills_dir / ".gitkeep").is_file()
+    assert (target / "main.py").read_text(encoding="utf-8") == "print('hi')\n"
+
+
+def test_backfill_skips_gitkeep_when_claude_skills_is_real_directory(tmp_path: Path) -> None:
+    """`.claude/skills` as a real directory (not our symlink) never gets a .gitkeep
+    created under `.agents/skills` on its behalf."""
+    target = tmp_path / "occupied_real_dir"
+    target.mkdir()
+    claude_dir = target / ".claude"
+    real_skills_dir = claude_dir / "skills"
+    real_skills_dir.mkdir(parents=True)
+    (real_skills_dir / "custom.md").write_text("mine\n", encoding="utf-8")
+
+    res = scaffold_project(
+        project_name="occupied_real_dir",
+        output=str(target) + "/",
+        config=Config(author="Jane Dev", default_branch="main"),
+        interactive=False,
+        no_git=True,
+        backfill=True,
+    )
+
+    assert res["skills_link"] is None
+    assert real_skills_dir.is_dir()
+    assert not real_skills_dir.is_symlink()
+    assert (real_skills_dir / "custom.md").exists()
+    assert not (target / ".agents").exists()
+
+
+def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Path) -> None:
+    """`.claude/skills` symlinked somewhere other than `.agents/skills` never gets a
+    .gitkeep created on its behalf."""
+    target = tmp_path / "occupied_elsewhere"
+    target.mkdir()
+    (target / "elsewhere").mkdir()
+    claude_dir = target / ".claude"
+    claude_dir.mkdir()
+    skills_link = claude_dir / "skills"
+    skills_link.symlink_to(target / "elsewhere")
+
+    res = scaffold_project(
+        project_name="occupied_elsewhere",
+        output=str(target) + "/",
+        config=Config(author="Jane Dev", default_branch="main"),
+        interactive=False,
+        no_git=True,
+        backfill=True,
+    )
+
+    assert res["skills_link"] is None
+    assert skills_link.resolve() == (target / "elsewhere").resolve()
+    assert not (target / ".agents").exists()
+
+
+def test_rollback_removes_gitkeep_it_created_but_not_one_that_preexisted(tmp_path: Path) -> None:
+    """Directly exercises `TransactionalTracker` + `link_agent_skills`: rollback removes
+    a `.gitkeep` this call created, but never one that already existed."""
+    # Freshly created: rollback removes it.
+    fresh_target = tmp_path / "fresh"
+    tracker = TransactionalTracker()
+    link_agent_skills(fresh_target, tracker)
+    gitkeep = fresh_target / ".agents" / "skills" / ".gitkeep"
+    assert gitkeep.is_file()
+    tracker.rollback()
+    assert not gitkeep.exists()
+
+    # Pre-existing: rollback leaves it alone.
+    existing_target = tmp_path / "existing"
+    agents_skills_dir = existing_target / ".agents" / "skills"
+    agents_skills_dir.mkdir(parents=True)
+    preexisting_gitkeep = agents_skills_dir / ".gitkeep"
+    preexisting_gitkeep.write_text("", encoding="utf-8")
+    claude_dir = existing_target / ".claude"
+    claude_dir.mkdir()
+    skills_link = claude_dir / "skills"
+    skills_link.symlink_to(Path("..") / ".agents" / "skills")
+
+    tracker2 = TransactionalTracker()
+    result = link_agent_skills(existing_target, tracker2, skip_existing=True)
+    assert result is None
+    assert preexisting_gitkeep.is_file()
+    tracker2.rollback()
+    assert preexisting_gitkeep.is_file()
+
+
+def test_scaffold_rollback_removes_gitkeep_after_forced_git_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure after the agent-skills layout is written rolls the .gitkeep back too."""
+    target = tmp_path / "rollback_gitkeep_proj"
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("metaproject.scaffold.init_repository", _boom)
+
+    with pytest.raises(MetaProjectError):
+        scaffold_project(
+            project_name="rollback_gitkeep_proj",
+            output=target,
+            interactive=False,
+            no_git=False,
+        )
+
+    assert not (target / ".agents" / "skills" / ".gitkeep").exists()
+
+
+def test_scaffold_dry_run_writes_no_gitkeep(tmp_path: Path) -> None:
+    """Dry-run never writes the .gitkeep, `.agents/`, or `.claude/`."""
+    target = tmp_path / "dry_gitkeep_proj"
+
+    res = scaffold_project(
+        project_name="dry_gitkeep_proj",
+        output=target,
+        dry_run=True,
+        interactive=False,
+        no_git=True,
+    )
+
+    assert res["skills_link"] == target / ".claude" / "skills"
+    assert not target.exists()
+
+
+def test_cli_new_dry_run_mentions_gitkeep(runner: CliRunner, tmp_path: Path) -> None:
+    """The dry-run preview mentions `.agents/skills/.gitkeep`."""
+    target = tmp_path / "cli_dry_gitkeep_proj"
+
+    result = runner.invoke(
+        app,
+        ["new", "cli_dry_gitkeep_proj", "--output", str(target), "--yes", "--no-git", "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert ".agents/skills/.gitkeep" in result.output
+    assert not target.exists()

@@ -24,24 +24,22 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from metaproject.config import Config, get_config_dir, load_config
+from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import MetaProjectError
+from metaproject.markdown import Heading, missing_headings
 from metaproject.templates import (
+    find_unknown_placeholders,
     get_bundled_templates_dir,
+    is_junk_file_name,
     render_template_tree,
     transform_template_name,
 )
 from metaproject.universe import is_project_root
 
-STANDARD_DELIVERABLES = [
-    "README.md",
-    "AGENTS.md",
-    "intent.md",
-    "STATE.md",
-    "HANDOFF.md",
-    "CLAUDE.md",
-    ".gitignore",
-    "docs",
-]
+# Derived from `deliverables.DELIVERABLES` (R-CLS-1): every declared path except the
+# on-demand ones, in declaration order. Kept under this name for compatibility — callers
+# that want the classification itself should read `deliverables.py` directly.
+STANDARD_DELIVERABLES = [d.path for d in DELIVERABLES if d.cls is not DeliverableClass.ON_DEMAND]
 
 IGNORE_FILE_NAME = "review-ignore.json"
 
@@ -145,7 +143,7 @@ def resolve_template_entry(rel_path: str, templates_dir: Path) -> Optional[Path]
             return None
         match: Optional[Path] = None
         for item in sorted(current.iterdir()):
-            if item.name == ".git":
+            if item.name == ".git" or is_junk_file_name(item.name):
                 continue
             if transform_template_name(item.name) == part:
                 match = item
@@ -167,7 +165,8 @@ def rendered_template_text(
     config: Optional[Config] = None,
 ) -> str:
     """A template rendered with the variables the project would have been scaffolded with."""
-    from metaproject.learn.collect import project_variables, render_template
+    from metaproject.learn.collect import render_template
+    from metaproject.variables import project_variables
 
     return render_template(template_file, project_variables(project_dir, config))
 
@@ -197,11 +196,18 @@ class ReviewResult:
     missing_files: List[str] = field(default_factory=list)
     deployable: List[str] = field(default_factory=list)
     diffs: Dict[str, str] = field(default_factory=dict)
+    structure: Dict[str, List[str]] = field(default_factory=dict)
+    notes: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
     is_ignored: bool = False
 
     @property
     def updatable(self) -> List[str]:
-        """The drifted deliverables — what **Update** can act on, in board order."""
+        """The drifted *governance* deliverables — what **Update** can act on.
+
+        `diffs` only ever holds governance files (R-CLS-4: working documents are never
+        updatable), so this can never surface one of them no matter what drifts.
+        """
         return sorted(self.diffs)
 
     @property
@@ -211,8 +217,8 @@ class ReviewResult:
 
     @property
     def is_clean(self) -> bool:
-        """Nothing missing and nothing drifted — the project matches its templates exactly."""
-        return not self.missing_files and not self.diffs
+        """Nothing missing, nothing drifted, and no working document has lost a heading."""
+        return not self.missing_files and not self.diffs and not self.structure
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "ReviewResult":
@@ -230,6 +236,12 @@ class ReviewResult:
             missing_files=[str(name) for name in (data.get("missing_files") or [])],
             deployable=[str(name) for name in (data.get("deployable") or [])],
             diffs={str(name): str(diff) for name, diff in (data.get("diffs") or {}).items()},
+            structure={
+                str(name): [str(line) for line in (lines or [])]
+                for name, lines in (data.get("structure") or {}).items()
+            },
+            notes=[str(note) for note in (data.get("notes") or [])],
+            warnings=[str(warning) for warning in (data.get("warnings") or [])],
             is_ignored=bool(data.get("is_ignored")),
         )
 
@@ -261,6 +273,53 @@ def _diff_against_template(
     return "".join(diff) if diff else None
 
 
+def _format_heading(heading: Heading) -> str:
+    """Render a `Heading` back as the Markdown line a report should show (e.g. `## Title`)."""
+    return f"{'#' * heading.level} {heading.title}"
+
+
+def _template_warnings(template_file: Path, templates_dir: Path) -> List[str]:
+    """Unknown-placeholder warnings for one template file this review just read (R-TPL-3).
+
+    Read raw, never rendered: a rendered `{identifier}` has already been substituted (or
+    silently left alone, which is exactly the case this reports) by the time a diff or a
+    structure check would see it.
+    """
+    try:
+        raw = template_file.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+    try:
+        label = template_file.relative_to(templates_dir).as_posix()
+    except ValueError:
+        label = template_file.name
+    return [
+        f"{label}: unknown placeholder {{{placeholder}}}"
+        for placeholder in find_unknown_placeholders(raw)
+    ]
+
+
+def _structure_against_template(
+    project_file: Path,
+    template_file: Path,
+    project_dir: Path,
+    config: Optional[Config] = None,
+) -> List[str]:
+    """Formatted lines for template headings a working document no longer carries.
+
+    Never body-for-body: only heading structure is compared (R-CLS-3). A read or render
+    failure reports no drift rather than raising — the same tolerance `_diff_against_template`
+    has, for the same reason: a project's own I/O error is not this project's drift.
+    """
+    try:
+        project_text = project_file.read_text(encoding="utf-8", errors="ignore")
+        template_text = rendered_template_text(template_file, project_dir, config)
+    except Exception:
+        return []
+
+    return [_format_heading(heading) for heading in missing_headings(template_text, project_text)]
+
+
 def review_project(
     project_dir: Path,
     templates_dir: Optional[Path] = None,
@@ -272,36 +331,65 @@ def review_project(
     The result separates the two remediations the board offers:
 
     - `deployable` — missing deliverables that a template can create (**Deploy**).
-    - `updatable` — existing deliverables that have drifted (**Update**).
+    - `updatable` — existing, *governance* deliverables that have drifted (**Update**).
 
-    See `ReviewResult` for what the two verdicts mean and why neither is stored.
+    Working deliverables are checked for heading structure only (`structure`) and are
+    never diffed body-for-body or offered for Update (R-CLS-3/4); on-demand deliverables
+    (e.g. `HANDOFF.md`) are skipped entirely (R-CLS-5); directory deliverables are a
+    presence check. See `ReviewResult` for what the derived verdicts mean.
     """
     resolved_proj = project_dir.expanduser().resolve()
     resolved_templates = resolve_templates_dir(templates_dir)
     cfg = config or load_config()
 
+    from metaproject.identity import read_identity
+
     missing_files: List[str] = []
     deployable: List[str] = []
     diffs: Dict[str, str] = {}
+    structure: Dict[str, List[str]] = {}
+    notes: List[str] = []
+    warnings: List[str] = []
 
-    for deliverable in STANDARD_DELIVERABLES:
-        target_path = resolved_proj / deliverable
-        template_entry = resolve_template_entry(deliverable, resolved_templates)
+    if read_identity(resolved_proj) is None:
+        # Informational only (R-ID-4): `.metaproject.json` is not itself reviewable, and
+        # its absence is never a reason to call a project INCOMPLETE.
+        notes.append(
+            "No .metaproject.json; identity resolved from README/pyproject/package.json fallback."
+        )
+
+    for deliverable in DELIVERABLES:
+        if deliverable.cls is DeliverableClass.ON_DEMAND:
+            continue
+
+        path = deliverable.path
+        target_path = resolved_proj / path
+        template_entry = resolve_template_entry(path, resolved_templates)
 
         if not target_path.exists():
-            missing_files.append(deliverable)
+            missing_files.append(path)
             if template_entry is not None:
-                deployable.append(deliverable)
+                deployable.append(path)
             continue
 
         # Directory deliverables (e.g. `docs`) are a presence check only; diffing a tree
-        # against a tree is `learn`'s job, not the compliance board's.
-        if target_path.is_dir() or template_entry is None or not template_entry.is_file():
+        # against a tree is `learn`'s job, not the compliance board's. The same applies
+        # to any deliverable whose project path happens to be a directory.
+        if deliverable.cls is DeliverableClass.DIRECTORY or target_path.is_dir():
+            continue
+        if template_entry is None or not template_entry.is_file():
             continue
 
-        diff = _diff_against_template(target_path, template_entry, resolved_proj, deliverable, cfg)
-        if diff:
-            diffs[deliverable] = diff
+        warnings.extend(_template_warnings(template_entry, resolved_templates))
+
+        if deliverable.cls is DeliverableClass.WORKING:
+            lines = _structure_against_template(target_path, template_entry, resolved_proj, cfg)
+            if lines:
+                structure[path] = lines
+        else:
+            diff = _diff_against_template(target_path, template_entry, resolved_proj, path, cfg)
+            if diff:
+                diffs[path] = diff
 
     return ReviewResult(
         project_name=resolved_proj.name,
@@ -310,6 +398,9 @@ def review_project(
         missing_files=missing_files,
         deployable=deployable,
         diffs=diffs,
+        structure=structure,
+        notes=notes,
+        warnings=warnings,
         is_ignored=is_ignored(resolved_proj, config_dir),
     )
 
@@ -373,12 +464,12 @@ def os_walk_with_depth(root: Path, max_depth: int):
 def resolve_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
     """The variable set a whole remediation batch should render with.
 
-    Resolved **once per batch, before the first write**. `extract_title` and
-    `extract_description` read the project's own `README.md` and `intent.md`, so
-    resolving per file would let a file written early in a batch change how the next one
-    renders — and the board would then report the files it had just written as drifted.
+    Resolved **once per batch, before the first write**. `variables.project_variables`
+    reads the project's own `.metaproject.json` (or its manifest fallback), so resolving
+    per file would let a file written early in a batch change how the next one renders —
+    and the board would then report the files it had just written as drifted.
     """
-    from metaproject.learn.collect import project_variables
+    from metaproject.variables import project_variables
 
     return project_variables(Path(project_dir), config or load_config())
 
@@ -401,12 +492,24 @@ def deploy_entry(
     resolved_templates = resolve_templates_dir(templates_dir)
     target = resolved_proj / deliverable
 
-    if target.exists():
+    entry = resolve_template_entry(deliverable, resolved_templates)
+
+    # A directory deliverable (e.g. `docs`) is a presence check, not content (R-CLS-6):
+    # deploying it is idempotent-safe even if the directory already exists on disk —
+    # which happens routinely when an earlier deploy in the same batch wrote a file
+    # nested under it (e.g. `docs/DESIGN-INVARIANTS.md`), creating `docs/` as that
+    # file's parent before `docs` itself is ever reached. Only a name collision with
+    # something that isn't a directory is refused.
+    if entry is not None and entry.is_dir():
+        if target.exists() and not target.is_dir():
+            raise MetaProjectError(
+                f"{deliverable} already exists in {resolved_proj.name}; use update instead."
+            )
+    elif target.exists():
         raise MetaProjectError(
             f"{deliverable} already exists in {resolved_proj.name}; use update instead."
         )
 
-    entry = resolve_template_entry(deliverable, resolved_templates)
     if entry is None:
         raise MetaProjectError(f"No template provides {deliverable} in {resolved_templates}.")
 
@@ -414,13 +517,116 @@ def deploy_entry(
 
     if entry.is_dir():
         target.mkdir(parents=True, exist_ok=True)
-        written = render_template_tree(entry, target, resolved_vars)
+        # skip_existing: nested deliverables (e.g. docs/DESIGN-INVARIANTS.md) may have
+        # already been deployed individually earlier in the same batch; re-rendering the
+        # whole tree must not clobber them.
+        written = render_template_tree(entry, target, resolved_vars, skip_existing=True).paths
         return [target, *[p for p in written if p.is_file()]]
 
     target.parent.mkdir(parents=True, exist_ok=True)
     raw = entry.read_text(encoding="utf-8", errors="replace")
     target.write_text(render_template_string(raw, resolved_vars), encoding="utf-8")
     return [target]
+
+
+@dataclass(frozen=True)
+class BackfillResult:
+    """What one `backfill_missing` call did, or would do under `dry_run`.
+
+    Every list holds project-relative paths. A path appears in exactly one of them.
+    """
+
+    created: List[str] = field(default_factory=list)
+    skipped: List[str] = field(default_factory=list)
+    refused: List[str] = field(default_factory=list)
+    missing_template: List[str] = field(default_factory=list)
+
+
+def backfill_missing(
+    project_dir: Path,
+    files: Optional[Sequence[str]] = None,
+    templates_dir: Optional[Path] = None,
+    dry_run: bool = False,
+    config: Optional[Config] = None,
+) -> BackfillResult:
+    """Create-only remediation: write missing deliverables from the template store.
+
+    Never overwrites (R-NF-3) and never runs git — this is the create-only write path
+    agent sessions are permitted to use (FC-1), unlike `new .`'s interactive backfill.
+
+    Two modes:
+
+    - **No `files`** — every `scaffolded()` deliverable missing from the project, in
+      one call. Directory deliverables are created first (declaration order), then the
+      rest, and existence is re-checked before each write: rendering a directory
+      template (e.g. `docs/`) can create files declared later in `DELIVERABLES`, so
+      those are reported `skipped` rather than deployed a second time. A deliverable
+      with no template in the store is reported in `missing_template` — never a silent
+      fallback to the bundled store (design.md "Alternatives considered") — but every
+      other target is still created.
+    - **`files` given** — exactly those paths, which may be on-demand (`HANDOFF.md`) or
+      any other path the store has a template for. If *any* named file already exists,
+      every existing one is reported in `refused` and **nothing at all is written**. If
+      any named file has no template, every such path is reported in `missing_template`
+      and, again, nothing at all is written.
+
+    `dry_run` computes the same result without writing. Variables are resolved once, up
+    front, for the whole batch (`resolve_variables`) — never per file, or an early write
+    in the batch could change how a later one renders.
+    """
+    resolved_proj = Path(project_dir).expanduser().resolve()
+    resolved_templates = resolve_templates_dir(templates_dir)
+    cfg = config or load_config()
+    variables = resolve_variables(resolved_proj, cfg)
+
+    def write(path: str) -> None:
+        if not dry_run:
+            deploy_entry(resolved_proj, path, resolved_templates, cfg, variables)
+
+    if files:
+        named = list(dict.fromkeys(files))  # de-duplicate, keep first-seen order
+
+        existing = [path for path in named if (resolved_proj / path).exists()]
+        if existing:
+            return BackfillResult(refused=existing)
+
+        missing_template = [
+            path for path in named if resolve_template_entry(path, resolved_templates) is None
+        ]
+        if missing_template:
+            return BackfillResult(missing_template=missing_template)
+
+        for path in named:
+            write(path)
+        return BackfillResult(created=named)
+
+    from metaproject.deliverables import DELIVERABLES, DeliverableClass
+
+    directory_paths = [d.path for d in DELIVERABLES if d.cls is DeliverableClass.DIRECTORY]
+    other_paths = [
+        d.path
+        for d in DELIVERABLES
+        if d.cls not in (DeliverableClass.DIRECTORY, DeliverableClass.ON_DEMAND)
+    ]
+
+    created: List[str] = []
+    skipped: List[str] = []
+    missing_template = []
+    for path in [*directory_paths, *other_paths]:
+        target = resolved_proj / path
+        if target.exists():
+            skipped.append(path)
+            continue
+        entry = resolve_template_entry(path, resolved_templates)
+        if entry is None:
+            missing_template.append(path)
+            continue
+        write(path)
+        created.append(path)
+
+    return BackfillResult(
+        created=created, skipped=skipped, refused=[], missing_template=missing_template
+    )
 
 
 def update_entry(
@@ -435,8 +641,18 @@ def update_entry(
     This is destructive by design — it is the operator's answer to "the template is
     right, this project is not" — so it only ever runs on a file the board has already
     shown a diff for.
+
+    Raises for any deliverable whose class isn't governance (R-CLS-4): working documents
+    are never updated, whatever their heading structure looks like.
     """
+    from metaproject.deliverables import DeliverableClass, classify
     from metaproject.templates import render_template_string
+
+    deliverable_class = classify(deliverable)
+    if deliverable_class is not None and deliverable_class is not DeliverableClass.GOVERNANCE:
+        raise MetaProjectError(
+            f"{deliverable} is a working document; working documents are never updated."
+        )
 
     resolved_proj = Path(project_dir).expanduser().resolve()
     resolved_templates = resolve_templates_dir(templates_dir)

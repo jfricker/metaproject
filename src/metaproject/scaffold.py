@@ -5,14 +5,21 @@ and project generation.
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from metaproject import __version__
+from metaproject import variables as variables_module
 from metaproject.config import Config, load_config
+from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
+from metaproject.identity import IDENTITY_FILE, Identity, write_identity
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
 from metaproject.variables import collect_variables
 
 # Argument forms that mean "scaffold into this directory" rather than naming a project.
 CWD_ALIASES = {".", "./", ".\\", "..", "../", "..\\"}
+
+# On-demand deliverables (e.g. HANDOFF.md) are never scaffolded by `new` (R-CLS-5).
+_ON_DEMAND_PATHS = tuple(d.path for d in DELIVERABLES if d.cls is DeliverableClass.ON_DEMAND)
 
 
 def resolve_output(
@@ -141,12 +148,31 @@ def link_agent_skills(
     Equivalent to `mkdir -p .claude && mkdir -p .agents/skills &&
     ln -s ../.agents/skills .claude/skills`, but tracked for rollback and
     skipped on backfill when the operator already has a .claude/skills entry.
+
+    `.agents/skills/.gitkeep` is written whenever it is missing (spec.md R-ID-5): git
+    does not track empty directories, so without it a clone of the scaffolded project
+    leaves `.claude/skills` a dangling link. This still happens on a backfill into a
+    project that already has the symlink, as long as `.claude/skills` resolves into
+    this project's own `.agents/skills` -- never when it is a real directory or a
+    symlink pointing elsewhere. Existing files are never overwritten.
     """
     agents_skills_dir = target_dir / ".agents" / "skills"
     claude_dir = target_dir / ".claude"
     skills_link = claude_dir / "skills"
+    gitkeep_path = agents_skills_dir / ".gitkeep"
 
-    if skip_existing and (skills_link.exists() or skills_link.is_symlink()):
+    already_linked = skills_link.exists() or skills_link.is_symlink()
+
+    if skip_existing and already_linked:
+        resolves_into_project = (
+            skills_link.is_symlink() and skills_link.resolve() == agents_skills_dir.resolve()
+        )
+        if resolves_into_project and not gitkeep_path.exists() and not dry_run:
+            if not agents_skills_dir.exists():
+                agents_skills_dir.mkdir(parents=True, exist_ok=True)
+                tracker.record_created_dir(agents_skills_dir)
+            gitkeep_path.write_text("", encoding="utf-8")
+            tracker.record_created_file(gitkeep_path)
         return None
 
     if not dry_run:
@@ -154,7 +180,10 @@ def link_agent_skills(
             if not directory.exists():
                 directory.mkdir(parents=True, exist_ok=True)
                 tracker.record_created_dir(directory)
-        if not (skills_link.exists() or skills_link.is_symlink()):
+        if not gitkeep_path.exists():
+            gitkeep_path.write_text("", encoding="utf-8")
+            tracker.record_created_file(gitkeep_path)
+        if not already_linked:
             skills_link.symlink_to(Path("..") / ".agents" / "skills")
             tracker.record_created_file(skills_link)
     return skills_link
@@ -188,7 +217,8 @@ def scaffold_project(
     if occupied and not force and not backfill:
         raise CollisionError(
             f"Target directory '{target_dir}' exists and is not empty. "
-            f"Re-run interactively to confirm a backfill, or use --force to overwrite."
+            f"Re-run interactively to confirm scaffolding into an existing directory, "
+            f"or use --force to overwrite."
         )
     is_backfill = occupied and not force
 
@@ -206,7 +236,9 @@ def scaffold_project(
         except (PermissionError, OSError):
             resolved_templates_dir = get_bundled_templates_dir()
 
-    # 3. Variable resolution
+    # 3. Variable resolution. `created` is fixed here so it is the single date used both
+    # for the rendered `{Date}`/`{Year}` and for `.metaproject.json`'s `created` field.
+    created = variables_module._today()
     variables = collect_variables(
         project_name=resolve_project_name(project_name, target_dir),
         title=title,
@@ -214,6 +246,7 @@ def scaffold_project(
         author=author,
         config=cfg,
         interactive=interactive,
+        created=created,
     )
 
     # 4. Scaffolding with transactional rollback
@@ -234,25 +267,49 @@ def scaffold_project(
             target_dir=target_dir,
             variables=variables,
             dry_run=True,
-        )
+            exclude=_ON_DEMAND_PATHS,
+        ).paths
         preserved_paths = [path for path in planned_paths if path.exists()]
         for path in preserved_paths:
             tracker.record_existing(path)
 
         # Render template files
-        rendered_paths = render_template_tree(
+        render_report = render_template_tree(
             source_dir=resolved_templates_dir,
             target_dir=target_dir,
             variables=variables,
             dry_run=dry_run,
             skip_existing=is_backfill,
+            exclude=_ON_DEMAND_PATHS,
         )
+        rendered_paths = render_report.paths
 
         for path in rendered_paths:
             if path.is_dir():
                 tracker.record_created_dir(path)
             else:
                 tracker.record_created_file(path)
+
+        # 4a. Project identity (`.metaproject.json`), written before git init so the
+        # initial commit includes it (R-ID-1). A backfill never overwrites an existing
+        # identity file; dry-run lists the path it would create but writes nothing.
+        identity_path = target_dir / IDENTITY_FILE
+        identity_file: Optional[Path] = None
+        if not identity_path.exists():
+            identity_file = identity_path
+            rendered_paths.append(identity_path)
+            if not dry_run:
+                write_identity(
+                    target_dir,
+                    Identity(
+                        title=variables["ProjectTitle"],
+                        description=variables["ProjectDescription"],
+                        author=variables["Author"],
+                        created=created,
+                        metaproject_version=__version__,
+                    ),
+                )
+                tracker.record_created_file(identity_path)
 
         # 5. Agent-skills layout: .agents/skills/ with .claude/skills symlinked to it.
         skills_link = link_agent_skills(
@@ -294,6 +351,8 @@ def scaffold_project(
             "git_initialized": git_initialized,
             "git_status": git_status,
             "dry_run": dry_run,
+            "warnings": render_report.warnings,
+            "identity_file": identity_file,
         }
 
     except Exception as exc:

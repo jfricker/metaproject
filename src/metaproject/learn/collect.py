@@ -9,28 +9,29 @@ This stage is entirely deterministic. No model is involved.
 """
 
 import difflib
-import functools
 import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from metaproject.config import Config, load_config
+from metaproject.deliverables import DeliverableClass
+from metaproject.deliverables import classify as classify_deliverable
 from metaproject.exceptions import TemplateError
+from metaproject.markdown import Heading, heading_matches, headings, missing_headings
 from metaproject.templates import (
     is_binary_file,
+    is_junk_file_name,
     render_template_string,
     transform_template_name,
 )
 from metaproject.universe import (
     IGNORED_DIRECTORIES,
     classify_project,
-    extract_description,
-    extract_title,
     is_project_root,
     resolve_project_timestamp,
 )
-from metaproject.variables import collect_variables
+from metaproject.variables import project_variables  # noqa: F401  (re-export)
 
 DIFF_CONTEXT_LINES = 3
 
@@ -40,9 +41,16 @@ class EvidenceRecord:
     """One project's deviation from one rendered template.
 
     `diff` is a unified diff from the rendered template to the project's file;
-    `added_lines` are the non-blank lines the project adds, normalized. Removals are
-    deliberately not represented: proposing deletions from templates is out of scope
-    (spec.md §5.4.6), so an empty project file is never a deletion proposal.
+    `added_lines` are the non-blank lines the project adds, normalized. For governance
+    and untemplated/config targets, removals are deliberately not represented: proposing
+    deletions from templates is out of scope (spec.md §5.4.6), so an empty project file
+    is never a deletion proposal.
+
+    For a *working* deliverable (`kind == "structure"`), `added_lines`/`removed_lines`
+    instead hold formatted (`"## Title"`) headings — the project adding a heading the
+    template lacks, or a non-empty project file lacking a heading the template has
+    (spec.md R-LRN-1/1b). Body text of working documents never appears in either tuple
+    or in `diff`.
     """
 
     project_name: str
@@ -53,6 +61,7 @@ class EvidenceRecord:
     kind: str
     diff: str
     added_lines: Tuple[str, ...]
+    removed_lines: Tuple[str, ...] = ()
 
 
 def normalize_text(text: str) -> str:
@@ -71,43 +80,16 @@ def normalize_text(text: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-@functools.lru_cache(maxsize=8)
-def _resolved_author(config_author: str) -> str:
-    """Resolve the author once per distinct configured value, not once per project."""
-    from metaproject.variables import resolve_author
-
-    return resolve_author(config_author or None, None)
-
-
 def _drop_unfilled_placeholder(value: str) -> str:
     """Treat a still-unfilled `{Placeholder}` as absent rather than as real content.
 
-    A freshly scaffolded project's `intent.md` still carries `{Problem description}`
-    under `## Problem`, and `universe.extract_description` reads it literally. Feeding
-    that back in as a variable renders the placeholder *into* the comparison text, so
-    every such project appears to have drifted from the very template it came from.
+    Kept for README fallbacks: a freshly scaffolded project's README can still carry a
+    literal `{ProjectDescription}` if a template ever slips through unrendered, and
+    feeding that back in as a variable would render the placeholder *into* the
+    comparison text.
     """
     text = (value or "").strip()
     return "" if text.startswith("{") and text.endswith("}") else text
-
-
-def project_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
-    """Resolve the template variables a project would have been scaffolded with.
-
-    Title and description come from the project itself (`universe.extract_title` /
-    `extract_description`), so rendering reproduces what `metaproject new` would have
-    written for this project rather than a generic placeholder.
-    """
-    project_dir = Path(project_dir)
-    author = _resolved_author(config.author if config else "")
-    return collect_variables(
-        project_name=project_dir.name,
-        title=_drop_unfilled_placeholder(extract_title(project_dir)),
-        description=_drop_unfilled_placeholder(extract_description(project_dir)),
-        author=author,
-        config=config,
-        interactive=False,
-    )
 
 
 def resolve_template(rel_path: str, templates_dir: Path) -> Optional[Path]:
@@ -123,7 +105,7 @@ def resolve_template(rel_path: str, templates_dir: Path) -> Optional[Path]:
             return None
         match: Optional[Path] = None
         for item in sorted(current.iterdir()):
-            if item.name == ".git":
+            if item.name == ".git" or is_junk_file_name(item.name):
                 continue
             if transform_template_name(item.name) == part:
                 match = item
@@ -193,6 +175,53 @@ def _added_lines(template_text: str, project_text: str) -> Tuple[str, ...]:
     return tuple(added)
 
 
+def _format_heading(heading: Heading) -> str:
+    """Render a `Heading` back as the Markdown line it came from (e.g. `## Title`)."""
+    return f"{'#' * heading.level} {heading.title}"
+
+
+def _extra_headings(template_text: str, project_text: str) -> List[Heading]:
+    """Project headings with no matching, unclaimed heading in the template text.
+
+    The mirror of `markdown.missing_headings`: order-insensitive and one-to-one, using
+    the same `heading_matches` rule, just with the two texts' roles reversed.
+    """
+    template_headings = headings(template_text)
+    claimed = [False] * len(template_headings)
+    extra: List[Heading] = []
+    for project_heading in headings(project_text):
+        matched = False
+        for index, template_heading in enumerate(template_headings):
+            if claimed[index]:
+                continue
+            if heading_matches(template_heading, project_heading):
+                claimed[index] = True
+                matched = True
+                break
+        if not matched:
+            extra.append(project_heading)
+    return extra
+
+
+def _heading_lines(text: str) -> List[str]:
+    """A document's heading lines only, formatted for a heading-only diff."""
+    return [f"{_format_heading(heading)}\n" for heading in headings(text)]
+
+
+def _structure_record_fields(
+    template_text: str, project_text: str
+) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """`(added_lines, removed_lines)` for a working deliverable's heading structure.
+
+    `project_text` must already be known non-empty (R-LRN-1b): the caller skips empty
+    and missing files before reaching here, so every removal computed here is backed by
+    a real, non-empty project file.
+    """
+    added = tuple(_format_heading(h) for h in _extra_headings(template_text, project_text))
+    removed = tuple(_format_heading(h) for h in missing_headings(template_text, project_text))
+    return added, removed
+
+
 def classify(project_dir: Path) -> str:
     """Classify a project's activity the same way `universe` does, for later weighting."""
     _iso, timestamp = resolve_project_timestamp(project_dir)
@@ -234,7 +263,50 @@ def collect_project(
         if not project_text.strip():
             continue
 
+        deliverable_class = classify_deliverable(rel)
+        if deliverable_class is DeliverableClass.ON_DEMAND:
+            # HANDOFF.md and any future on-demand deliverable: never collected, even if
+            # a config explicitly lists it as a learn target.
+            continue
+
         template_file = resolve_template(rel, templates_dir)
+
+        if deliverable_class is DeliverableClass.WORKING:
+            # Heading structure only, never body text (R-LRN-1). A working target with
+            # no template in the store contributes nothing rather than a `new_template`
+            # candidate: there is no rendered heading list to compare against.
+            if template_file is None:
+                continue
+            template_text = normalize_text(render_template(template_file, variables))
+            added, removed = _structure_record_fields(template_text, project_text)
+            if not added and not removed:
+                continue
+
+            diff = "".join(
+                difflib.unified_diff(
+                    _heading_lines(template_text),
+                    _heading_lines(project_text),
+                    fromfile=f"template/{rel}",
+                    tofile=f"{project_dir.name}/{rel}",
+                    n=DIFF_CONTEXT_LINES,
+                )
+            )
+
+            records.append(
+                EvidenceRecord(
+                    project_name=project_dir.name,
+                    project_path=str(project_dir),
+                    classification=classification,
+                    target_file=rel,
+                    template_path=str(template_file),
+                    kind="structure",
+                    diff=diff,
+                    added_lines=added,
+                    removed_lines=removed,
+                )
+            )
+            continue
+
         if template_file is None:
             kind = "new_template"
             template_text = ""

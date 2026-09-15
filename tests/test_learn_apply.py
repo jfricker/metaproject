@@ -24,6 +24,7 @@ from metaproject.learn import scan
 from metaproject.learn.apply import (
     PLACEMENT_APPEND,
     PLACEMENT_NEW_FILE,
+    PLACEMENT_REMOVE,
     PLACEMENT_SECTION,
     apply_proposal,
     commit_message,
@@ -37,6 +38,7 @@ from metaproject.learn.apply import (
 from metaproject.learn.collect import collect_workspace
 from metaproject.learn.store import (
     STATUS_APPLIED,
+    EvidenceDraft,
     ProposalDraft,
     get_proposal,
     upsert_proposal,
@@ -337,6 +339,367 @@ def test_r7_absent_section_falls_back_to_a_reviewed_append(
     text = (workspace.templates / "AGENTS.template.md").read_text(encoding="utf-8")
     assert "## Deployment" not in text
     assert text.rstrip().endswith("- Deploys are gated on a green `make check` and a signed tag.")
+
+
+# ------------------------------------------------------ heading proposals (plan.md C3)
+
+AGENTS_COLLAPSE_TEXT = (
+    "# AGENTS.md\n\n## Overview\nnotes\n\n\n## Constraints\n\ncontent\n\n## Risks\ndetails\n"
+)
+
+STATE_WITH_CHILD_TEXT = (
+    "# STATE.md\n"
+    "\n"
+    "## Overview\n"
+    "notes\n"
+    "\n"
+    "## Constraints\n"
+    "\n"
+    "### Budget\n"
+    "details\n"
+    "\n"
+    "## Risks\n"
+    "details\n"
+)
+
+
+def make_heading_proposal(
+    db: sqlite_utils.Database,
+    templates_dir: Path,
+    kind: str,
+    target_file: str,
+    target_section: Optional[str],
+    body: str,
+    title: str,
+    evidence: Optional[List[EvidenceDraft]] = None,
+) -> int:
+    """Persist an `add_heading`/`remove_heading` proposal the way `structure.propose`
+    would, with its own evidence rows so the child-heading refusal has something to
+    check `get_evidence` against."""
+    draft = ProposalDraft(
+        content_hash=f"hash-{kind}-{target_file}-{target_section}-{body}",
+        target_file=target_file,
+        kind=kind,
+        title=title,
+        rationale="Evidence-backed structural proposal.",
+        proposed_body=body,
+        evidence_count=len(evidence) if evidence else 0,
+        evidence_score=2.0,
+        template_path=None,
+        target_section=target_section,
+    )
+    return upsert_proposal(db, draft, evidence=evidence)
+
+
+def commit_git(templates_dir: Path, *, message: str) -> None:
+    """Stage everything and commit, so a test-modified fixture starts clean."""
+    subprocess.run(
+        ["git", "-C", str(templates_dir), "add", "-A"], check=True, capture_output=True, text=True
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(templates_dir),
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "-m",
+            message,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.fixture
+def state_template_workspace(workspace):
+    """`workspace` plus a `STATE.template.md` with a nested `### Budget` child heading,
+    committed so the store starts clean."""
+    (workspace.templates / "STATE.template.md").write_text(STATE_WITH_CHILD_TEXT, encoding="utf-8")
+    commit_git(workspace.templates, message="chore: add STATE template for C3 tests")
+    return workspace
+
+
+def test_add_heading_lands_after_its_resolved_anchor_section(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """AC-11a: an applied heading addition lands after its nearest shared heading —
+    a new sibling section, never content spliced inside the anchor's own body."""
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="add_heading",
+        target_file="AGENTS.md",
+        target_section="Testing instructions",
+        body="## Risks",
+        title='Add "## Risks" to AGENTS.md',
+    )
+    plan = plan_apply(db, pid, templates_dir=workspace.templates)
+    assert plan.placement == PLACEMENT_SECTION
+    assert plan.fallback_reason is None
+
+    apply_proposal(db, pid, templates_dir=workspace.templates, contributing_projects=("atlas",))
+    text = (workspace.templates / "AGENTS.template.md").read_text(encoding="utf-8")
+    lines = text.split("\n")
+    i_test = lines.index("## Testing instructions")
+    i_risks = lines.index("## Risks")
+    i_process = lines.index("## Process")
+    assert i_test < i_risks < i_process
+    assert lines[i_risks - 1] == ""
+    assert lines[i_risks + 1] == ""
+
+
+def test_add_heading_with_no_anchor_appends_at_end_of_file(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """No contributor resolved to an anchor: append, with no `fallback_reason` — this
+    is silence about placement, not a failure to resolve a named section."""
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="add_heading",
+        target_file="AGENTS.md",
+        target_section=None,
+        body="## Risks",
+        title='Add "## Risks" to AGENTS.md',
+    )
+    plan = plan_apply(db, pid, templates_dir=workspace.templates)
+    assert plan.placement == PLACEMENT_APPEND
+    assert plan.fallback_reason is None
+
+    apply_proposal(db, pid, templates_dir=workspace.templates)
+    text = (workspace.templates / "AGENTS.template.md").read_text(encoding="utf-8")
+    assert text.rstrip().endswith("## Risks")
+
+
+def test_add_heading_with_unresolved_section_falls_back_to_append(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """R7, same as `splice`: a named section that does not exist falls back to a
+    reviewed append and says so."""
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="add_heading",
+        target_file="AGENTS.md",
+        target_section="Deployment",
+        body="## Risks",
+        title='Add "## Risks" to AGENTS.md',
+    )
+    plan = plan_apply(db, pid, templates_dir=workspace.templates)
+    assert plan.placement == PLACEMENT_APPEND
+    assert plan.fallback_reason and "Deployment" in plan.fallback_reason
+
+    apply_proposal(db, pid, templates_dir=workspace.templates)
+    text = (workspace.templates / "AGENTS.template.md").read_text(encoding="utf-8")
+    assert text.rstrip().endswith("## Risks")
+
+
+def test_add_heading_fallback_can_be_refused_without_writing(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """`allow_fallback=False` refuses an addition's misplacement exactly like an edit's."""
+    before = snapshot(workspace.templates)
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="add_heading",
+        target_file="AGENTS.md",
+        target_section="Deployment",
+        body="## Risks",
+        title='Add "## Risks" to AGENTS.md',
+    )
+    with pytest.raises(ApplyError):
+        apply_proposal(db, pid, templates_dir=workspace.templates, allow_fallback=False)
+    assert snapshot(workspace.templates) == before
+    assert get_proposal(db, pid)["status"] == "pending"
+
+
+def test_add_heading_already_present_is_unchanged(workspace, db: sqlite_utils.Database) -> None:
+    """Convergence (`body_is_present`'s analogue): a heading the template already has
+    is not duplicated."""
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="add_heading",
+        target_file="AGENTS.md",
+        target_section="Testing instructions",
+        body="## Process",
+        title='Add "## Process" to AGENTS.md',
+    )
+    plan = plan_apply(db, pid, templates_dir=workspace.templates)
+    assert plan.changed is False
+
+    result = apply_proposal(db, pid, templates_dir=workspace.templates)
+    assert result.changed is False
+    assert result.commit is None
+
+
+def test_remove_heading_excises_the_subtree_and_collapses_blank_lines(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """The whole subtree goes, and a resulting run of blank lines collapses to one."""
+    (workspace.templates / "AGENTS.template.md").write_text(AGENTS_COLLAPSE_TEXT, encoding="utf-8")
+    commit_git(workspace.templates, message="chore: reshape AGENTS template for C3 tests")
+
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="remove_heading",
+        target_file="AGENTS.md",
+        target_section="Constraints",
+        body="## Constraints",
+        title='Remove "## Constraints" from AGENTS.md',
+    )
+    plan = plan_apply(db, pid, templates_dir=workspace.templates)
+    assert plan.placement == PLACEMENT_REMOVE
+
+    apply_proposal(db, pid, templates_dir=workspace.templates)
+    text = (workspace.templates / "AGENTS.template.md").read_text(encoding="utf-8")
+    assert "## Constraints" not in text
+    assert "notes\n\n## Risks" in text
+    assert "\n\n\n" not in text
+
+
+def test_remove_heading_refuses_when_a_contributor_still_has_a_child_heading(
+    state_template_workspace, db: sqlite_utils.Database, tmp_path: Path
+) -> None:
+    """A child heading a contributor still relies on refuses the removal outright —
+    no fallback, nothing written, ever."""
+    ws = state_template_workspace
+    keeper = tmp_path / "keeper"
+    keeper.mkdir()
+    (keeper / "STATE.md").write_text(
+        "# STATE.md\n\n## Overview\n\n### Budget\ndetails\n", encoding="utf-8"
+    )
+
+    pid = make_heading_proposal(
+        db,
+        ws.templates,
+        kind="remove_heading",
+        target_file="STATE.md",
+        target_section="Constraints",
+        body="## Constraints",
+        title='Remove "## Constraints" from STATE.md',
+        evidence=[EvidenceDraft(project_path=str(keeper), excerpt="## Constraints", weight=1.0)],
+    )
+    before = snapshot(ws.templates)
+    head = git(ws.templates, "rev-parse", "HEAD").strip()
+
+    with pytest.raises(ApplyError, match="Budget"):
+        plan_apply(db, pid, templates_dir=ws.templates)
+
+    assert snapshot(ws.templates) == before
+    assert git(ws.templates, "rev-parse", "HEAD").strip() == head
+    assert get_proposal(db, pid)["status"] == "pending"
+
+
+def test_remove_heading_excises_when_no_contributor_still_has_the_child(
+    state_template_workspace, db: sqlite_utils.Database, tmp_path: Path
+) -> None:
+    """A contributor without the child heading, and one missing the file entirely
+    (which never counts as containing it), do not block the removal."""
+    ws = state_template_workspace
+    clean = tmp_path / "clean"
+    clean.mkdir()
+    (clean / "STATE.md").write_text("# STATE.md\n\n## Overview\n\n## Risks\n", encoding="utf-8")
+    missing = tmp_path / "no_state_file"
+    missing.mkdir()
+
+    pid = make_heading_proposal(
+        db,
+        ws.templates,
+        kind="remove_heading",
+        target_file="STATE.md",
+        target_section="Constraints",
+        body="## Constraints",
+        title='Remove "## Constraints" from STATE.md',
+        evidence=[
+            EvidenceDraft(project_path=str(clean), excerpt="## Constraints", weight=1.0),
+            EvidenceDraft(project_path=str(missing), excerpt="## Constraints", weight=1.0),
+        ],
+    )
+    result = apply_proposal(
+        db, pid, templates_dir=ws.templates, contributing_projects=("clean", "no_state_file")
+    )
+    assert result.changed
+
+    text = (ws.templates / "STATE.template.md").read_text(encoding="utf-8")
+    assert "## Constraints" not in text
+    assert "### Budget" not in text
+    assert "## Overview" in text
+    assert "## Risks" in text
+    assert get_proposal(db, pid)["status"] == STATUS_APPLIED
+
+
+def test_remove_heading_with_unresolved_section_raises_and_store_untouched(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """No fallback for a removal (module docstring): an unresolved section is an
+    `ApplyError` raised before any plan exists, and nothing is written."""
+    before = snapshot(workspace.templates)
+    head = git(workspace.templates, "rev-parse", "HEAD").strip()
+
+    pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="remove_heading",
+        target_file="AGENTS.md",
+        target_section="Deployment",
+        body="## Deployment",
+        title='Remove "## Deployment" from AGENTS.md',
+    )
+    with pytest.raises(ApplyError, match="Deployment"):
+        plan_apply(db, pid, templates_dir=workspace.templates)
+
+    assert snapshot(workspace.templates) == before
+    assert git(workspace.templates, "rev-parse", "HEAD").strip() == head
+    assert get_proposal(db, pid)["status"] == "pending"
+
+
+def test_each_heading_accept_is_one_commit_with_the_expected_subject(
+    workspace, db: sqlite_utils.Database
+) -> None:
+    """One accept, one commit — for both an addition and a removal — with the wording
+    plan.md C3 specifies in the subject line."""
+    before = len(git(workspace.templates, "log", "--format=%H").strip().split("\n"))
+
+    add_pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="add_heading",
+        target_file="AGENTS.md",
+        target_section="Testing instructions",
+        body="## Risks",
+        title='Add "## Risks" to AGENTS.md',
+    )
+    apply_proposal(db, add_pid, templates_dir=workspace.templates, contributing_projects=("atlas",))
+
+    remove_pid = make_heading_proposal(
+        db,
+        workspace.templates,
+        kind="remove_heading",
+        target_file="AGENTS.md",
+        target_section="Process",
+        body="## Process",
+        title='Remove "## Process" from AGENTS.md',
+    )
+    apply_proposal(
+        db, remove_pid, templates_dir=workspace.templates, contributing_projects=("atlas",)
+    )
+
+    log = git(workspace.templates, "log", "--format=%H").strip().split("\n")
+    assert len(log) == before + 2
+
+    subjects = git(workspace.templates, "log", "--format=%s", "-2").strip().split("\n")
+    assert any(s == f'learn: add "## Risks" to AGENTS.md (proposal #{add_pid})' for s in subjects)
+    assert any(
+        s == f'learn: remove "## Process" from AGENTS.md (proposal #{remove_pid})' for s in subjects
+    )
 
 
 def test_r7_fallback_can_be_refused_without_writing_anything(
