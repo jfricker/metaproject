@@ -491,12 +491,24 @@ def deploy_entry(
     resolved_templates = resolve_templates_dir(templates_dir)
     target = resolved_proj / deliverable
 
-    if target.exists():
+    entry = resolve_template_entry(deliverable, resolved_templates)
+
+    # A directory deliverable (e.g. `docs`) is a presence check, not content (R-CLS-6):
+    # deploying it is idempotent-safe even if the directory already exists on disk —
+    # which happens routinely when an earlier deploy in the same batch wrote a file
+    # nested under it (e.g. `docs/DESIGN-INVARIANTS.md`), creating `docs/` as that
+    # file's parent before `docs` itself is ever reached. Only a name collision with
+    # something that isn't a directory is refused.
+    if entry is not None and entry.is_dir():
+        if target.exists() and not target.is_dir():
+            raise MetaProjectError(
+                f"{deliverable} already exists in {resolved_proj.name}; use update instead."
+            )
+    elif target.exists():
         raise MetaProjectError(
             f"{deliverable} already exists in {resolved_proj.name}; use update instead."
         )
 
-    entry = resolve_template_entry(deliverable, resolved_templates)
     if entry is None:
         raise MetaProjectError(f"No template provides {deliverable} in {resolved_templates}.")
 
@@ -504,7 +516,10 @@ def deploy_entry(
 
     if entry.is_dir():
         target.mkdir(parents=True, exist_ok=True)
-        written = render_template_tree(entry, target, resolved_vars).paths
+        # skip_existing: nested deliverables (e.g. docs/DESIGN-INVARIANTS.md) may have
+        # already been deployed individually earlier in the same batch; re-rendering the
+        # whole tree must not clobber them.
+        written = render_template_tree(entry, target, resolved_vars, skip_existing=True).paths
         return [target, *[p for p in written if p.is_file()]]
 
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -1,8 +1,9 @@
 # {ProjectTitle}
-
+{% if ProjectDescription %}
 {ProjectDescription}
+{% endif %}
+@AGENTS.md
 
-## Architecture & Guidelines
-- Primary build tool: `make` (run `make help` for targets).
-- Follow the SDLC lifecycle specified in `AGENTS.md`.
-- Keep `STATE.md` updated as tasks are implemented.
+## Claude-specific notes
+
+<Any instructions specific to Claude Code that don't belong in AGENTS.md.>
