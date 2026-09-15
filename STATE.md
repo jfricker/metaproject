@@ -1,9 +1,9 @@
 # MetaProject — State
 
 ## Process
-- [ ] 1. Review intent.md and create spec.md
-- [ ] 2. Create plan.md from spec.md
-- [ ] 3. Implementation and verification
+- [x] 1. Review intent.md and create spec.md
+- [x] 2. Create plan.md from spec.md
+- [x] 3. Implementation and verification
 
 ## Implementation phases
 
