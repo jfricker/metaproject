@@ -2,7 +2,7 @@
 
 **Date**: 2026-09-14
 **Author**: Claude (for John Fricker)
-**Status**: Paused by operator after step B2.
+**Status**: Superseded — work resumed 2026-09-14; see STATE.md. Waiting on operator for E3 (install branch build, `metaproject new .` in SDLC-skills).
 
 ## Current state
 
