@@ -22,11 +22,11 @@
 - [x] C2. learn/structure.py + api partition
 - [x] C3. apply heading proposals
 - [x] C4. drift signal for structure
-- [ ] D1. templates
+- [x] D1. templates
 - [ ] D2. skill docs + README
 - [x] D3. discovery doc
 - [x] E1. sdlc-skills hook + Makefile
-- [ ] E2. sdlc-skills skills
+- [x] E2. sdlc-skills skills
 - [ ] E3. sdlc-skills repo docs + identity + version
 - [ ] F. release on main (after merge)
 

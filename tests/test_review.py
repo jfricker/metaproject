@@ -810,7 +810,7 @@ def test_detail_entries_list_missing_then_drifted(tmp_path: Path) -> None:
 
 def structurally_drifted_project(tmp_path: Path) -> "tuple[Path, Path]":
     """A scaffolded project whose STATE.md has lost a template heading (R-CLS-3)."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "structure_drift_proj"
     scaffold_project(
         project_name="structure_drift_proj",
