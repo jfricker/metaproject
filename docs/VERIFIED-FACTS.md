@@ -26,3 +26,15 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - Sandboxed `git init` fails with exit 128 (`cannot copy ... git-core/templates/...:
   Operation not permitted` — Xcode's template dir is outside the sandbox read scope),
   which surfaces as ~112 false ERRORs across git-writing tests. Run the suite unsandboxed.
+
+## 2026-09-15 — [metaproject-doctor](../archive/2026-09-15-metaproject-doctor/)
+
+- `.git` is **not** part of `templates.is_junk_file_name` (that rule covers only
+  OS/editor junk); every walk of the live template store must skip `.git` explicitly
+  and separately. `doctor`'s `_relative_files` initially flooded its extras report
+  with the store's `.git` internals until the explicit skip was added — the
+  DESIGN-INVARIANTS wording ("skip junk … as well as `.git`; the rule lives once in
+  `is_junk_file_name`") overstates what that one function does.
+- On a real machine, the identity check's anchorless list includes the scan root
+  itself and nested worktree/skill directories cataloged by `universe` — the findings
+  are genuine catalog data; doctor reports, the operator decides.
