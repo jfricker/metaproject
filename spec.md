@@ -1,9 +1,10 @@
 # <Title> — Spec
 
-**Author**: {agent/user}.
-**Derived from**: intent.md ({date}).
-**Last updated**: {date}.
+**Author**: John Fricker.
+**Derived from**: intent.md (2026-09-15).
+**Last updated**: 2026-09-15.
 **Status**: Draft.
+**Approved by**: —
 
 ## Requirements
 
@@ -14,6 +15,5 @@
 ## Acceptance criteria
 
 ## Flagged concerns
-{Policy/security/compliance/UX concerns needing product-owner or policy-owner resolution}
 
 ## Open questions

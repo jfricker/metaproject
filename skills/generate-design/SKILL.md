@@ -10,6 +10,27 @@ separate from `generate-spec` because requirements (what/why) and technical desi
 (how) are different reviews with different reviewers, and `plan.md` needs both as
 distinct inputs (per this repo's `AGENTS.md`).
 
+## Conventions (metaproject)
+
+- **Session assumption**: a `SessionStart` hook already checked that metaproject ≥
+  0.7.0 is installed and `.metaproject.json` exists; this skill doesn't re-check. If
+  the session-start `[sdlc-skills]` notice reported a failure, stop and repeat its fix
+  instead of proceeding. If a metaproject command fails anyway, stop and show the user
+  its output.
+- **Documents come from metaproject**: working documents are templated by metaproject,
+  not by this skill. Create a missing one with `metaproject backfill <file>`
+  (create-only — it never overwrites); `metaproject backfill` with no files creates
+  every missing scaffolded deliverable at once. `HANDOFF.md` is on-demand:
+  `metaproject backfill HANDOFF.md`.
+- **Blank rule**: a cycle document (intent/spec/design/plan) is blank iff its first
+  `# ` heading contains `<Title>`.
+- **Status vocabulary**: `Draft`, `Approved`, `Complete`, `Cancelled`, `Deferred`,
+  `Superseded`. Header fields are `Author`, `Derived from` (not on intent.md),
+  `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
+  `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
+  `Approved`. Never set it to `Approved` yourself.
+- Tick STATE.md Process item 3 once this stage is done.
+
 ## When to use
 
 - `spec.md` exists at the repo root with `Status: Approved`.
@@ -28,8 +49,8 @@ distinct inputs (per this repo's `AGENTS.md`).
 ## Process
 
 1. Read `spec.md` in full. Refuse to proceed if its Status isn't `Approved`.
-2. If `design.md` doesn't exist at the repo root, create it from the **blank template**
-   below.
+2. If `design.md` doesn't exist at the repo root, create it with
+   `metaproject backfill design.md`.
 3. For each requirement in `spec.md`, work out:
    - Affected components/modules and how they change.
    - Data flow / interfaces between them.
@@ -39,27 +60,6 @@ distinct inputs (per this repo's `AGENTS.md`).
    sequencing; that's `generate-plan`'s job.
 5. Set **Status: Draft** while iterating; **Status: Approved** once the user/tech lead
    signs off.
-
-## Blank template (`design.md`)
-
-```markdown
-# <Title> — Design
-
-**Author**: {agent/user}.
-**Derived from**: spec.md ({date}).
-**Last updated**: {date}.
-**Status**: Draft.
-
-## Affected components
-
-## Data flow / interfaces
-
-## Alternatives considered
-
-## Trade-offs and risks
-
-## Open questions
-```
 
 ## Output artifact
 

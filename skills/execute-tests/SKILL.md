@@ -8,6 +8,27 @@ description: Run the project's test/build/lint feedback loop (via make, per AGEN
 Stage 4 of the SDLC loop: the self-check loop that runs before a person is asked to
 look — tests, build, and (for UI work) screenshots.
 
+## Conventions (metaproject)
+
+- **Session assumption**: a `SessionStart` hook already checked that metaproject ≥
+  0.7.0 is installed and `.metaproject.json` exists; this skill doesn't re-check. If
+  the session-start `[sdlc-skills]` notice reported a failure, stop and repeat its fix
+  instead of proceeding. If a metaproject command fails anyway, stop and show the user
+  its output.
+- **Documents come from metaproject**: working documents are templated by metaproject,
+  not by this skill. Create a missing one with `metaproject backfill <file>`
+  (create-only — it never overwrites); `metaproject backfill` with no files creates
+  every missing scaffolded deliverable at once. `HANDOFF.md` is on-demand:
+  `metaproject backfill HANDOFF.md`.
+- **Blank rule**: a cycle document (intent/spec/design/plan) is blank iff its first
+  `# ` heading contains `<Title>`.
+- **Status vocabulary**: `Draft`, `Approved`, `Complete`, `Cancelled`, `Deferred`,
+  `Superseded`. Header fields are `Author`, `Derived from` (not on intent.md),
+  `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
+  `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
+  `Approved`. Never set it to `Approved` yourself.
+- Tick STATE.md Process item 6 once this stage is done.
+
 ## When to use
 
 - Code from `implement-plan` exists on the working branch and needs verification before

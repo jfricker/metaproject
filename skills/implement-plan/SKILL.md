@@ -7,6 +7,27 @@ description: Implement strictly against an approved plan.md, following CLAUDE.md
 
 Stage 3b of the SDLC loop: execute the approved plan, not a reinterpretation of it.
 
+## Conventions (metaproject)
+
+- **Session assumption**: a `SessionStart` hook already checked that metaproject ≥
+  0.7.0 is installed and `.metaproject.json` exists; this skill doesn't re-check. If
+  the session-start `[sdlc-skills]` notice reported a failure, stop and repeat its fix
+  instead of proceeding. If a metaproject command fails anyway, stop and show the user
+  its output.
+- **Documents come from metaproject**: working documents are templated by metaproject,
+  not by this skill. Create a missing one with `metaproject backfill <file>`
+  (create-only — it never overwrites); `metaproject backfill` with no files creates
+  every missing scaffolded deliverable at once. `HANDOFF.md` is on-demand:
+  `metaproject backfill HANDOFF.md`.
+- **Blank rule**: a cycle document (intent/spec/design/plan) is blank iff its first
+  `# ` heading contains `<Title>`.
+- **Status vocabulary**: `Draft`, `Approved`, `Complete`, `Cancelled`, `Deferred`,
+  `Superseded`. Header fields are `Author`, `Derived from` (not on intent.md),
+  `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
+  `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
+  `Approved`. Never set it to `Approved` yourself.
+- Tick STATE.md Process item 5 once this stage is done.
+
 ## When to use
 
 - `plan.md` exists at the repo root with `Status: Approved`.
@@ -31,8 +52,9 @@ Stage 3b of the SDLC loop: execute the approved plan, not a reinterpretation of 
    all testing to `execute-tests`.
 5. Update `STATE.md`'s checklist as each step of `plan.md` completes (check the box,
    don't just narrate progress).
-6. If work is interrupted before the plan is fully implemented, write `HANDOFF.md`
-   capturing exact state and next step, per `AGENTS.md`.
+6. If work is interrupted before the plan is fully implemented, run
+   `metaproject backfill HANDOFF.md` (it's an on-demand document) and fill it in with
+   exact state and next step, per `AGENTS.md`.
 
 ## Output artifact
 
