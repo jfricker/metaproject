@@ -1,21 +1,21 @@
-# Make metaproject the source of truth for SDLC document templates
+# <Title>
 
 **Author**: John Fricker.
-**Last updated**: 2026-09-14.
-**Status**: Approved.
-**Approved by**: John Fricker (2026-09-14).
+**Last updated**: 2026-09-15.
+**Status**: Draft.
+**Approved by**: —
 
 ## Problem
-Cross-project cycle. The canonical intent lives in metaproject:
-`~/Projects/metaproject/.claude/worktrees/template-source-of-truth/intent.md`
-(branch `template-source-of-truth`). This file mirrors its status only; edit the
-metaproject copy.
+
+<What problem, ticket, or incident prompted this cycle?>
 
 ## Proposed outcome
-See the metaproject intent.md.
+
+<What should be true once this cycle ships?>
 
 ## Affected users and systems
-See the metaproject intent.md.
+
+<Who or what this touches.>
 
 ## Scope
 

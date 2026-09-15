@@ -1,7 +1,7 @@
 # <Title> — Spec
 
 **Author**: John Fricker.
-**Derived from**: intent.md (<date>).
+**Derived from**: intent.md (2026-09-15).
 **Last updated**: 2026-09-15.
 **Status**: Draft.
 **Approved by**: —

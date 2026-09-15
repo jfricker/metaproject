@@ -1,7 +1,7 @@
 # <Title> — Design
 
 **Author**: John Fricker.
-**Derived from**: spec.md (<date>).
+**Derived from**: spec.md (2026-09-15).
 **Last updated**: 2026-09-15.
 **Status**: Draft.
 **Approved by**: —

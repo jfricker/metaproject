@@ -15,6 +15,14 @@ https://claude.com/blog/the-ai-native-sdlc-playbook per `AGENTS.md`. Each stage 
 `wrapup` is the only stage that writes to this file,
 to `docs/DESIGN-INVARIANTS.md`, and to `docs/VERIFIED-FACTS.md`.
 
+Since the `template-source-of-truth` cycle, the repo is metaproject-managed
+(`.metaproject.json`): the working documents (`intent.md`, `spec.md`, `design.md`,
+`plan.md`, `STATE.md`, `HANDOFF.md`) are templated from the live store at
+`~/.metaproject/templates`, and the skills defer to `metaproject backfill` for their
+blank shapes. A SessionStart hook (`hooks/check-metaproject.sh`, wired via
+`hooks/hooks.json`) verifies metaproject and `.metaproject.json` are present;
+`tests/test_check_metaproject.sh` covers it (run via `make`).
+
 ```mermaid
 flowchart LR
     WI[write-intent] --> GS[generate-spec]
@@ -29,6 +37,9 @@ flowchart LR
     WU -.appends.-> DI[docs/DESIGN-INVARIANTS.md]
     WU -.appends.-> VF[docs/VERIFIED-FACTS.md]
     WU -.archives.-> DA[docs/archive/YYYY-MM-DD-slug/]
+
+    MP[metaproject ~/.metaproject/templates] -.templates root docs.-> WI
+    HOOK[SessionStart hooks/check-metaproject.sh] -.checks.-> MP
 ```
 
 ## Cycle index
@@ -36,3 +47,4 @@ flowchart LR
 | Date | Slug | Summary | Archive |
 |---|---|---|---|
 | 2026-09-13 | `create-docs-archive-so-wrapup-has-somewhere-to-archive-into` | Added `docs/archive/.gitkeep` and made `wrapup` check the directory exists before `git mv`-ing cycle docs into it, instead of assuming it. First live test of the full 7-stage cycle. | [spec](docs/archive/2026-09-13-create-docs-archive-so-wrapup-has-somewhere-to-archive-into/spec.md) · [design](docs/archive/2026-09-13-create-docs-archive-so-wrapup-has-somewhere-to-archive-into/design.md) |
+| 2026-09-15 | `template-source-of-truth` | Cross-project cycle (canonical intent/archive in metaproject, `docs/archive/2026-09-15-template-source-of-truth/` there). All 7 skills rewritten to take document templates and conventions from metaproject (`~/.metaproject/templates` via `.metaproject.json`); added SessionStart hook `hooks/check-metaproject.sh`, `Makefile`, and `tests/`. STATE.md moved to the 7-stage per-skill checklist. | [spec](docs/archive/2026-09-15-template-source-of-truth/spec.md) · [design](docs/archive/2026-09-15-template-source-of-truth/design.md) |
