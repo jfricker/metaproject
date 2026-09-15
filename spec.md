@@ -59,6 +59,12 @@ by design.md and plan.md. "Project" means a directory metaproject scaffolds or r
   DRIFTED) but its absence is reported by `review` as an informational note, not
   INCOMPLETE.
 
+- **R-ID-5** *(Amended 2026-09-15 during implementation, approved by John Fricker.)*
+  The agent-skills layout `new` creates (`.agents/skills/` plus the `.claude/skills` →
+  `../.agents/skills` symlink) includes `.agents/skills/.gitkeep`, so the layout survives
+  commit and clone (git does not track empty directories; without it a clone has a
+  dangling `.claude/skills` link). Existing files are never overwritten.
+
 #### Template store
 
 - **R-TPL-1** Repo-root `templates/` is removed; `src/metaproject/templates/` is the only
