@@ -59,12 +59,16 @@ def is_skill_current(source_dir: Path, target_dir: Path) -> bool:
     return True
 
 
-def install_skill(target_dir: Path | None = None, force: bool = False) -> Dict[str, object]:
+def install_skill(
+    target_dir: Path | None = None, force: bool = False, prune_extra: bool = False
+) -> Dict[str, object]:
     """Install the bundled skill, refusing to clobber a divergent copy without force.
 
     A divergent copy is usually just an older release, but it may be the operator's own
     edit, so overwriting it is their call rather than a silent side effect of `init`.
-    Returns the install state and the files written.
+    With ``prune_extra`` (doctor's package-owned mode), files under the destination
+    that are not part of the bundle are deleted so the directory ends up an exact
+    copy. Returns the install state, the files written, and any paths pruned.
     """
     source_dir = get_bundled_skill_dir()
     if not source_dir.exists():
@@ -74,7 +78,11 @@ def install_skill(target_dir: Path | None = None, force: bool = False) -> Dict[s
     existed = destination.exists()
 
     if is_skill_current(source_dir, destination):
-        return {"state": CURRENT, "target_dir": destination, "files": []}
+        # Content matches, but a prune-extra pass may still have work to do.
+        if not prune_extra:
+            return {"state": CURRENT, "target_dir": destination, "files": []}
+        pruned = _prune_extra_files(source_dir, destination)
+        return {"state": CURRENT, "target_dir": destination, "files": [], "pruned": pruned}
 
     if existed and not force:
         return {"state": STALE, "target_dir": destination, "files": []}
@@ -86,8 +94,29 @@ def install_skill(target_dir: Path | None = None, force: bool = False) -> Dict[s
         shutil.copy2(item, dest)
         written.append(dest)
 
+    pruned = _prune_extra_files(source_dir, destination) if prune_extra else []
+
     return {
         "state": UPDATED if existed else INSTALLED,
         "target_dir": destination,
         "files": written,
+        "pruned": pruned,
     }
+
+
+def _prune_extra_files(source_dir: Path, destination: Path) -> List[Path]:
+    """Delete junk-filtered destination files the bundle doesn't carry; return them."""
+    from metaproject.templates import is_junk_file_name
+
+    bundled_rel = {item.relative_to(source_dir) for item in _bundled_files(source_dir)}
+    pruned: List[Path] = []
+    if not destination.exists():
+        return pruned
+    for item in destination.rglob("*"):
+        rel_path = item.relative_to(destination)
+        if any(is_junk_file_name(part) for part in rel_path.parts):
+            continue
+        if item.is_file() and rel_path not in bundled_rel:
+            item.unlink()
+            pruned.append(item)
+    return pruned
