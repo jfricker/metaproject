@@ -1025,7 +1025,7 @@ def backfill_cmd(
 
     Unlike `new .`, this is a non-interactive, create-only write and is permitted in
     agent sessions (R-TPL-8): it is how a skill or hook fills in a document that review
-    reports missing, without the confirmations `new .`'s backfill requires.
+    reports missing, without the confirmations `new .` requires.
     """
     from metaproject.review import backfill_missing
 
