@@ -1,4 +1,4 @@
-# Architecture
+# Sdlc Skills — Architecture
 
 Long-lived index. Unlike `intent.md`/`spec.md`/`design.md`/`plan.md`/`STATE.md`, this
 file is never reset — `wrapup` appends to it at the end of every cycle. It is the sum of

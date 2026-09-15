@@ -1,13 +1,26 @@
 # AGENTS.md
 
+## Dependency on metaproject
+
+This repo requires `metaproject` **≥ 0.7.0** on `PATH`. metaproject owns every document
+template used below (`intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`,
+`ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`, `AGENTS.md`,
+`README.md`, `CLAUDE.md`, `.gitignore`, `HANDOFF.md`) from its central template store;
+this repo carries none of its own. A missing document is created with
+`metaproject backfill <file>`, never written from scratch.
+
+Merge order when this repo's changes depend on new metaproject templates or commands:
+metaproject merges first (and its version bump lands on its `main`), the operator
+refreshes `~/.metaproject/templates` from the merged store by hand, and only then does
+sdlc-skills merge and rely on the new template shapes or commands.
+
 ## Dev environment tips
 - Makefile is the primary tool for development and testing. Use `make help` to see available targets.
-- MCP Server Vibe Annotations is used for ad hoc UI changes based on live user testing of the project website or the dev server.
 
 ## Testing instructions
 
 ## Process
-This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook with modifications. This document adds to the playbook and merges ideas. It doesn't supercede the playbook unless explicitly stated.
+This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook with modifications. This document adds to the playbook and merges ideas. It doesn't supersede the playbook unless explicitly stated.
 
 ### HANDOFF.md
  When work is interrupted before completion, create a HANDOFF.md to capture the state of the work and any other information needed to resume the work or hand it off to another agent at another time.
@@ -22,7 +35,7 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
  The agent will be instructed to create a design and requirements spec from the intent.md.
 
 ### plan.md
- The agent will be instructed by the operated to create an implementation plan based up on the spec.md and any design artifacts. 
+ The agent will be instructed by the operator to create an implementation plan based on the spec.md and any design artifacts. 
 
 ### design.md
  The agent will be instructed to create a technical design from an approved spec.md — affected components, data flow, alternatives, trade-offs — which plan.md then consumes alongside spec.md.
@@ -38,3 +51,6 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
 
 ### STATE.md's "Open items carried into plan.md"
  Before `wrapup` resets STATE.md, it resolves this section with the operator first — for each item, showing its own assessment of why the item is still open, then asking the operator to discard it, carry it forward into the next `intent.md`'s Open questions, or send the cycle back to `implement-plan` because it isn't actually finished. A single "return to implement-plan" halts the whole wrapup before anything is archived or reset.
+
+### Archive layout
+ `wrapup` moves a completed cycle's `intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md` and (if present) `HANDOFF.md` into `docs/archive/YYYY-MM-DD-<slug>/`, after appending STATE.md's Design invariants and Verified facts to the long-lived docs above.

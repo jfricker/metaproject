@@ -2,7 +2,8 @@
 
 **Author**: John Fricker.
 **Last updated**: 2026-09-14.
-**Status**: Approved (John Fricker, 2026-09-14).
+**Status**: Approved.
+**Approved by**: John Fricker (2026-09-14).
 
 ## Problem
 Cross-project cycle. The canonical intent lives in metaproject:

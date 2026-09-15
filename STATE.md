@@ -1,14 +1,28 @@
 # Sdlc Skills — State
 
 ## Process
-- [ ] 1. Review intent.md and create spec.md
-- [ ] 2. Create plan.md from spec.md
-- [ ] 3. Implementation and verification
+
+<!-- each stage ticks its own item here as it completes -->
+- [ ] 1. write-intent: intent.md approved
+- [ ] 2. generate-spec: spec.md approved
+- [ ] 3. generate-design: design.md approved
+- [ ] 4. generate-plan: plan.md approved
+- [ ] 5. implement-plan: code and tests written
+- [ ] 6. execute-tests: tests passing
+- [ ] 7. wrapup: cycle archived
 
 ## Implementation phases
 
+<!-- written by implement-plan as steps land -->
+
 ## Design invariants (regression guards)
+
+<!-- written by implement-plan/execute-tests; appended to docs/DESIGN-INVARIANTS.md by wrapup -->
 
 ## Open items carried into plan.md
 
+<!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
+
 ## Verified facts (do not re-investigate)
+
+<!-- written by implement-plan/execute-tests; appended to docs/VERIFIED-FACTS.md by wrapup -->

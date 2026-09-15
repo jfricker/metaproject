@@ -1,9 +1,10 @@
 # <Title> — Implementation Plan
 
-**Author**: {agent/user}.
-**Derived from**: spec.md, design.md ({date}).
-**Last updated**: {date}.
+**Author**: John Fricker.
+**Derived from**: spec.md, design.md (2026-09-15).
+**Last updated**: 2026-09-15.
 **Status**: Draft.
+**Approved by**: —
 
 ## Steps
 
