@@ -644,7 +644,7 @@ def new_cmd(
     if dry_run and skills_link is not None:
         console.print(
             f"[dim]would create agent-skills layout: {skills_link.relative_to(target_dir)} "
-            f"(-> ../.agents/skills)[/dim]"
+            f"(-> ../.agents/skills) plus .agents/skills/.gitkeep[/dim]"
         )
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")

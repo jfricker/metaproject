@@ -148,12 +148,31 @@ def link_agent_skills(
     Equivalent to `mkdir -p .claude && mkdir -p .agents/skills &&
     ln -s ../.agents/skills .claude/skills`, but tracked for rollback and
     skipped on backfill when the operator already has a .claude/skills entry.
+
+    `.agents/skills/.gitkeep` is written whenever it is missing (spec.md R-ID-5): git
+    does not track empty directories, so without it a clone of the scaffolded project
+    leaves `.claude/skills` a dangling link. This still happens on a backfill into a
+    project that already has the symlink, as long as `.claude/skills` resolves into
+    this project's own `.agents/skills` -- never when it is a real directory or a
+    symlink pointing elsewhere. Existing files are never overwritten.
     """
     agents_skills_dir = target_dir / ".agents" / "skills"
     claude_dir = target_dir / ".claude"
     skills_link = claude_dir / "skills"
+    gitkeep_path = agents_skills_dir / ".gitkeep"
 
-    if skip_existing and (skills_link.exists() or skills_link.is_symlink()):
+    already_linked = skills_link.exists() or skills_link.is_symlink()
+
+    if skip_existing and already_linked:
+        resolves_into_project = (
+            skills_link.is_symlink() and skills_link.resolve() == agents_skills_dir.resolve()
+        )
+        if resolves_into_project and not gitkeep_path.exists() and not dry_run:
+            if not agents_skills_dir.exists():
+                agents_skills_dir.mkdir(parents=True, exist_ok=True)
+                tracker.record_created_dir(agents_skills_dir)
+            gitkeep_path.write_text("", encoding="utf-8")
+            tracker.record_created_file(gitkeep_path)
         return None
 
     if not dry_run:
@@ -161,7 +180,10 @@ def link_agent_skills(
             if not directory.exists():
                 directory.mkdir(parents=True, exist_ok=True)
                 tracker.record_created_dir(directory)
-        if not (skills_link.exists() or skills_link.is_symlink()):
+        if not gitkeep_path.exists():
+            gitkeep_path.write_text("", encoding="utf-8")
+            tracker.record_created_file(gitkeep_path)
+        if not already_linked:
             skills_link.symlink_to(Path("..") / ".agents" / "skills")
             tracker.record_created_file(skills_link)
     return skills_link
