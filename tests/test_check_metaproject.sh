@@ -128,12 +128,12 @@ fi
 # ------------------------------------------------------------------------
 # Case c: PATH without metaproject -> install notice, exit 0
 # ------------------------------------------------------------------------
-if command -v metaproject >/dev/null 2>&1; then
-    fail "c: precondition — a real metaproject is already on this shell's PATH"
-fi
+# The hook runs with PATH="$SYS_PATH" only, so a metaproject the caller has installed
+# elsewhere (e.g. ~/.local/bin) is irrelevant. The precondition is that the system
+# PATH itself has none.
 if PATH="$SYS_PATH" command -v metaproject >/dev/null 2>&1; then
     found=$(PATH="$SYS_PATH" command -v metaproject)
-    echo "NOTE: a real metaproject exists on the system PATH ($SYS_PATH): $found"
+    fail "c: precondition — a metaproject exists on the system PATH ($SYS_PATH): $found"
 fi
 
 REPO_C="$WORK/repo-c"
