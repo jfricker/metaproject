@@ -55,7 +55,7 @@ It automatically initializes your SQLite catalog at `~/.metaproject/universe.db`
 `init` also installs a bundled Claude Code skill into `~/.claude/skills/metaproject/`. The
 skill teaches an agent when to reach for each command, which forms are safe to run
 unattended (`review --no-tui`, `learn list`, `universe`) and which need a human
-(`learn scan` calls a model; `learn apply` commits to your template store; a backfill asks
+(`learn scan` calls a model; `learn apply` commits to your template store; scaffolding into an existing directory asks
 two confirmations). It ships inside the package, so it travels with every install.
 
 - `metaproject init --no-skill` skips it.
@@ -72,7 +72,7 @@ detects that an agent is driving it — from markers no ordinary login shell set
 |---|---|
 | `review`, `learn` reviewer | Print the board or queue and exit 0, instead of opening the TUI |
 | `learn scan`, bare `learn` | Refused (exit 1); prints the command for you to run |
-| A backfill's confirmations | Refused (exit 1); `--dry-run` still previews |
+| Scaffold-into-existing confirmations | Refused (exit 1); `--dry-run` still previews |
 
 A TUI opened inside a tool call blocks on keystrokes that never arrive, and `learn scan`
 spends money and sends redacted diffs off the machine — that one is yours to start.

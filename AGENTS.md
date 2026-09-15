@@ -71,7 +71,7 @@
      bare `learn [ROOT]` form is routed to a hidden default command by
      `LearnGroup.parse_args`. Any new `learn` subcommand must be registered on
      `learn_app` or it is read as a path. `backfill` is the non-interactive, create-only
-     counterpart to `new .`'s interactive backfill — agent-safe, never overwrites, never
+     counterpart to `new .`'s interactive scaffold-into-existing flow — agent-safe, never overwrites, never
      runs git.
    - Handles eager manifest inspection via `-v` / `--version`.
 
