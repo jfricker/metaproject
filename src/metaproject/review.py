@@ -28,6 +28,7 @@ from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import MetaProjectError
 from metaproject.markdown import Heading, missing_headings
 from metaproject.templates import (
+    find_unknown_placeholders,
     get_bundled_templates_dir,
     render_template_tree,
     transform_template_name,
@@ -276,6 +277,27 @@ def _format_heading(heading: Heading) -> str:
     return f"{'#' * heading.level} {heading.title}"
 
 
+def _template_warnings(template_file: Path, templates_dir: Path) -> List[str]:
+    """Unknown-placeholder warnings for one template file this review just read (R-TPL-3).
+
+    Read raw, never rendered: a rendered `{identifier}` has already been substituted (or
+    silently left alone, which is exactly the case this reports) by the time a diff or a
+    structure check would see it.
+    """
+    try:
+        raw = template_file.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return []
+    try:
+        label = template_file.relative_to(templates_dir).as_posix()
+    except ValueError:
+        label = template_file.name
+    return [
+        f"{label}: unknown placeholder {{{placeholder}}}"
+        for placeholder in find_unknown_placeholders(raw)
+    ]
+
+
 def _structure_against_template(
     project_file: Path,
     template_file: Path,
@@ -326,6 +348,7 @@ def review_project(
     diffs: Dict[str, str] = {}
     structure: Dict[str, List[str]] = {}
     notes: List[str] = []
+    warnings: List[str] = []
 
     if read_identity(resolved_proj) is None:
         # Informational only (R-ID-4): `.metaproject.json` is not itself reviewable, and
@@ -356,6 +379,8 @@ def review_project(
         if template_entry is None or not template_entry.is_file():
             continue
 
+        warnings.extend(_template_warnings(template_entry, resolved_templates))
+
         if deliverable.cls is DeliverableClass.WORKING:
             lines = _structure_against_template(target_path, template_entry, resolved_proj, cfg)
             if lines:
@@ -374,6 +399,7 @@ def review_project(
         diffs=diffs,
         structure=structure,
         notes=notes,
+        warnings=warnings,
         is_ignored=is_ignored(resolved_proj, config_dir),
     )
 

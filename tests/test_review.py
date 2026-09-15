@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 from metaproject.cli import app
 from metaproject.exceptions import MetaProjectError
 from metaproject.review import (
+    ReviewResult,
     deploy_entry,
     ignore_project,
     is_ignored,
@@ -458,6 +459,25 @@ def test_ac5a_review_never_writes_identity_and_notes_its_absence(tmp_path: Path)
     assert no_identity.is_compliant is True
 
 
+def test_ac8_review_warns_on_unknown_placeholder_in_a_store_template(tmp_path: Path) -> None:
+    """AC-8 (review half): a store template containing `{projcet}` produces a warning
+    naming the file and the placeholder."""
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    (templates / "AGENTS.template.md").write_text(
+        "# Agents\n\nHello {projcet}.\n", encoding="utf-8"
+    )
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "AGENTS.md").write_text("# Agents\n\nHello there.\n", encoding="utf-8")
+
+    result = review_project(proj, templates_dir=templates)
+
+    assert any(
+        "AGENTS.template.md" in warning and "{projcet}" in warning for warning in result.warnings
+    )
+
+
 # --------------------------------------------------------------------------- ignore list
 
 
@@ -849,6 +869,109 @@ def test_detail_entries_list_missing_then_drifted(tmp_path: Path) -> None:
     entries = detail_entries(result)
     assert entries[: len(result.missing_files)] == result.missing_files
     assert entries[len(result.missing_files) :] == result.updatable
+
+
+def structurally_drifted_project(tmp_path: Path) -> "tuple[Path, Path]":
+    """A scaffolded project whose STATE.md has lost a template heading (R-CLS-3)."""
+    templates = full_cycle_templates_store(tmp_path)
+    proj = tmp_path / "structure_drift_proj"
+    scaffold_project(
+        project_name="structure_drift_proj",
+        output=proj,
+        templates_dir=templates,
+        interactive=False,
+        no_git=True,
+    )
+    state_path = proj / "STATE.md"
+    original = state_path.read_text(encoding="utf-8")
+    heading = "## Verified facts (do not re-investigate)"
+    assert heading in original
+    state_path.write_text(original.replace(heading, ""), encoding="utf-8")
+    return proj, templates
+
+
+def test_detail_entries_lists_structure_drifted_working_docs(tmp_path: Path) -> None:
+    """A working deliverable with a missing heading shows up in the detail listing, but
+    never as `updatable` (R-CLS-3/4)."""
+    proj, templates = structurally_drifted_project(tmp_path)
+    result = review_project(proj, templates_dir=templates)
+
+    entries = detail_entries(result)
+    assert "STATE.md" in entries
+    assert "STATE.md" not in result.updatable
+    assert "STATE.md" in result.structure
+
+
+def test_board_detail_shows_missing_headings_instead_of_a_diff(
+    tmp_path: Path, recording_console: Console
+) -> None:
+    """The detail screen shows a working document's missing headings, not a unified
+    diff, and never offers it an Update action."""
+    proj, templates = structurally_drifted_project(tmp_path)
+    result = review_project(proj, templates_dir=templates)
+
+    render_detail(recording_console, result)
+    rendered = recording_console.export_text()
+
+    assert "missing headings:" in rendered
+    assert "Verified facts" in rendered
+    state_line = next(line for line in rendered.splitlines() if "STATE.md" in line)
+    assert "Update" not in state_line
+
+
+def test_u_on_a_working_doc_refuses_without_writing(
+    tmp_path: Path, recording_console: Console
+) -> None:
+    """`u <n>` on a structure-drifted working document refuses with a clear message
+    instead of calling `update_entry` (R-CLS-4)."""
+    proj, templates = structurally_drifted_project(tmp_path)
+    result = review_project(proj, templates_dir=templates)
+    row = detail_entries(result).index("STATE.md") + 1
+    original = (proj / "STATE.md").read_text(encoding="utf-8")
+    outcome = BoardResult()
+
+    run_detail(
+        recording_console,
+        result,
+        templates,
+        outcome,
+        reader=scripted([f"u {row}", "b"]),
+        clear=False,
+    )
+    rendered = recording_console.export_text()
+
+    assert "working documents are never updated" in rendered
+    assert outcome.updated == []
+    assert outcome.errors == []
+    assert (proj / "STATE.md").read_text(encoding="utf-8") == original
+
+
+def test_u_all_pool_stays_governance_only_with_structure_drift_present(tmp_path: Path) -> None:
+    """`u all`'s pool is `updatable` (governance only), even with a working doc drifted."""
+    proj, templates = structurally_drifted_project(tmp_path)
+    (proj / "AGENTS.md").write_text("# local rules\nNever use make!\n", encoding="utf-8")
+    result = review_project(proj, templates_dir=templates)
+
+    assert "STATE.md" in result.structure
+    assert "AGENTS.md" in result.updatable
+    assert "STATE.md" not in result.updatable
+
+
+def test_board_renders_notes_dim_and_warnings_yellow(tmp_path: Path) -> None:
+    """The board shows each result's notes and warnings under its row."""
+    result = ReviewResult(
+        project_name="noted_proj",
+        project_path=str(tmp_path),
+        templates_dir=str(tmp_path),
+        notes=["No .metaproject.json; identity resolved from fallback."],
+        warnings=["AGENTS.template.md: unknown placeholder {projcet}"],
+    )
+    console = Console(width=120, record=True)
+    console.print(review_table([result]))
+    rendered = console.export_text()
+
+    assert "No .metaproject.json" in rendered
+    assert "unknown placeholder {projcet}" in rendered
 
 
 def test_a_viewed_diff_stays_pinned_until_it_is_dismissed(

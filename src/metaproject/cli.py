@@ -417,8 +417,12 @@ def install_cmd(
 def confirm_backfill(target_dir: Path, dry_run: bool, interactive: bool) -> bool:
     """Confirm landing templates into a directory that already holds files.
 
-    Returns True when the backfill may proceed. Non-interactive runs never proceed: the
-    operator must either confirm at the prompt or say so up front with --force.
+    Returns True when this may proceed. Non-interactive runs never proceed: the operator
+    must either confirm at the prompt or say so up front with --force.
+
+    User-facing text here says "scaffold into an existing directory", never "backfill":
+    that word now names one thing, the `metaproject backfill` command, which an agent
+    session is pointed at below as the create-only alternative that needs no confirmation.
     """
     entries = list_directory_entries(target_dir)
     preview = ", ".join(entries[:8])
@@ -430,36 +434,40 @@ def confirm_backfill(target_dir: Path, dry_run: bool, interactive: bool) -> bool
             f"[bold]{target_dir}[/bold] already contains {len(entries)} "
             f"{'entry' if len(entries) == 1 else 'entries'}:\n"
             f"[dim]{preview}[/dim]\n\n"
-            f"Backfilling copies the missing template files in alongside them.\n"
+            f"Scaffolding into an existing directory copies the missing template files "
+            f"in alongside them.\n"
             f"[green]Files that already exist are kept as-is, never overwritten.[/green]\n"
             f"[dim]Use --force instead to overwrite colliding files.[/dim]",
-            title="[yellow]Backfill Existing Directory[/yellow]",
+            title="[yellow]Scaffold Into an Existing Directory[/yellow]",
         )
     )
 
     if dry_run:
-        console.print("[bold yellow]DRY RUN:[/] Would prompt to confirm this backfill.")
+        console.print("[bold yellow]DRY RUN:[/] Would prompt to confirm this.")
         return True
 
     marker = agent_marker()
     if marker is not None:
         console.print(
-            "[bold red]Collision Error:[/bold red] a backfill needs an operator's "
-            "confirmation, and this is an agent session. Run "
-            f"[cyan]metaproject new {target_dir}[/cyan] in your own terminal, or pass "
-            f"--force to overwrite colliding files. [dim]{override_hint(marker)}[/dim]"
+            "[bold red]Collision Error:[/bold red] scaffolding into an existing "
+            "directory needs an operator's confirmation, and this is an agent session. "
+            f"Run [cyan]metaproject new {target_dir}[/cyan] in your own terminal, or "
+            f"pass --force to overwrite colliding files. To add missing documents "
+            f"without confirmation, run [cyan]metaproject backfill --dir {target_dir}"
+            f"[/cyan] instead. [dim]{override_hint(marker)}[/dim]"
         )
         return False
 
     if not interactive:
         console.print(
-            "[bold red]Collision Error:[/bold red] a backfill needs confirmation. "
-            "Re-run without --yes to confirm interactively, or pass --force to overwrite."
+            "[bold red]Collision Error:[/bold red] scaffolding into an existing "
+            "directory needs confirmation. Re-run without --yes to confirm "
+            "interactively, or pass --force to overwrite."
         )
         return False
 
     answer = questionary.confirm(
-        f"Backfill templates into {target_dir}?",
+        f"Scaffold into {target_dir}, adding the missing template files?",
         default=False,
     ).ask()
     if not answer:
@@ -469,7 +477,7 @@ def confirm_backfill(target_dir: Path, dry_run: bool, interactive: bool) -> bool
 
 
 def confirm_backfill_git(target_dir: Path, interactive: bool) -> bool:
-    """Confirm git setup as a decision separate from the backfill itself."""
+    """Confirm git setup as a decision separate from scaffolding into the directory."""
     if agent_marker() is not None:
         return False
 
@@ -595,14 +603,31 @@ def new_cmd(
     rendered = result["rendered_files"]
     preserved = result["preserved_files"]
     git_status = result["git_status"]
+    warnings = result.get("warnings") or []
+    identity_file = result.get("identity_file")
 
-    verb = "backfilled" if result["backfilled"] else "scaffolded"
+    for warning in warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")
+
+    into_existing = result["backfilled"]
     if dry_run:
+        target_desc = "the existing directory" if into_existing else "project"
         console.print(
-            f"[bold yellow]DRY RUN:[/] Would have {verb} project at [bold]{target_dir}[/]"
+            f"[bold yellow]DRY RUN:[/] Would scaffold {target_desc} at [bold]{target_dir}[/]"
+        )
+    elif into_existing:
+        console.print(
+            f"[bold green]Successfully scaffolded into the existing directory:[/] "
+            f"[bold]{target_dir}[/]"
         )
     else:
-        console.print(f"[bold green]Successfully {verb} project at:[/] [bold]{target_dir}[/]")
+        console.print(f"[bold green]Successfully scaffolded project at:[/] [bold]{target_dir}[/]")
+
+    if identity_file is not None:
+        if dry_run:
+            console.print("[dim]would write .metaproject.json[/dim]")
+        else:
+            console.print("[dim]wrote .metaproject.json[/dim]")
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")
     table.add_column("Relative Path", style="cyan")
@@ -927,6 +952,13 @@ def review_cmd(
     # The board leads with the score and what was audited; the scan root and the ignore
     # ledger are this command's knowledge, not the TUI's, so they are handed over.
     ignored_count = len(load_ignored())
+
+    # Warnings are this command's to print (R-TPL-3): the board's own job is the
+    # compliance verdict, and a placeholder the store forgot to whitelist is neither
+    # missing nor drifted.
+    for res in results:
+        for warning in res.warnings:
+            console.print(f"[yellow]Warning:[/yellow] {res.project_name}: {warning}")
 
     # Degrades exactly like the `learn` reviewer: --no-tui, an agent session, TERM=dumb,
     # or a non-TTY stdout prints the board and stops, so scripted, CI, and agent use

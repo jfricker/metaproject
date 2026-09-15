@@ -650,7 +650,7 @@ def test_cli_new_backfill_confirms_templates_and_git_separately(
 
     assert result.exit_code == 0, result.output
     assert len(asked) == 2, asked
-    assert "Backfill templates into" in asked[0]
+    assert "Scaffold into" in asked[0]
     assert "set up git" in asked[1]
     assert (target / "AGENTS.md").exists()
     assert (target / "main.py").exists()
@@ -691,6 +691,118 @@ def test_cli_new_backfill_accepting_git_initializes_repository(
         check=True,
     )
     assert "initial scaffold from metaproject" in log.stdout
+
+
+def test_occupied_directory_wording_never_says_backfill(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`new .` into an occupied directory names the new `backfill` command, never
+    itself, so the word `backfill` names exactly one thing."""
+    import re
+
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    _confirm_queue(monkeypatch, [True])
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            ".",
+            "--output",
+            str(target) + "/",
+            "--title",
+            "Occupied",
+            "--description",
+            "d",
+            "--author",
+            "A",
+            "--no-git",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    printed = " ".join(result.output.split())
+    stripped = re.sub(r"metaproject backfill(\s+--dir\s+\S+)?", "", printed.lower())
+    assert "backfill" not in stripped
+
+
+def test_agent_refusal_points_at_the_backfill_command(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An agent refused `new .` is told about `metaproject backfill`, the create-only,
+    agent-safe way to add missing documents to a directory already under management."""
+    import re
+
+    target = tmp_path / "occupied"
+    target.mkdir()
+    (target / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    monkeypatch.setenv("METAPROJECT_AGENT", "1")
+
+    result = runner.invoke(app, ["new", ".", "--output", str(target) + "/"])
+    printed = " ".join(result.output.split())
+
+    assert result.exit_code == 1
+    assert "metaproject backfill --dir" in printed
+    stripped = re.sub(r"metaproject backfill(\s+--dir\s+\S+)?", "", printed.lower())
+    assert "backfill" not in stripped
+
+
+def test_new_prints_unknown_placeholder_warnings(runner: CliRunner, tmp_path: Path) -> None:
+    """AC-8 (new half): a store template containing `{projcet}` produces a printed
+    warning naming the file and the placeholder."""
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    (templates / "AGENTS.template.md").write_text(
+        "# Agents\n\nHello {projcet}.\n", encoding="utf-8"
+    )
+    target = tmp_path / "demo"
+
+    result = runner.invoke(
+        app,
+        [
+            "new",
+            "demo",
+            "--output",
+            str(target),
+            "--templates",
+            str(templates),
+            "--yes",
+            "--no-git",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "unknown placeholder {projcet}" in result.output
+
+
+def test_new_prints_wrote_metaproject_json(runner: CliRunner, tmp_path: Path) -> None:
+    """`new` reports writing `.metaproject.json` alongside the rest of the scaffold."""
+    target = tmp_path / "demo_identity"
+
+    result = runner.invoke(
+        app,
+        ["new", "demo_identity", "--output", str(target), "--yes", "--no-git"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "wrote .metaproject.json" in result.output
+    assert (target / ".metaproject.json").exists()
+
+
+def test_new_dry_run_prints_would_write_metaproject_json(runner: CliRunner, tmp_path: Path) -> None:
+    """`--dry-run` previews the identity-file write without performing it."""
+    target = tmp_path / "demo_identity_dry"
+
+    result = runner.invoke(
+        app,
+        ["new", "demo_identity_dry", "--output", str(target), "--yes", "--no-git", "--dry-run"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "would write .metaproject.json" in result.output
+    assert not target.exists() or not (target / ".metaproject.json").exists()
 
 
 def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:

@@ -17,7 +17,7 @@
 - [x] B1. scaffold writes identity, skips on-demand
 - [x] B2. review classes
 - [x] B3. backfill_missing + `metaproject backfill`
-- [ ] B4. TUI + CLI surfaces
+- [x] B4. TUI + CLI surfaces
 - [x] C1. structural evidence
 - [x] C2. learn/structure.py + api partition
 - [x] C3. apply heading proposals
@@ -58,6 +58,14 @@
   should stay unmodified but could not without this) build a test-local template store
   (`full_cycle_templates_store` in `tests/test_review.py`) with minimal templates for
   those six files. D1 should delete that duplication once the bundled store has them.
+
+- B4 (2026-09-15, deviation from plan.md, out of B4's own scope but required for a green
+  gate): `scaffold_project`'s `created = date.today()` bypassed the `variables._today()`
+  seam tests patch for a fixed clock (spec R-ID-2, AC-5); it only ever passed because the
+  suite happened to run on the same calendar day the test hardcodes. Fixed to call
+  `variables._today()` (looked up through the module, not a bound name, so the seam stays
+  patchable) so `test_ac5_review_is_stable_across_an_advancing_clock` is stable across a
+  real day boundary, not just a mocked one.
 
 ## Verified facts (do not re-investigate)
 - Running pytest inside the Claude Code sandbox: the default TMPDIR contains `claude-501`,

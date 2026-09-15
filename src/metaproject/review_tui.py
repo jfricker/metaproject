@@ -252,14 +252,26 @@ def review_table(
             count_cell(len(res.diffs) + len(res.structure), "yellow"),
         )
 
-    return Group(summary_header(results, scan_root, templates_dir, ignored_count), table)
+    lines: List[RenderableType] = [
+        summary_header(results, scan_root, templates_dir, ignored_count),
+        table,
+    ]
+    for res in results:
+        for note in res.notes:
+            lines.append(Text.from_markup(f"[dim]{res.project_name}: {note}[/dim]"))
+        for warning in res.warnings:
+            lines.append(Text.from_markup(f"[yellow]{res.project_name}: {warning}[/yellow]"))
+    return Group(*lines)
 
 
 def detail_table(result: ReviewResult) -> Table:
     """The numbered file list on the detail screen: what is missing, and what has drifted.
 
     Numbering is continuous across both sections so `v 4` is unambiguous; `Action` says
-    which verb applies to each row, because only one of them ever does.
+    which verb applies to each row, because only one of them ever does. A working
+    deliverable that has drifted (R-CLS-3) gets no verb at all — it is never offered for
+    Update (R-CLS-4), and its detail is the missing headings shown below this table, not
+    a diff.
     """
     table = Table(show_header=True, header_style="bold", box=None)
     table.add_column("#", justify="right", style="dim")
@@ -270,20 +282,34 @@ def detail_table(result: ReviewResult) -> Table:
     table.add_column("Action", style="cyan")
 
     missing = set(result.missing_files)
+    updatable = set(result.diffs)
     for index, name in enumerate(detail_entries(result), start=1):
-        state, verb = (
-            (f"[red]{GLYPH_INCOMPLETE} missing[/red]", "Deploy")
-            if name in missing
-            else (f"[yellow]{GLYPH_DRIFTED} drifted[/yellow]", "Update")
-        )
+        if name in missing:
+            state, verb = f"[red]{GLYPH_INCOMPLETE} missing[/red]", "Deploy"
+        elif name in updatable:
+            state, verb = f"[yellow]{GLYPH_DRIFTED} drifted[/yellow]", "Update"
+        else:
+            state, verb = f"[yellow]{GLYPH_DRIFTED} drifted[/yellow]", COUNT_NONE
         table.add_row(str(index), name, Text.from_markup(state), verb)
 
     return table
 
 
 def detail_entries(result: ReviewResult) -> List[str]:
-    """The numbered rows of the detail screen: missing files first, then drifted ones."""
-    return [*result.missing_files, *result.updatable]
+    """The numbered rows of the detail screen: missing, then drifted governance files,
+    then working deliverables that have lost a heading (R-CLS-3) — never updatable, but
+    still something the operator sees when this project is opened."""
+    return [*result.missing_files, *result.updatable, *sorted(result.structure)]
+
+
+def structure_panel(name: str, headings: List[str]) -> Panel:
+    """A working deliverable's missing headings — never a diff (R-CLS-3).
+
+    Body text is never compared for a working document, so there is nothing to unify;
+    the template headings the project file no longer carries are the whole story.
+    """
+    body = Text("missing headings:\n" + "\n".join(f"  {heading}" for heading in headings))
+    return Panel(body, title=name, title_align="left", border_style="cyan")
 
 
 def diff_panel(name: str, diff: str, max_lines: Optional[int] = None) -> Panel:
@@ -341,6 +367,8 @@ def render_detail(
         )
     else:
         console.print(detail_table(result))
+        for name in sorted(result.structure):
+            console.print(structure_panel(name, result.structure[name]))
 
     if diff_for:
         diff = result.diffs.get(diff_for)
@@ -442,6 +470,17 @@ def parse_detail_command(raw: str) -> Tuple[str, Optional[str]]:
     return verb, argument
 
 
+def _entry_at(result: ReviewResult, argument: str) -> Optional[str]:
+    """The detail-screen row named by a numeric argument, or None if there isn't one."""
+    if not argument.isdigit():
+        return None
+    entries = detail_entries(result)
+    index = int(argument) - 1
+    if not 0 <= index < len(entries):
+        return None
+    return entries[index]
+
+
 def _selected_entries(
     result: ReviewResult,
     argument: Optional[str],
@@ -460,12 +499,10 @@ def _selected_entries(
     if not argument.isdigit():
         return [], f"[dim]Not a row number: {argument!r}[/dim]"
 
-    entries = detail_entries(result)
-    index = int(argument) - 1
-    if not 0 <= index < len(entries):
+    name = _entry_at(result, argument)
+    if name is None:
         return [], f"[dim]No row {argument} on this screen.[/dim]"
 
-    name = entries[index]
     if name not in set(candidates):
         return [], f"[yellow]{name} is not available for that action.[/yellow]"
     return [name], None
@@ -603,6 +640,19 @@ def run_detail(
                         f"[dim]Say which: {verb} <n> for one file, {verb} all for every one.[/dim]"
                     )
                     continue
+
+                # A working deliverable is never updated (R-CLS-4), whatever heading it
+                # is missing — named explicitly rather than falling through to the
+                # generic "not available" notice, so the refusal explains the rule
+                # instead of leaving the operator to guess it.
+                if not deploying and argument != "all":
+                    named = _entry_at(result, argument)
+                    if named is not None and named in result.structure:
+                        notice = (
+                            f"[dim]{named} is a working document; "
+                            "working documents are never updated.[/dim]"
+                        )
+                        continue
 
                 pool = result.deployable if deploying else result.updatable
                 names, problem = _selected_entries(result, argument, pool)
