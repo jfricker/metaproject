@@ -12,7 +12,9 @@
 - [x] 3. `cli.py`: `doctor` command with `--dry-run`, agent-session guard, exit codes
 - [x] 4. `tests/test_doctor.py`: acceptance criteria 1–7 (15 new tests)
 - [x] 5. README "Upgrading" section
-- [ ] 6. Full gate via make (lint + 603 tests green in worktree; formal execute-tests pending)
+- [x] 6. Full gate via make: ruff clean, 603 passed (`--basetemp=/private/tmp/mp-gate-doctor2`,
+      worktree path trips the claude-arg guard otherwise), wheel builds with doctor.py
+      shipped; all 7 acceptance criteria covered by tests or the gate.
 
 ## Design invariants (regression guards)
 
