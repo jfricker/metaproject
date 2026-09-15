@@ -29,3 +29,6 @@ dist/
 # IDEs
 .vscode/
 .idea/
+
+# Serena MCP local config
+.serena/
