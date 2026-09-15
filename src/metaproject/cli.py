@@ -1088,6 +1088,78 @@ def backfill_cmd(
         raise typer.Exit(code=1)
 
 
+@app.command(name="doctor")
+def doctor_cmd(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Report findings and the fixes that would apply, without prompting or writing.",
+    ),
+) -> None:
+    """Diagnose and repair a stale installed environment after an upgrade.
+
+    Checks the live template store, `learn.targets` in config.json, the installed
+    Claude Code skill, and per-project `.metaproject.json` anchors against the
+    installed package. Each fix needs an operator's confirmation; `--dry-run`
+    writes nothing and is the only form permitted inside an agent session.
+    """
+    from metaproject import doctor
+
+    if not dry_run:
+        marker = agent_marker()
+        if marker is not None:
+            console.print(
+                Panel.fit(
+                    "[bold]`metaproject doctor` needs an operator.[/bold]\n\n"
+                    "Its fixes write to the template store, your config, the skill\n"
+                    "directory, and other projects — decisions that are the operator's\n"
+                    "to make, not an agent's.\n\n"
+                    "[bold]Preview the findings instead:[/bold]\n"
+                    "  [cyan]metaproject doctor --dry-run[/cyan]\n\n"
+                    f"[dim]{override_hint(marker)}[/dim]",
+                    title="[yellow]Agent Session — Doctor Refused[/yellow]",
+                )
+            )
+            raise typer.Exit(code=1)
+
+    config_file = get_config_file_path()
+    if not config_file.exists():
+        console.print(
+            Panel.fit(
+                f"No configuration found at [cyan]{config_file}[/cyan].\n\n"
+                "Run [cyan]metaproject init[/cyan] first; doctor repairs an\n"
+                "initialized environment, it doesn't create one.",
+                title="[red]Not Initialized[/red]",
+            )
+        )
+        raise typer.Exit(code=1)
+
+    cfg = load_config(config_file)
+    results = doctor.run_checks(cfg, config_file, dry_run=dry_run)
+
+    table = Table(title="Doctor — Environment Health")
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("Detail", overflow="fold")
+    for result in results:
+        if result.healthy and not result.findings:
+            status = "[green]healthy[/green]"
+        elif result.fixed:
+            status = "[green]fixed[/green]"
+        elif result.fixed is None and dry_run:
+            status = "[yellow]would fix[/yellow]" if result.findings else "[green]healthy[/green]"
+        else:
+            status = "[red]stale (declined)[/red]"
+        detail = "\n".join(result.findings) if result.findings else "—"
+        if result.findings:
+            detail += f"\n[dim]fix: {result.fix_summary}[/dim]"
+        table.add_row(result.name, status, detail)
+    console.print(table)
+
+    if not all(result.healthy for result in results):
+        raise typer.Exit(code=1)
+
+
 # --------------------------------------------------------------------------- learn
 #
 # `learn` is a command group whose *default* is the scan-then-review flow (spec.md
