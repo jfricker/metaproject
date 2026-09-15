@@ -53,7 +53,11 @@ version-controlled artifact — before any requirements, design, or code work st
    its approach; either way, ask questions until the problem, proposed outcome,
    affected systems, and constraints are concrete — don't just restate what the user
    typed.
-2. Draft `intent.md` in place, filling every section:
+2. **From the backlog.** If the idea comes from a `docs/backlog/` doc, use that doc as
+   the raw problem statement — verify its "Current behavior" still holds, carry its
+   Goal and Open questions into intent.md, and flip the doc's Status line to
+   `promoted YYYY-MM-DD (<cycle name>)` when the cycle starts.
+3. Draft `intent.md` in place, filling every section:
    - **Problem** — what's wrong or missing, for whom.
    - **Proposed outcome** — what "done" looks like, observably.
    - **Affected users and systems** — who/what this touches.
@@ -63,8 +67,8 @@ version-controlled artifact — before any requirements, design, or code work st
    - **Open questions** — anything still unresolved; these must be closed (or explicitly
      deferred) before approval.
    - Set **Status** to `Draft` while iterating.
-3. Iterate with the user until the doc reads as their own words, not a guess.
-4. When the user confirms it's ready, set **Status: Approved** and record the approver.
+4. Iterate with the user until the doc reads as their own words, not a guess.
+5. When the user confirms it's ready, set **Status: Approved** and record the approver.
 
 ## Output artifact
 
