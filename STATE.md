@@ -18,10 +18,10 @@
 - [x] B2. review classes
 - [x] B3. backfill_missing + `metaproject backfill`
 - [ ] B4. TUI + CLI surfaces
-- [ ] C1. structural evidence
-- [ ] C2. learn/structure.py + api partition
-- [ ] C3. apply heading proposals
-- [ ] C4. drift signal for structure
+- [x] C1. structural evidence
+- [x] C2. learn/structure.py + api partition
+- [x] C3. apply heading proposals
+- [x] C4. drift signal for structure
 - [ ] D1. templates
 - [ ] D2. skill docs + README
 - [x] D3. discovery doc
