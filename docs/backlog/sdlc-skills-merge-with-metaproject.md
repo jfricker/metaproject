@@ -16,7 +16,8 @@ version schemes, two doc sets for one product.
 
 **SDLC-skills repo** (`~/Projects/SDLC-skills`, local-only, **no git remote**, ~30 commits):
 
-- 7 skills: `skills/{write-intent,generate-spec,generate-design,generate-plan,implement-plan,execute-tests,wrapup}/SKILL.md`
+- 8 skills: `skills/{backlog-new,write-intent,generate-spec,generate-design,generate-plan,implement-plan,execute-tests,wrapup}/SKILL.md`
+  (`backlog-new` added 2026-09-15 — pre-cycle idea parking lot, see `docs/backlog/backlog-new-skill.md` in that repo)
 - `hooks/hooks.json` + `hooks/check-metaproject.sh` — SessionStart gate: metaproject ≥ 0.7.0
   on PATH (sort -V compare) and `.metaproject.json` at project root; always exits 0, notice only
 - `.claude-plugin/plugin.json` (v0.0.2) + `.claude-plugin/marketplace.json`
@@ -50,7 +51,7 @@ version schemes, two doc sets for one product.
 ## Approaches considered
 
 - **A — staging subtree, curate immediately (CHOSEN):** `git subtree add --prefix=sdlc-skills-import`,
-  then `git mv` the 7 SKILL.md files into `src/metaproject/skills/`, extend `skills.py`,
+  then `git mv` the 8 SKILL.md files into `src/metaproject/skills/`, extend `skills.py`,
   delete the staging prefix and all plugin/hook/marketplace files. Clean final layout,
   history in log; gives up clean future `subtree pull` (acceptable — source repo retires).
 - **B — permanent vendored subtree:** keep `sdlc-skills/` intact at repo root. Future pulls
@@ -74,7 +75,7 @@ own SDLC docs, its shell test).
 
 ### 2. Layout, wheel, `skills.py`
 
-- New `src/metaproject/skills/` (plural) with the 7 SKILL.md; existing `src/metaproject/skill/`
+- New `src/metaproject/skills/` (plural) with the 8 SKILL.md; existing `src/metaproject/skill/`
   (metaproject's own skill) untouched.
 - `pyproject.toml` package-data gains `"skills/**"`.
 - `skills.py`: refactor `install_skill` to take an explicit source dir; add
@@ -94,7 +95,7 @@ own SDLC docs, its shell test).
 ### 4. Tests
 
 New `tests/test_sdlc_skills.py`:
-- (a) all 7 SKILL.md bundled as package data
+- (a) all 8 SKILL.md bundled as package data
 - (b) each has valid frontmatter (name + description) and contains the managed-project precondition
 - (c) no stale `sdlc-skills:` namespace strings remain
 - (d) `install_all_skills` installs all 8 into a tmp target dir; second run → CURRENT, no writes
