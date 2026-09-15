@@ -2,7 +2,6 @@
 
 import inspect
 import io
-import shutil
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Callable, List
@@ -47,48 +46,6 @@ from metaproject.scaffold import scaffold_project
 from metaproject.templates import get_bundled_templates_dir
 
 
-def full_cycle_templates_store(tmp_path: Path) -> Path:
-    """A template store with every WORKING deliverable's template, for AC-1/AC-5.
-
-    Deviation from plan.md B2 (reported): the bundled store is unchanged until D1, so it
-    still has no spec.md/design.md/plan.md/ARCHITECTURE.md/docs-invariants/docs-facts
-    templates and a scaffolded project cannot reach `is_clean` against it. This copies
-    the bundled store and adds minimal templates for those six files (plus a `docs/archive`
-    directory template) so a project scaffolded and reviewed against it *can* be `CLEAN`
-    — the behaviour AC-1/AC-5 are about, exercised early rather than deferred to D1.
-    """
-    store = tmp_path / "full_cycle_templates"
-    shutil.copytree(get_bundled_templates_dir(), store)
-
-    (store / "spec.template.md").write_text(
-        "# {ProjectTitle} — Spec\n\n## Requirements\n\n## Acceptance criteria\n",
-        encoding="utf-8",
-    )
-    (store / "design.template.md").write_text(
-        "# {ProjectTitle} — Design\n\n## Affected components\n\n## Data flow\n",
-        encoding="utf-8",
-    )
-    (store / "plan.template.md").write_text(
-        "# {ProjectTitle} — Plan\n\n## Steps\n\n## Sequencing\n",
-        encoding="utf-8",
-    )
-    (store / "ARCHITECTURE.template.md").write_text(
-        "# {ProjectTitle} — Architecture\n\n## Overview\n",
-        encoding="utf-8",
-    )
-    (store / "docs.template" / "DESIGN-INVARIANTS.template.md").write_text(
-        "# Design invariants\n\n## Invariants\n",
-        encoding="utf-8",
-    )
-    (store / "docs.template" / "VERIFIED-FACTS.template.md").write_text(
-        "# Verified facts\n\n## Facts\n",
-        encoding="utf-8",
-    )
-    (store / "docs.template" / "archive.template").mkdir()
-    (store / "docs.template" / "archive.template" / ".gitkeep").write_text("", encoding="utf-8")
-    return store
-
-
 @pytest.fixture
 def quiet_console(tmp_path: Path) -> Console:
     """A console whose output goes nowhere, so board tests assert on state, not paint."""
@@ -108,12 +65,7 @@ def scripted(commands: List[str]) -> Callable[[], str]:
 
 
 def one_drifted_project(root: Path, name: str = "one_drift", templates_dir: Path = None) -> Path:
-    """A scaffolded project with exactly one drifted governance file (AGENTS.md).
-
-    Against the bundled store (the default), it is also missing the six WORKING
-    deliverables D1 has not yet templated (see `full_cycle_templates_store`); pass
-    `templates_dir` to avoid that.
-    """
+    """A scaffolded project with exactly one drifted governance file (AGENTS.md)."""
     proj = root / name
     scaffold_project(
         project_name=name,
@@ -139,13 +91,8 @@ def make_drifting_project(root: Path, name: str = "drifting_proj") -> Path:
 
 
 def test_review_compliant_project(tmp_path: Path) -> None:
-    """Verify that a freshly scaffolded project reports 100% compliance.
-
-    Uses `full_cycle_templates_store` (see its docstring): the bundled store has no
-    template yet for six WORKING deliverables (D1), so this project is scaffolded and
-    reviewed against a store that does.
-    """
-    templates = full_cycle_templates_store(tmp_path)
+    """Verify that a freshly scaffolded project reports 100% compliance."""
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "compliant_proj"
     scaffold_project(
         project_name="compliant_proj",
@@ -280,7 +227,7 @@ def test_review_depth_bounds_the_scan(tmp_path: Path) -> None:
 def test_ac1_filled_working_docs_keeping_headings_review_clean(tmp_path: Path) -> None:
     """AC-1: fill intent/spec/design/plan/STATE with arbitrary body text, keep the
     headings, and the project still reviews `✓ CLEAN`."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "ac1_proj"
     scaffold_project(
         project_name="ac1_proj",
@@ -314,7 +261,7 @@ def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_cl
 ) -> None:
     """AC-2: dropping `## Verified facts...` from STATE.md drifts it; a `— 2026` suffix
     on the same heading still satisfies the template."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "ac2_proj"
     scaffold_project(
         project_name="ac2_proj",
@@ -344,7 +291,7 @@ def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_cl
 def test_ac3_a_drifted_working_deliverable_is_never_updatable(tmp_path: Path) -> None:
     """AC-3: a DRIFTED working deliverable never appears in `updatable`, and
     `update_entry` raises for it."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "ac3_proj"
     scaffold_project(
         project_name="ac3_proj",
@@ -372,7 +319,7 @@ def test_ac3_a_drifted_working_deliverable_is_never_updatable(tmp_path: Path) ->
 def test_ac4_missing_handoff_is_never_incomplete(tmp_path: Path) -> None:
     """AC-4: `new` does not create HANDOFF.md; review of a project without it is not
     INCOMPLETE."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "ac4_proj"
     scaffold_project(
         project_name="ac4_proj",
@@ -400,7 +347,7 @@ def test_ac5_review_is_stable_across_an_advancing_clock(
 
     from metaproject.identity import read_identity
 
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     fixed_today = _datetime.date(2026, 9, 14)
     monkeypatch.setattr("metaproject.variables._today", lambda: fixed_today)
 
@@ -435,7 +382,7 @@ def test_ac5_review_is_stable_across_an_advancing_clock(
 def test_ac5a_review_never_writes_identity_and_notes_its_absence(tmp_path: Path) -> None:
     """AC-5a: `review` never modifies `.metaproject.json`; a project without one gets an
     informational note rather than being called INCOMPLETE for it."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = tmp_path / "ac5a_proj"
     scaffold_project(
         project_name="ac5a_proj",
@@ -565,19 +512,9 @@ def test_deployed_files_do_not_immediately_report_as_drifted(tmp_path: Path) -> 
         deploy_entry(proj, name, variables=variables)
 
     after = review_project(proj)
-    # Deviation from plan.md B2 (reported): bundled templates are unchanged until D1, so
-    # spec.md/design.md/plan.md/ARCHITECTURE.md/docs' two long-lived files/docs/archive
-    # have no template yet and stay missing — not deployable — after this batch. Every
-    # deliverable the *bundled store can* deploy is gone.
-    assert set(after.missing_files) == {
-        "spec.md",
-        "design.md",
-        "plan.md",
-        "ARCHITECTURE.md",
-        "docs/DESIGN-INVARIANTS.md",
-        "docs/VERIFIED-FACTS.md",
-        "docs/archive",
-    }
+    # Since D1 the bundled store templates every deliverable, so a full deploy batch
+    # leaves nothing missing.
+    assert set(after.missing_files) == set()
     # The two files that were already there stay drifted; deploy never touches them, and
     # nothing it wrote reports as drifted.
     assert set(after.updatable) == {"AGENTS.md", "README.md"}
@@ -658,7 +595,7 @@ def test_parse_detail_command(raw: str, expected: tuple) -> None:
 
 def test_the_state_word_names_the_defect(tmp_path: Path) -> None:
     """CLEAN / DRIFTED / INCOMPLETE, and the worse of the two defects wins."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     clean_dir = tmp_path / "clean_proj"
     scaffold_project(
         project_name="clean_proj",
@@ -740,7 +677,7 @@ def test_the_header_leads_with_the_score_and_the_scan_context(tmp_path: Path) ->
     """The board opens with the aggregate and what was audited, not a bare row count."""
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     scaffold_project(
         project_name="clean_proj",
         output=workspace / "clean_proj",
@@ -859,7 +796,7 @@ def test_a_viewed_diff_stays_pinned_until_it_is_dismissed(
     A diff that vanished on the next repaint disappeared at exactly the moment the
     operator typed the `u <n>` it had just argued for.
     """
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = one_drifted_project(tmp_path, templates_dir=templates)
     marker = "--- templates/AGENTS.md"
 
@@ -877,7 +814,7 @@ def test_a_viewed_diff_stays_pinned_until_it_is_dismissed(
 
 def test_c_closes_the_pinned_diff(tmp_path: Path, recording_console: Console) -> None:
     """Pinning is only tolerable with a way out, so `c` puts the screen back."""
-    templates = full_cycle_templates_store(tmp_path)
+    templates = get_bundled_templates_dir()
     proj = one_drifted_project(tmp_path, templates_dir=templates)
 
     run_detail(
@@ -973,25 +910,24 @@ def test_board_deploy_action_writes_missing_files(tmp_path: Path, quiet_console:
 
     assert outcome.errors == []
     # HANDOFF.md is on-demand (R-CLS-5): never listed as missing, never deployed here.
-    # spec.md/design.md/plan.md/ARCHITECTURE.md/docs' two long-lived files/docs/archive
-    # have no bundled template yet (D1), so they stay missing rather than deploying.
+    # Since D1 the bundled store templates every other deliverable, so `d all` deploys
+    # everything that was missing.
     assert {name for _, name in outcome.deployed} == {
         "intent.md",
-        "STATE.md",
-        "CLAUDE.md",
-        ".gitignore",
-        "docs",
-    }
-    assert not (proj / "HANDOFF.md").exists()
-    assert set(review_project(proj).missing_files) == {
         "spec.md",
         "design.md",
         "plan.md",
+        "STATE.md",
         "ARCHITECTURE.md",
         "docs/DESIGN-INVARIANTS.md",
         "docs/VERIFIED-FACTS.md",
+        "CLAUDE.md",
+        ".gitignore",
+        "docs",
         "docs/archive",
     }
+    assert not (proj / "HANDOFF.md").exists()
+    assert set(review_project(proj).missing_files) == set()
 
 
 def test_board_update_action_rewrites_one_drifted_file(

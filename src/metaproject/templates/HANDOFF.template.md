@@ -1,14 +1,18 @@
-# Handoff: {ProjectTitle}
+# Handoff: <what was interrupted>
 
-**Date**: {Date}  
-**Author**: {Author}  
+**Date**: {Date}
+**Author**: {Author}
 
-## Current State
-Brief summary of what was in progress when interrupted.
+## Current state
 
-## Immediate Next Steps
-1. Step 1
-2. Step 2
+## SDLC stage
 
-## Open Issues or Blockers
-None noted.
+## Branch / worktree
+
+## Last commit
+
+## Commands to re-run
+
+## Immediate next steps
+
+## Open issues or blockers

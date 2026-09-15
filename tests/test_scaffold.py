@@ -105,10 +105,17 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         "README.md",
         "AGENTS.md",
         "intent.md",
+        "spec.md",
+        "design.md",
+        "plan.md",
         "STATE.md",
         "CLAUDE.md",
+        "ARCHITECTURE.md",
         ".gitignore",
         "docs",
+        "docs/DESIGN-INVARIANTS.md",
+        "docs/VERIFIED-FACTS.md",
+        "docs/archive",
         ".metaproject.json",
     ]
     for expected in expected_files:

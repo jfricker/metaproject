@@ -1,10 +1,10 @@
 """Tests for `review.backfill_missing` and the `metaproject backfill` CLI command.
 
-Uses `full_cycle_templates_store` from `tests/test_review.py` (a template store with
-every WORKING deliverable templated) so a scaffolded project can actually reach a
-fully-populated state — the bundled store lacks those templates until D1.
+Since D1 the bundled store templates every scaffolded deliverable, so these tests
+scaffold against it directly rather than a purpose-built store.
 """
 
+import shutil
 from pathlib import Path
 from typing import List
 
@@ -14,12 +14,12 @@ from typer.testing import CliRunner
 from metaproject.cli import app
 from metaproject.review import BackfillResult, backfill_missing
 from metaproject.scaffold import scaffold_project
-from tests.test_review import full_cycle_templates_store
+from metaproject.templates import get_bundled_templates_dir
 
 
 def scaffolded_project(tmp_path: Path, name: str = "proj") -> tuple[Path, Path]:
-    """A project scaffolded against `full_cycle_templates_store`, plus that store's path."""
-    templates = full_cycle_templates_store(tmp_path)
+    """A project scaffolded against the bundled store, plus that store's path."""
+    templates = get_bundled_templates_dir()
     proj = tmp_path / name
     scaffold_project(
         project_name=name,
@@ -29,6 +29,18 @@ def scaffolded_project(tmp_path: Path, name: str = "proj") -> tuple[Path, Path]:
         no_git=True,
     )
     return proj, templates
+
+
+def store_missing_a_template(tmp_path: Path, missing: str) -> Path:
+    """A copy of the bundled store with one top-level template file removed.
+
+    For exercising `missing_template` behaviour now that the real bundled store (since
+    D1) templates every deliverable — that path needs a store deliberately incomplete.
+    """
+    store = tmp_path / "incomplete_templates"
+    shutil.copytree(get_bundled_templates_dir(), store)
+    (store / missing).unlink()
+    return store
 
 
 # ------------------------------------------------------------------------ backfill_missing
@@ -107,20 +119,23 @@ def test_backfill_no_files_missing_template_lists_it_others_still_created(
 ) -> None:
     """In no-files mode, a deliverable with no template is listed but others are created.
 
-    Uses the *bundled* store (not `full_cycle_templates_store`) so spec.md/design.md/
-    etc. genuinely lack templates until D1 — the real-world shape of this case.
+    Since D1 the real bundled store templates every deliverable, so this deliberately
+    uses a store missing one (`spec.template.md`) to exercise the `missing_template`
+    path.
     """
-    proj = tmp_path / "bundled_proj"
+    templates = store_missing_a_template(tmp_path, "spec.template.md")
+    proj = tmp_path / "incomplete_proj"
     proj.mkdir()
-    (proj / "README.md").write_text("# bundled_proj\n", encoding="utf-8")
+    (proj / "README.md").write_text("# incomplete_proj\n", encoding="utf-8")
 
-    result = backfill_missing(proj)
+    result = backfill_missing(proj, templates_dir=templates)
 
     assert "spec.md" in result.missing_template
-    assert "design.md" in result.missing_template
-    # Deliverables the bundled store *does* template are still created.
+    # Deliverables the store *does* template are still created.
     assert "AGENTS.md" in result.created
     assert (proj / "AGENTS.md").exists()
+    assert "design.md" in result.created
+    assert (proj / "design.md").exists()
 
 
 def test_backfill_dry_run_writes_nothing(tmp_path: Path) -> None:
@@ -324,11 +339,15 @@ def test_cli_backfill_missing_template_named_file(runner: CliRunner, tmp_path: P
 def test_cli_backfill_missing_template_no_files_mode_lists_and_creates_others(
     runner: CliRunner, tmp_path: Path
 ) -> None:
-    proj = tmp_path / "bundled_proj"
+    """Since D1 the real bundled store templates every deliverable, so this deliberately
+    uses a store missing one (`spec.template.md`) to exercise the `missing_template`
+    path."""
+    templates = store_missing_a_template(tmp_path, "spec.template.md")
+    proj = tmp_path / "incomplete_proj"
     proj.mkdir()
-    (proj / "README.md").write_text("# bundled_proj\n", encoding="utf-8")
+    (proj / "README.md").write_text("# incomplete_proj\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["backfill", "--dir", str(proj)])
+    result = runner.invoke(app, ["backfill", "--dir", str(proj), "--templates", str(templates)])
 
     assert result.exit_code == 1
     assert "spec.md" in result.output

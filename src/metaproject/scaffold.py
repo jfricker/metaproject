@@ -2,11 +2,11 @@
 and project generation.
 """
 
-from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from metaproject import __version__
+from metaproject import variables as variables_module
 from metaproject.config import Config, load_config
 from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
@@ -215,7 +215,7 @@ def scaffold_project(
 
     # 3. Variable resolution. `created` is fixed here so it is the single date used both
     # for the rendered `{Date}`/`{Year}` and for `.metaproject.json`'s `created` field.
-    created = date.today()
+    created = variables_module._today()
     variables = collect_variables(
         project_name=resolve_project_name(project_name, target_dir),
         title=title,

@@ -1,17 +1,21 @@
-# {ProjectTitle} - {ProjectDescription}
+# <Title>
 
-**Author**: {Author}. 
+**Author**: {Author}.
 **Last updated**: {Date}.
 **Status**: Draft.
+**Approved by**: —
 
 ## Problem
-{Problem description}
+
+<What problem, ticket, or incident prompted this cycle?>
 
 ## Proposed outcome
-{Proposed outcome description}
+
+<What should be true once this cycle ships?>
 
 ## Affected users and systems
-{Affected users and systems description}
+
+<Who or what this touches.>
 
 ## Scope
 
