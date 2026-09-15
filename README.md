@@ -4,6 +4,7 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 
 ## Features
 - **Instant Scaffolding (`metaproject new`)**: Scaffold projects with full SDLC documentation and automatic git initialization.
+- **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
 - **Workspace Universe (`metaproject universe`)**: Catalog and classify all projects across subdirectories into a SQLite database.
 - **Drift Auditing (`metaproject review`)**: Detect drift between project files and central templates.
@@ -99,7 +100,7 @@ metaproject init --config-dir ~/.metaproject --project-home ~/Projects --force
 
 ### 2. Scaffolding a New Project (`metaproject new`)
 
-`metaproject new` generates a complete repository with the AI-native SDLC governance files (`README.md`, `AGENTS.md`, `intent.md`, `STATE.md`, `HANDOFF.md`, `CLAUDE.md`, `.gitignore`, `docs/`) and initializes git with an initial commit in under a second.
+`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents (`intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`), the long-lived docs (`ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`), `docs/archive/`, and `.metaproject.json` — and initializes git with an initial commit in under a second. (`HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill HANDOFF.md` only when work is interrupted.)
 
 #### Guided Wizard
 ```bash
@@ -126,10 +127,9 @@ mkdir -p my-app && cd my-app
 metaproject new . --yes
 ```
 
-#### Backfilling a Directory That Already Has Work In It
-Pointing `new` at a directory that already contains files is a *backfill*. Metaproject shows
-you what is there and asks for two separate confirmations — one to copy the templates in, and
-one to set up git:
+#### Scaffolding into a directory that already has work in it
+Pointing `new` at a directory that already contains files shows you what is there and asks
+for two separate confirmations — one to copy the templates in, and one to set up git:
 
 ```bash
 cd ~/bin
@@ -139,11 +139,18 @@ metaproject new .
 - Files that already exist are **kept as-is** and listed under "Kept (Already Present)"; only
   the missing template files are written.
 - The project title and slug come from the directory name when you pass `.`.
-- Declining the git prompt still backfills the templates, just without `git init`/commit.
+- Declining the git prompt still scaffolds the templates, just without `git init`/commit.
 - If the directory is already a git repository, metaproject leaves it alone entirely — no
   re-init, no staging, no commit.
 - `--yes` cannot answer these prompts. For automation, pass `--force`, which skips both
   confirmations and **overwrites** colliding files.
+- In an agent session this whole flow is refused; `metaproject backfill` (below) is the
+  agent-safe alternative when only specific documents are missing.
+
+Every scaffold — fresh or into an existing directory — also writes `.metaproject.json` at
+the project root (`title`, `description`, `author`, `created`, `metaproject_version`),
+tracked in the initial commit. `review`, `learn`, `backfill`, and `universe` all read it
+first when resolving a project's variables.
 
 #### Previewing with Dry Run
 To inspect the files and paths that would be generated without writing anything to disk:
@@ -151,6 +158,34 @@ To inspect the files and paths that would be generated without writing anything 
 ```bash
 metaproject new sample-app --dry-run
 ```
+
+---
+
+### 2a. Filling In Missing Documents (`metaproject backfill`)
+
+`metaproject backfill [FILE...]` creates missing deliverables from the template store.
+Unlike scaffolding into an existing directory, it needs no confirmation, never overwrites,
+and never touches git — it is safe to run from an agent session or a hook:
+
+```bash
+# Create every deliverable `new` scaffolds that is currently missing
+metaproject backfill
+
+# Create specific documents by name, including the on-demand HANDOFF.md
+metaproject backfill spec.md HANDOFF.md
+
+# Preview without writing
+metaproject backfill --dry-run
+
+# Target a different project directory
+metaproject backfill --dir ~/Projects/other-project
+```
+
+With no file argument, every missing scaffolded deliverable is created in one call
+(on-demand deliverables excluded) and any that already exist are listed under "Skipped
+(already exists)". Naming files creates exactly those — including on-demand ones — but if
+*any* named file already exists, nothing at all is written and the command exits non-zero,
+listing the file(s) under "Refused — already exists, nothing written".
 
 ---
 
@@ -246,9 +281,16 @@ project's own name and description are never mistaken for drift.
 
 | State | Meaning |
 |---|---|
-| `✓ CLEAN` | Nothing missing, nothing drifted — the project matches its templates exactly. |
-| `~ DRIFTED` | Every deliverable exists, but one or more have diverged in content. |
+| `✓ CLEAN` | Nothing missing, nothing drifted, and no working document has lost a heading. |
+| `~ DRIFTED` | Every deliverable exists, but a governance file's content has diverged, or a working document is missing a heading its template expects. |
 | `! INCOMPLETE` | At least one standard deliverable is missing. A project that is both incomplete and drifted reads `INCOMPLETE`. |
+
+Governance deliverables (`AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) are diffed
+body-for-body and are the only files `u`/`update` can act on. Working deliverables
+(`intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`, `ARCHITECTURE.md`,
+`docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`) are checked for heading structure
+only — their body text is never diffed, and they are never offered for Update; the fix
+for a missing heading is filling it in yourself, not an automatic overwrite.
 
 Each state carries a **glyph as well as a colour**, so the verdict survives `NO_COLOR`, a
 piped log and a colourblind reader.

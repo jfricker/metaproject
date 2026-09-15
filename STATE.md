@@ -23,7 +23,7 @@
 - [x] C3. apply heading proposals
 - [x] C4. drift signal for structure
 - [x] D1. templates
-- [ ] D2. skill docs + README
+- [x] D2. skill docs + README
 - [x] D3. discovery doc
 - [x] E1. sdlc-skills hook + Makefile
 - [x] E2. sdlc-skills skills

@@ -1,14 +1,14 @@
 ---
 name: metaproject
-description: Use the `metaproject` CLI to scaffold, audit, and maintain a project's governance documents — AGENTS.md, CLAUDE.md, STATE.md, HANDOFF.md, intent.md, README.md — from a central template store at ~/.metaproject/templates. Use this skill whenever the user wants to start a new project with SDLC boilerplate, add governance or agent-instruction files to an existing repo ("backfill", "scaffold into this directory"), check whether a project has drifted from their templates ("review", "compliance", "is this project up to date"), promote a recurring pattern across projects into the templates themselves ("learn"), or list and classify the projects on their machine ("universe", "which projects am I working on"). Reach for it even when the user does not say "metaproject" by name — if they ask for an AGENTS.md, a STATE.md, a handoff doc, or ask why a project is missing its standard files, this is the tool that owns those files.
+description: Use the `metaproject` CLI to scaffold, audit, and maintain a project's SDLC documents — intent.md, spec.md, design.md, plan.md, STATE.md, AGENTS.md, CLAUDE.md, README.md, HANDOFF.md — from a central template store at ~/.metaproject/templates. Use this skill whenever the user wants to start a new project with SDLC boilerplate, add missing documents to an existing repo ("backfill", "scaffold into this directory"), check whether a project has drifted from their templates ("review", "compliance", "is this project up to date"), promote a recurring pattern across projects into the templates themselves ("learn"), or list and classify the projects on their machine ("universe", "which projects am I working on"). Reach for it even when the user does not say "metaproject" by name — if they ask for an AGENTS.md, a STATE.md, a spec, a handoff doc, or ask why a project is missing its standard files, this is the tool that owns those files.
 ---
 
 # metaproject
 
-`metaproject` keeps one set of governance documents consistent across every project on
-the machine. A central template store (`~/.metaproject/templates`) is the source of
-truth; individual projects drift away from it as work happens; the CLI's job is to close
-that loop — scaffold new projects from the templates, report drift in existing ones, and
+`metaproject` keeps one set of SDLC documents consistent across every project on the
+machine. A central template store (`~/.metaproject/templates`) is the source of truth;
+individual projects drift away from it as work happens; the CLI's job is to close that
+loop — scaffold new projects from the templates, report drift in existing ones, and
 promote drift that keeps recurring back into the templates.
 
 Understanding that loop matters more than memorizing flags: almost every question a user
@@ -17,11 +17,61 @@ project→templates?"
 
 | Direction | Command | What it does |
 |---|---|---|
-| templates → new project | `new` | Scaffold a project (or backfill an existing directory) |
+| templates → new project | `new` | Scaffold a project (or scaffold into an existing directory) |
+| templates → existing project | `backfill` | Create specific missing documents, agent-safe |
 | templates ↔ project | `review` | Report what is missing or has drifted; remediate |
 | projects → templates | `learn` | Turn recurring drift into reviewed template proposals |
 | survey | `universe` | Catalog and classify projects across a workspace tree |
 | setup | `init` | Create `~/.metaproject/` (config, template store, catalog) |
+
+## The 7-stage cycle
+
+Every project's documents move through one cycle, each stage owned by an `sdlc-skills`
+skill and ticked off in `STATE.md`'s Process list:
+
+```
+write-intent → generate-spec → generate-design → generate-plan →
+implement-plan → execute-tests → wrapup
+```
+
+`intent.md` (why), `spec.md` (what), `design.md` (how, technically), `plan.md` (how, in
+sequence), then implementation and its tests, then `wrapup` archives the cycle's
+documents and resets for the next one. `metaproject` scaffolds and checks the documents;
+it does not run the cycle itself.
+
+## Deliverable classes
+
+Every file `metaproject` scaffolds, reviews, or learns from belongs to exactly one class:
+
+- **governance** — `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`. Rendered and
+  diffed body-for-body; offered for both Update and Deploy when drifted or missing.
+- **working** — `intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`,
+  `ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`. Checked for
+  heading structure only — a template heading with no matching heading in the project
+  file is drift — never body-for-body, and never offered for Update; you fill their
+  content freely as the cycle runs.
+- **on-demand** — `HANDOFF.md`. Never scaffolded by `new` and never reported missing by
+  `review`; create it (with `backfill HANDOFF.md`) only when work is interrupted.
+- **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
+
+## Project identity: `.metaproject.json`
+
+`new` writes `.metaproject.json` at the project root — `title`, `description`, `author`,
+`created`, `metaproject_version` — and it is tracked in git. Every other command
+(`review`, `learn`, `backfill`, `universe`) reads it first for variable resolution;
+without it they fall back to `README.md`, then `pyproject.toml`, then `package.json`,
+then the directory name. `metaproject_version` records which version last brought the
+project up to date; only `new` sets it (a future `doctor` command will be the other).
+`.metaproject.json` is never itself reviewed or diffed — its absence is an informational
+note, not a defect.
+
+## The blank rule
+
+A cycle document (`intent.md`, `spec.md`, `design.md`, `plan.md`) is **blank** iff its
+first `# ` heading still contains `<Title>`. This is the one rule every skill and tool
+uses to decide "has this been written yet" — `write-intent`'s precondition,
+`generate-spec`'s stale-spec check, `wrapup`'s reset. `ARCHITECTURE.md` and the two
+long-lived `docs/` files use a different, never-blank header and don't participate.
 
 ## Before anything else: is it installed?
 
@@ -54,18 +104,23 @@ over — pass it on rather than trying to work around it. Proposals already reco
 readable through `learn list` and `learn show`, so there is usually still something
 useful you can do.
 
-**A backfill is refused** for the same reason: its two confirmations need a person.
-`--dry-run` still previews it, which is how you show the operator what would happen.
+**Scaffolding into an existing directory (`new .` on a non-empty directory) is
+refused** for the same reason: its two confirmations need a person. `--dry-run` still
+previews it, which is how you show the operator what would happen. `metaproject
+backfill` is the agent-safe alternative for filling in specific missing documents — see
+below.
 
-When a guard fires, relay it — "this needs you to run it, here is the command" — instead
-of reaching for `--force` or `METAPROJECT_AGENT=0`. Those exist for the operator, not for
-you; using them is how an agent turns a deliberate safety rail into an incident.
+When a guard fires, relay it — "this needs you to run it, here is the command" —
+instead of reaching for `--force` or `METAPROJECT_AGENT=0`. Those exist for the
+operator, not for you; using them is how an agent turns a deliberate safety rail into an
+incident.
 
-`metaproject new` still prompts for title, description, and author unless you supply them
-or pass `--yes`. Give it what it needs and it runs unattended.
+`metaproject new` still prompts for title, description, and author unless you supply
+them or pass `--yes`. Give it what it needs and it runs unattended.
 
-Read-only and safe to run whenever they would help: `review`, `universe`, `learn list`,
-`learn show`, and any `--dry-run`.
+Read-only or safe to run whenever they would help — none of these write anything except
+`backfill`, and `backfill` only ever *creates* a file that did not exist: `review`,
+`universe`, `learn list`, `learn show`, `backfill` (and any `--dry-run`).
 
 ## Scaffolding a new project
 
@@ -76,15 +131,16 @@ metaproject new rover-api \
   --yes
 ```
 
-This creates the directory, renders every template into it, and makes an initial git
-commit. Add `--dry-run` first if you want to show the user what will appear before
-anything is written. `--no-git` skips the repository.
+This creates the directory, renders every scaffolded template into it (writing
+`.metaproject.json` too), and makes an initial git commit. Add `--dry-run` first if you
+want to show the user what will appear before anything is written. `--no-git` skips the
+repository.
 
-## Backfilling an existing directory
+## Scaffolding into a directory that already has work in it
 
-Pointing `new` at a directory that already contains files is a *backfill*. The CLI shows
-what is there and asks for two separate confirmations — one to copy the templates in, one
-to set up git. Existing files are kept as-is; only the missing template files are written.
+Pointing `new` at a directory that already contains files shows what is there and asks
+for two separate confirmations — one to copy the templates in, one to set up git.
+Existing files are kept as-is; only the missing template files are written.
 
 Those prompts need a human. `--yes` cannot answer them by design, and `--force` skips
 both *and overwrites colliding files*. So:
@@ -98,6 +154,24 @@ both *and overwrites colliding files*. So:
   files it would overwrite. Overwriting someone's hand-written `README.md` or `AGENTS.md`
   is exactly the failure this flow exists to prevent.
 
+## `metaproject backfill`: filling in missing documents yourself
+
+Unlike `new .` on a populated directory, `backfill` needs no confirmation and is
+permitted in agent sessions — it only ever *creates* files, never overwrites, and never
+touches git. This is what a skill or hook uses to fill in a document `review` reports
+missing, right when it is needed:
+
+```bash
+metaproject backfill                # every missing scaffolded deliverable, one call
+metaproject backfill spec.md design.md   # exactly these, by name
+metaproject backfill HANDOFF.md      # on-demand deliverables must be named
+```
+
+With no file argument it creates every deliverable `new` would have scaffolded (skipping
+on-demand ones); naming files also lets you create on-demand ones like `HANDOFF.md`. An
+existing named file is refused — nothing is written and the command exits non-zero — so
+it never clobbers real content. `--dry-run` previews without writing.
+
 ## Auditing a project against the templates
 
 ```bash
@@ -109,25 +183,32 @@ metaproject review --all --depth 2       # every project under the tree
 Each project reports one of three states, and the distinction is worth keeping straight
 when you summarize:
 
-- `✓ CLEAN` — nothing missing, nothing drifted.
-- `~ DRIFTED` — every file is present, but one or more differ from the template.
-- `! INCOMPLETE` — a governance file the template defines is absent. Wins over drift.
+- `✓ CLEAN` — nothing missing, nothing drifted, no working document has lost a heading.
+- `~ DRIFTED` — every file is present, but a governance file's content differs from its
+  template, or a working document is missing a heading the template expects.
+- `! INCOMPLETE` — a scaffolded deliverable is absent. Wins over drift.
 
-Drift is not automatically a defect. A project that has grown a genuinely better
-`AGENTS.md` is drifted *and correct*; that is the signal `learn` is built to harvest. So
-report drift as a finding, not a fault, and ask which direction the user wants to move it
-before touching anything.
+Drift in a governance file is not automatically a defect. A project that has grown a
+genuinely better `AGENTS.md` is drifted *and correct*; that is the signal `learn` is
+built to harvest. So report it as a finding, not a fault, and ask which direction the
+user wants to move it before touching anything. Working-document structure drift is
+different — it means the project is missing a section the cycle expects — and it is
+never offered for Update; only `backfill`/`deploy` can add the missing document itself.
 
-Remediation lives behind the interactive board (`u` update a drifted file, `d` deploy a
-missing one). To apply a fix non-interactively, tell the user what `review` found and let
-them run the board, or write the file yourself from the template if that is clearly what
-they want.
+Remediation lives behind the interactive board (`u` update a drifted governance file, `d`
+deploy a missing one). To apply a fix non-interactively, tell the user what `review`
+found and let them run the board, write the file yourself from the template if that is
+clearly what they want, or use `metaproject backfill` for a missing working document.
 
 ## Promoting recurring drift into the templates
 
 `learn` is the reflective half of the tool: it collects how projects have actually
 diverged, clusters the divergences, scores them by how often and how recently they
-recur, and proposes template edits for the operator to accept.
+recur, and proposes template edits for the operator to accept. For governance files this
+still means body text and a model call; for working deliverables it means heading
+structure only — `learn` never reads or proposes changes to their body text, and a
+heading proposal (add or remove) needs corroboration from at least
+`learn.min_structure_evidence` projects (default 2) locally, with no model involved.
 
 ```bash
 metaproject learn list                  # pending proposals — safe, read-only
@@ -136,10 +217,10 @@ metaproject learn show 7                # rationale, proposed body, contributing
 
 Two operations deserve real restraint:
 
-- **`learn scan`** gathers evidence from every project and calls a model (`claude -p`) to
-  synthesize proposals. It costs time and money, and it sends redacted diffs off the
-  machine. The CLI refuses it in an agent session — surface the command it prints and let
-  the user decide.
+- **`learn scan`** gathers evidence from every project and, for governance files, calls a
+  model (`claude -p`) to synthesize proposals. It costs time and money, and it sends
+  redacted diffs off the machine. The CLI refuses it in an agent session — surface the
+  command it prints and let the user decide.
 - **`learn apply <id>`** rewrites a template and commits it. That template governs every
   project scaffolded from here on. Nothing stops you mechanically, so the restraint has to
   come from you: read the proposal with `show`, tell the user what it would change and
@@ -166,19 +247,23 @@ filesystem yourself.
 Scaffolding the files is the easy half. Their value comes from being kept current while
 work happens, and that is your job in every session inside a metaproject-managed repo:
 
-- **`intent.md`** — the problem and desired outcome, written before implementation.
-- **`spec.md` / `plan.md`** — what the intent becomes once it is designed and sequenced.
-- **`STATE.md`** — the live checklist: phases, design invariants, verified facts. Update
-  it as tasks land, not at the end.
+- **`intent.md` / `spec.md` / `design.md` / `plan.md`** — the cycle documents, one stage
+  each, moving Draft → Approved as the operator signs off.
+- **`STATE.md`** — the live checklist: the 7-stage Process list, implementation phases,
+  design invariants, verified facts, open items. Update it as tasks land, not at the end.
+- **`ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`** — the
+  long-lived record; `wrapup` appends each cycle's durable findings here and never resets
+  them.
 - **`HANDOFF.md`** — written when work is interrupted, so the next session (or the next
-  person) can resume without re-deriving context.
+  person) can resume without re-deriving context. On-demand: create it with `backfill`
+  only when actually stopping mid-stream.
 - **`AGENTS.md` / `CLAUDE.md`** — how to build, test, and work in this repo.
 
 When you finish a meaningful chunk of work in one of these repos, updating `STATE.md`
 is part of finishing — not a separate chore to mention and skip.
 
-See `references/documents.md` for what belongs in each file and how the SDLC flow moves
-between them.
+See `references/documents.md` for what belongs in each file and how the 7-stage cycle
+moves between them.
 
 ## Full command surface
 

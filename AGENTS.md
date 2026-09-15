@@ -66,10 +66,13 @@
 ### Core Subsystems
 1. **CLI Routing & Manifest (`src/metaproject/cli.py`, `__main__.py`)**:
    - Built on `typer` with `rich` console formatting.
-   - Registers commands (`init`, `new`, `universe`, `review`) and the `learn` command
-     group (`scan`, `review`, `list`, `show`, `apply`, `edit`, `reject`), whose bare
-     `learn [ROOT]` form is routed to a hidden default command by `LearnGroup.parse_args`.
-     Any new `learn` subcommand must be registered on `learn_app` or it is read as a path.
+   - Registers commands (`init`, `new`, `backfill`, `universe`, `review`) and the `learn`
+     command group (`scan`, `review`, `list`, `show`, `apply`, `edit`, `reject`), whose
+     bare `learn [ROOT]` form is routed to a hidden default command by
+     `LearnGroup.parse_args`. Any new `learn` subcommand must be registered on
+     `learn_app` or it is read as a path. `backfill` is the non-interactive, create-only
+     counterpart to `new .`'s interactive backfill — agent-safe, never overwrites, never
+     runs git.
    - Handles eager manifest inspection via `-v` / `--version`.
 
 2. **Configuration & Template Seeding (`src/metaproject/config.py`)**:
