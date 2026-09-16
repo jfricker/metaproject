@@ -1,0 +1,382 @@
+<!doctype html>
+<title>Universe TUI Mockups</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap">
+<style>
+:root {
+  --page-ground: #eceff2;
+  --page-surface: #f7f8fa;
+  --page-line: #cfd6dc;
+  --page-ink: #26313a;
+  --page-dim: #5d6b76;
+  --accent: #0e7c8c;
+  --term-ground: #10151b;
+  --term-panel: #1a2129;
+  --term-line: #33404d;
+  --term-ink: #c9d4de;
+  --term-dim: #7c8b99;
+  --term-cyan: #5cc8d7;
+  --term-green: #7ec96f;
+  --term-amber: #d7b25c;
+  --term-flag: #e0a458;
+  --term-red: #d97878;
+  --term-grey: #6b7683;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-ground: #14191f;
+    --page-surface: #1b222a;
+    --page-line: #333e49;
+    --page-ink: #d5dde4;
+    --page-dim: #8d9aa5;
+    --accent: #5cc8d7;
+  }
+}
+:root[data-theme="dark"] {
+  --page-ground: #14191f;
+  --page-surface: #1b222a;
+  --page-line: #333e49;
+  --page-ink: #d5dde4;
+  --page-dim: #8d9aa5;
+  --accent: #5cc8d7;
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  background: var(--page-ground);
+  color: var(--page-ink);
+  font-family: "Archivo", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  padding-block: 40px 64px;
+  padding-inline: 20px;
+}
+main { max-width: 940px; margin: 0 auto; }
+
+/* ---------- page chrome ---------- */
+header.masthead { border-bottom: 2px solid var(--page-line); padding-bottom: 22px; margin-bottom: 34px; }
+.eyebrow {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 10px;
+}
+h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; line-height: 1.15; }
+.standfirst { color: var(--page-dim); max-width: 62ch; margin-top: 10px; }
+.standfirst code, .note code {
+  font-family: "JetBrains Mono", monospace; font-size: 0.85em;
+  background: var(--page-surface); border: 1px solid var(--page-line);
+  border-radius: 4px; padding: 1px 5px;
+}
+
+section.screen { margin-bottom: 52px; }
+.screen-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.screen-head h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+.screen-head .spec-ref {
+  font-family: "JetBrains Mono", monospace; font-size: 12px;
+  color: var(--page-dim); letter-spacing: 0.04em;
+}
+.screen-sub { color: var(--page-dim); font-size: 14px; max-width: 68ch; margin-bottom: 14px; }
+
+.duo { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: 18px; align-items: start; }
+@media (max-width: 760px) { .duo { grid-template-columns: 1fr; } }
+
+/* ---------- terminal frame ---------- */
+.term {
+  background: var(--term-ground);
+  border: 1px solid var(--term-line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--term-ink);
+}
+.term-bar {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  background: var(--term-panel);
+  border-bottom: 1px solid var(--term-line);
+  padding: 7px 14px;
+  font-size: 12.5px; font-weight: 500;
+}
+.term-bar .t-title { color: var(--term-cyan); font-weight: 700; }
+.term-bar .t-ctx { color: var(--term-dim); font-variant-numeric: tabular-nums; }
+.term-body { padding: 12px 14px 14px; overflow-x: auto; }
+.term-keys {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  background: var(--term-panel);
+  border-top: 1px solid var(--term-line);
+  padding: 7px 14px;
+  font-size: 12px; color: var(--term-dim);
+}
+kbd {
+  font-family: inherit; font-size: 12px; font-weight: 700;
+  color: var(--term-ink);
+  border: 1px solid var(--term-line);
+  border-bottom-width: 2px; border-radius: 4px;
+  padding: 0 5px; margin-right: 5px;
+  background: var(--term-ground);
+}
+
+/* terminal table */
+.ttable { width: 100%; border-collapse: collapse; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ttable th {
+  text-align: left; font-weight: 500; font-size: 12px;
+  color: var(--term-dim); text-transform: uppercase; letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--term-line);
+  padding: 2px 14px 4px 0;
+}
+.ttable td { padding: 2.5px 14px 2.5px 0; }
+.ttable tr.sel { background: var(--term-panel); outline: 1px solid var(--term-cyan); outline-offset: -1px; }
+.ttable tr.sel td:first-child { padding-left: 4px; }
+.caret { color: var(--term-cyan); font-weight: 700; }
+.badge { font-weight: 700; font-size: 12px; letter-spacing: 0.04em; }
+.b-now { color: var(--term-green); }
+.b-act { color: var(--term-amber); }
+.b-idle { color: var(--term-amber); }
+.b-arch { color: var(--term-grey); }
+.p-name { color: var(--term-cyan); font-weight: 500; }
+.p-path { color: var(--term-dim); }
+.p-git { color: var(--term-cyan); }
+.p-sdlc { color: var(--term-green); letter-spacing: 0.12em; }
+.p-none { color: var(--term-grey); }
+
+/* detail panes */
+.d-sec { margin-bottom: 14px; }
+.d-sec:last-child { margin-bottom: 0; }
+.d-label {
+  font-size: 12px; font-weight: 500; color: var(--term-dim);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 4px;
+}
+.d-pre { white-space: pre; overflow-x: auto; color: var(--term-ink); }
+.d-pre .add { color: var(--term-green); }
+.d-pre .mod { color: var(--term-amber); }
+.d-pre .del { color: var(--term-red); }
+.d-pre .hash { color: var(--term-cyan); }
+.d-pre .rel { color: var(--term-dim); }
+.d-line { color: var(--term-ink); }
+.v-active { color: var(--term-green); font-weight: 700; }
+.v-stale { color: var(--term-red); font-weight: 700; }
+.flag { color: var(--term-flag); font-weight: 700; }
+.muted { color: var(--term-grey); }
+.kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 2px 16px; font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--term-dim); }
+.kv dd { color: var(--term-ink); overflow-wrap: anywhere; }
+.wt-flag { font-size: 12px; }
+
+/* annotation rail */
+.rail { font-size: 13px; }
+.rail h3 {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--accent); margin-bottom: 8px;
+}
+.rail ul { list-style: none; }
+.rail li { padding: 6px 0 6px 14px; border-left: 2px solid var(--page-line); color: var(--page-dim); }
+.rail li strong { color: var(--page-ink); font-weight: 600; }
+.rail li code { font-family: "JetBrains Mono", monospace; font-size: 0.85em; color: var(--page-ink); }
+
+/* approval checklist */
+.approve {
+  border: 1px solid var(--page-line);
+  background: var(--page-surface);
+  border-radius: 8px;
+  padding: 20px 22px;
+  margin-top: 8px;
+}
+.approve h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; }
+.approve ol { padding-left: 22px; color: var(--page-dim); display: grid; gap: 6px; max-width: 72ch; }
+.approve li strong { color: var(--page-ink); font-weight: 600; }
+.footnote { margin-top: 18px; font-size: 13px; color: var(--page-dim); }
+</style>
+</head>
+<body>
+<main>
+
+<header class="masthead">
+  <div class="eyebrow">approved 2026-09-16 · design review · universe-details-tui cycle</div>
+  <h1>Universe TUI Mockups</h1>
+  <p class="standfirst">Three screens of the proposed Textual app for
+  <code>metaproject universe</code>, rendered as they should look in the real
+  terminal (fixed dark, Textual conventions). Approve the layout here —
+  <code>design.md</code> names these screens, keys and sections as the contract.</p>
+</header>
+
+<!-- ================= SCREEN 1: LIST ================= -->
+<section class="screen">
+  <div class="screen-head">
+    <h2>1 · Project list</h2>
+    <span class="spec-ref">R-UNV-2a/2c · opens on db read, no scan</span>
+  </div>
+  <p class="screen-sub">Default view. Rows come straight from <code>universe.db</code>
+  (same columns as today's static table); nothing is scanned on open — the top bar
+  shows database age and points at <kbd>r</kbd> for the explicit refresh.</p>
+  <div class="duo">
+    <div class="term" role="img" aria-label="Universe TUI project list screen">
+      <div class="term-bar">
+        <span class="t-title">metaproject universe</span>
+        <span class="t-ctx">~/Projects · db read 4m ago · r to rescan</span>
+      </div>
+      <div class="term-body">
+        <table class="ttable">
+          <thead><tr>
+            <th></th><th>Classification</th><th>Project</th><th>Path</th><th>Last Mod</th><th>Git</th><th>SDLC</th>
+          </tr></thead>
+          <tbody>
+            <tr class="sel"><td><span class="caret">▸</span></td><td><span class="badge b-now">ACTIVE NOW</span></td><td class="p-name">MetaProject</td><td class="p-path">MetaProject</td><td>2026-09-15</td><td class="p-git">main</td><td class="p-sdlc">AISH</td></tr>
+            <tr><td></td><td><span class="badge b-now">ACTIVE NOW</span></td><td class="p-name">SDLC-skills</td><td class="p-path">SDLC-skills</td><td>2026-09-15</td><td class="p-git">main</td><td class="p-sdlc">AISH</td></tr>
+            <tr><td></td><td><span class="badge b-act">ACTIVE</span></td><td class="p-name">prompt-library</td><td class="p-path">prompt-library</td><td>2026-09-02</td><td class="p-git">main</td><td class="p-sdlc">A-S</td></tr>
+            <tr><td></td><td><span class="badge b-idle">IDLE</span></td><td class="p-name">site-redesign</td><td class="p-path">site-redesign</td><td>2026-06-11</td><td class="p-git">feat/home</td><td class="p-none">-</td></tr>
+            <tr><td></td><td><span class="badge b-arch">ARCHIVED</span></td><td class="p-name">old-portfolio</td><td class="p-path">archive/old-portfolio</td><td>2024-11-30</td><td class="p-git">main</td><td class="p-none">-</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="term-keys">
+        <span><kbd>↑↓</kbd>move</span>
+        <span><kbd>Enter</kbd>details</span>
+        <span><kbd>r</kbd>refresh db</span>
+        <span><kbd>q</kbd>quit</span>
+      </div>
+    </div>
+    <aside class="rail">
+      <h3>Notes</h3>
+      <ul>
+        <li><strong>Read-only</strong> — no key mutates; refresh is the only scan trigger (R-UNV-2g).</li>
+        <li><strong>Column set</strong> matches the static table, so the degraded no-TTY print looks the same (R-UNV-4/5).</li>
+        <li><strong>SDLC letters</strong> A·I·S·H keep their current meaning (AGENTS/intent/STATE/HANDOFF).</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<!-- ================= SCREEN 2: PROJECT DETAIL ================= -->
+<section class="screen">
+  <div class="screen-head">
+    <h2>2 · Project details</h2>
+    <span class="spec-ref">R-UNV-2d · fetched live on selection</span>
+  </div>
+  <p class="screen-sub">Everything here is fetched at selection time via bounded git
+  subprocesses — <code>universe.db</code> holds none of it. The worktree table is the
+  staleness contract: active/stale verdict from age + behind, and the amber
+  <span class="flag" style="font-family:'JetBrains Mono',monospace">⚠</span> flag
+  raised by uncommitted changes no matter what the score says.</p>
+  <div class="duo">
+    <div class="term" role="img" aria-label="Universe TUI project details screen">
+      <div class="term-bar">
+        <span class="t-title">MetaProject</span>
+        <span class="t-ctx">~/Projects/MetaProject</span>
+      </div>
+      <div class="term-body">
+        <div class="d-sec">
+          <div class="d-label">Status</div>
+          <div class="d-pre"><span class="mod"> M</span> design.md
+ <span class="mod">M</span>  src/metaproject/cli.py</div>
+        </div>
+        <div class="d-sec">
+          <div class="d-label">Last commit</div>
+          <div class="d-pre"><span class="hash">86920c7</span> <span class="rel">·</span> chore: adopt metaproject identity anchor and agent-skills layout</div>
+        </div>
+        <div class="d-sec">
+          <div class="d-label">Worktrees</div>
+          <table class="ttable">
+            <thead><tr><th></th><th>Branch</th><th>Age</th><th>Behind</th><th>Uncommitted</th><th>Verdict</th></tr></thead>
+            <tbody>
+              <tr class="sel"><td><span class="caret">▸</span></td><td class="p-git">feat/universe-tui</td><td>2d</td><td>0</td><td>2 files <span class="flag">⚠</span></td><td><span class="v-active">ACTIVE</span></td></tr>
+              <tr><td></td><td class="p-git">learn-drift</td><td>38d</td><td>11</td><td class="p-none">—</td><td><span class="v-stale">STALE</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="d-sec">
+          <div class="d-label">Metaproject version</div>
+          <div class="d-line">0.7.0 <span class="muted">· from .metaproject.json</span></div>
+        </div>
+      </div>
+      <div class="term-keys">
+        <span><kbd>←</kbd>back</span>
+        <span><kbd>Enter</kbd>worktree detail</span>
+        <span><kbd>r</kbd>refresh</span>
+        <span><kbd>q</kbd>quit</span>
+      </div>
+    </div>
+    <aside class="rail">
+      <h3>Notes</h3>
+      <ul>
+        <li><strong>Staleness shown as data</strong> — age, behind, uncommitted are the three scoring inputs (R-UNV-3); the verdict column is their product.</li>
+        <li><strong>⚠ is a flag, not a verdict</strong> — <code>feat/universe-tui</code> is active <em>and</em> flagged; the two never merge.</li>
+        <li><strong>Version</strong> reads the project's own <code>.metaproject.json</code>, "unknown" when absent.</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<!-- ================= SCREEN 3: WORKTREE DETAIL ================= -->
+<section class="screen">
+  <div class="screen-head">
+    <h2>3 · Worktree detail</h2>
+    <span class="spec-ref">R-UNV-2h · detail-of-detail</span>
+  </div>
+  <p class="screen-sub">Selecting a worktree row opens its own view — enough here
+  (branch, path, ahead/behind, the uncommitted files behind the flag, the commit that
+  dates it) to justify the nesting the intent approved.</p>
+  <div class="duo">
+    <div class="term" role="img" aria-label="Universe TUI worktree detail screen">
+      <div class="term-bar">
+        <span class="t-title">MetaProject · feat/universe-tui</span>
+        <span class="t-ctx">worktree · .claude/worktrees/feat-universe-tui</span>
+      </div>
+      <div class="term-body">
+        <dl class="kv">
+          <dt>Branch</dt><dd>feat/universe-tui</dd>
+          <dt>Path</dt><dd>~/Projects/MetaProject/.claude/worktrees/feat-universe-tui</dd>
+          <dt>Age</dt><dd>2d <span class="muted">(last commit 2026-09-13)</span></dd>
+          <dt>Ahead / behind main</dt><dd>3 ahead · 0 behind</dd>
+          <dt>Verdict</dt><dd><span class="v-active">ACTIVE</span> <span class="muted">· score 0 (age 0, behind 0)</span></dd>
+          <dt>Uncommitted</dt><dd><span class="flag">⚠</span> 2 files</dd>
+        </dl>
+        <div class="d-sec" style="margin-top:14px">
+          <div class="d-label">Uncommitted files</div>
+          <div class="d-pre"><span class="mod"> M</span> design.md
+ <span class="mod">M</span>  src/metaproject/cli.py</div>
+        </div>
+        <div class="d-sec">
+          <div class="d-label">Last commit</div>
+          <div class="d-pre"><span class="hash">a1f3b02</span> <span class="rel">·</span> feat: resolve_scan_root hard-scopes universe to project_home</div>
+        </div>
+      </div>
+      <div class="term-keys">
+        <span><kbd>←</kbd>back to project</span>
+        <span><kbd>q</kbd>quit</span>
+      </div>
+    </div>
+    <aside class="rail">
+      <h3>Notes</h3>
+      <ul>
+        <li><strong>Score is shown, not hidden</strong> — the operator can see why a verdict says what it says (design.md scoring table).</li>
+        <li><strong>The flag names its files</strong> — awareness you can act on without leaving the TUI (which still won't act for you).</li>
+        <li><strong>Read-only holds here too</strong> — no checkout, no clean, no editor.</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<!-- ================= APPROVAL ================= -->
+<section class="approve">
+  <h2>What you're approving</h2>
+  <ol>
+    <li><strong>Screen stack</strong> — list → project detail → worktree detail, one Escape level apart, exactly the nesting intent.md approved.</li>
+    <li><strong>Staleness presentation</strong> — verdict column plus the separate uncommitted flag, with the scoring inputs visible as columns and (on screen 3) as a score line.</li>
+    <li><strong>Key set</strong> — <code>↑↓ Enter ← r q</code> only; no actions, per the read-only decision.</li>
+    <li><strong>Degraded table parity</strong> — screen 1's columns are the no-TTY print, so the mock doubles as the static-table spec.</li>
+  </ol>
+  <p class="footnote">Colors and spacing here are illustrative of structure — Textual's
+  theme system styles the real app; the contract under review is screens, sections,
+  columns and keys, as designed in <code>design.md</code>.</p>
+</section>
+
+</main>
+</body>
+</html>

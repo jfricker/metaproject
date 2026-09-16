@@ -3,9 +3,9 @@
 ## Process
 
 <!-- each stage ticks its own item here as it completes -->
-- [ ] 1. write-intent: intent.md approved
-- [ ] 2. generate-spec: spec.md approved
-- [ ] 3. generate-design: design.md approved
+- [x] 1. write-intent: intent.md approved
+- [x] 2. generate-spec: spec.md approved
+- [x] 3. generate-design: design.md approved
 - [ ] 4. generate-plan: plan.md approved
 - [ ] 5. implement-plan: code and tests written
 - [ ] 6. execute-tests: tests passing

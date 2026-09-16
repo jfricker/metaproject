@@ -36,3 +36,6 @@ dist/
 # Claude Code local state
 .claude/settings.local.json
 .claude/worktrees/
+
+# Impeccable plugin local state
+.impeccable/

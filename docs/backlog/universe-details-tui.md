@@ -1,7 +1,7 @@
 # Universe: hard-scope to project_home + interactive details TUI
 
 **Captured**: 2026-09-15, backlog-new brainstorm session
-**Status**: backlog — not specced, not scheduled.
+**Status**: promoted 2026-09-15 (universe-details-tui).
 **Target**: MetaProject (`src/metaproject/cli.py` `universe` command, `src/metaproject/universe.py`, new TUI module)
 
 ## Goal
