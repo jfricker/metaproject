@@ -1,8 +1,11 @@
 """Tests for universe cataloger, activity classification, SQLite persistence, and reconciliation."""
 
+import json
+import os
 import time
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from metaproject.cli import app
@@ -14,11 +17,21 @@ from metaproject.db import (
     upsert_project,
 )
 from metaproject.universe import (
+    UniverseScopeError,
     classify_project,
     is_archived_path,
     is_project_root,
+    resolve_scan_root,
     scan_universe,
 )
+
+
+def write_project_home(home: Path) -> None:
+    """Point the test config's project_home at a fixture root (R-UNV-1 scoping)."""
+    config_dir = Path(os.environ["METAPROJECT_CONFIG_DIR"])
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config = json.dumps({"project_home": str(home)})
+    (config_dir / "config.json").write_text(config, encoding="utf-8")
 
 
 def test_is_project_root(tmp_path: Path) -> None:
@@ -131,8 +144,75 @@ def test_sqlite_db_and_reconciliation(tmp_path: Path) -> None:
     assert missing_projects[0]["missing_since"] is not None
 
 
+def test_resolve_scan_root_rules(tmp_path: Path) -> None:
+    """Verify the hard scoping of the universe scan root to project_home (R-UNV-1)."""
+    home = tmp_path / "Projects"
+    home.mkdir()
+    sub = home / "proj"
+    sub.mkdir()
+
+    # No target scans project_home itself
+    assert resolve_scan_root(None, home) == home.resolve()
+    # Equal and inside targets are accepted
+    assert resolve_scan_root(str(home), home) == home.resolve()
+    assert resolve_scan_root(str(sub), home) == sub.resolve()
+    # ..-escapes that stay inside resolve to a real inside path
+    assert resolve_scan_root(str(home / ".." / "Projects" / "proj"), home) == sub.resolve()
+
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    with pytest.raises(UniverseScopeError):
+        resolve_scan_root(str(outside), home)
+
+    # A symlinked alias resolving outside is refused, not followed
+    link = tmp_path / "link"
+    link.symlink_to(outside)
+    with pytest.raises(UniverseScopeError):
+        resolve_scan_root(str(link), home)
+
+
+def test_cli_universe_defaults_to_project_home(runner: CliRunner, tmp_path: Path) -> None:
+    """With no positional directory the scan root is project_home, not cwd (R-UNV-1)."""
+    home = tmp_path / "Projects"
+    home.mkdir()
+    proj = home / "in_proj"
+    proj.mkdir()
+    (proj / ".git").mkdir()
+    (proj / "README.md").write_text("# Home Project\nLives in project_home", encoding="utf-8")
+    write_project_home(home)
+
+    db_path = tmp_path / "universe.db"
+    result = runner.invoke(app, ["universe", "--db", str(db_path), "--format", "json"])
+    assert result.exit_code == 0
+    # Rich may wrap long fixture paths, so compare with the wrap newlines removed
+    unwrapped = result.output.replace("\n", "")
+    # The printed scan root is project_home even though cwd is elsewhere
+    assert f"Scanning universe from: {home.resolve()}" in unwrapped
+    assert "Home Project" in result.output
+
+
+def test_cli_universe_refuses_outside_project_home(runner: CliRunner, tmp_path: Path) -> None:
+    """A target outside project_home exits non-zero, names the boundary, writes nothing."""
+    home = tmp_path / "Projects"
+    home.mkdir()
+    write_project_home(home)
+
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    db_path = tmp_path / "universe.db"
+
+    result = runner.invoke(app, ["universe", str(outside), "--db", str(db_path)])
+    assert result.exit_code == 1
+    assert "Refusing to scan" in result.output
+    # The error names the project_home boundary (long fixture paths may be wrapped)
+    assert str(home.resolve()) in result.output.replace("\n", "")
+    # Nothing was scanned or written to the DB
+    assert not db_path.exists()
+
+
 def test_scan_universe_and_cli(runner: CliRunner, tmp_path: Path) -> None:
     """Verify universe scanning across a directory tree and CLI invocation."""
+    write_project_home(tmp_path)
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
 
@@ -178,6 +258,7 @@ def test_scan_universe_and_cli(runner: CliRunner, tmp_path: Path) -> None:
 
 def test_universe_path_scoping_and_single_project(runner: CliRunner, tmp_path: Path) -> None:
     """Verify that universe scopes query results to target_dir and catalogs single project roots."""
+    write_project_home(tmp_path)
     db_path = tmp_path / "universe.db"
     db = get_db(db_path)
 

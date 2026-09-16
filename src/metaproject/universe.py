@@ -41,6 +41,30 @@ PROJECT_MANIFESTS = {
 }
 
 
+class UniverseScopeError(Exception):
+    """A requested scan root lies outside the configured `project_home` (R-UNV-1)."""
+
+
+def resolve_scan_root(target_dir: Optional[str], project_home: str | Path) -> Path:
+    """Hard-scope the universe scan root to `project_home` (R-UNV-1).
+
+    No target scans `project_home` itself. A target is accepted only if, after
+    `expanduser().resolve()`, it equals `project_home` or lies inside it — the
+    check runs on the resolved path so a symlinked alias pointing outside is
+    refused, not followed.
+    """
+    home = Path(project_home).expanduser().resolve()
+    if target_dir is None:
+        return home
+    resolved = Path(target_dir).expanduser().resolve()
+    if resolved == home or home in resolved.parents:
+        return resolved
+    raise UniverseScopeError(
+        f"{resolved} is outside project_home ({home}). "
+        "metaproject universe only scans inside the configured project_home."
+    )
+
+
 def is_project_root(path: Path) -> bool:
     """Determine if a directory represents a project root boundary."""
     if not path.is_dir():

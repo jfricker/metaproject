@@ -79,6 +79,9 @@ def test_full_lifecycle_and_performance(
     assert (project_target / ".metaproject.json").exists()
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
     assert not (project_target / "HANDOFF.md").exists()
+    # Later commands load the config `init` wrote: universe's scan-root scoping
+    # (R-UNV-1) reads project_home from it.
+    monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(config_dir))
 
     # 3. UNIVERSE
     db_path = config_dir / "universe.db"

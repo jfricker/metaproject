@@ -695,7 +695,10 @@ CLASSIFICATION_COLORS = {
 def universe_cmd(
     target_dir: Optional[str] = typer.Argument(
         None,
-        help="Starting scan directory or 'summary' (default: cwd or project_home).",
+        help=(
+            "Starting scan directory or 'summary' (default: project_home; a path outside"
+            " project_home is refused)."
+        ),
     ),
     db_path: Optional[Path] = typer.Option(
         None,
@@ -746,6 +749,11 @@ def universe_cmd(
         "-a",
         help="Show all cataloged projects across all workspaces.",
     ),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="Print the table and exit instead of opening the interactive browser.",
+    ),
 ) -> None:
     """Catalog and classify all projects across subdirectories into a SQLite database."""
     import csv
@@ -753,7 +761,8 @@ def universe_cmd(
     import json
 
     from metaproject.db import get_db, get_universe_summary
-    from metaproject.universe import scan_universe
+    from metaproject.learn.tui import tui_enabled
+    from metaproject.universe import UniverseScopeError, resolve_scan_root, scan_universe
 
     cfg = load_config()
     resolved_db_path = db_path or Path(cfg.universe_db)
@@ -805,8 +814,40 @@ def universe_cmd(
         )
         return
 
-    # Determine target directory
-    start_path = (Path(target_dir) if target_dir else Path.cwd()).expanduser().resolve()
+    # The interactive browser is the default interface (R-UNV-2): with no positional
+    # directory, no display/format flag forcing text, and the same gate as `review`
+    # (--no-tui, agent session, TERM=dumb, non-TTY — R-UNV-5), it opens read-only on
+    # the DB. Degraded invocations fall through to the scan-then-table path, which is
+    # also the printed output for every trigger. Textual is imported lazily so the
+    # degraded paths never load it.
+    if (
+        target_dir is None
+        and not list_only
+        and not quiet
+        and not summary
+        and output_format == "table"
+        and tui_enabled(no_tui=no_tui)
+    ):
+        from metaproject.universe_tui import run_tui
+
+        run_tui(
+            db_path=resolved_db_path,
+            project_home=cfg.project_home,
+            classification_filter=classification_filter,
+            depth=depth,
+        )
+        return
+    if not tui_enabled(no_tui=no_tui):
+        print_agent_degradation_notice("the interactive browser", "inspect projects")
+
+    # The scan root is hard-scoped to project_home (R-UNV-1): the configured projects
+    # root is the single source of truth for where universe operates. The check runs
+    # before the database is opened so a refused path scans and writes nothing.
+    try:
+        start_path = resolve_scan_root(target_dir, cfg.project_home)
+    except UniverseScopeError as exc:
+        console.print(f"[red]Refusing to scan:[/red] {exc}")
+        raise typer.Exit(1) from exc
     db = get_db(resolved_db_path)
 
     if not list_only:
