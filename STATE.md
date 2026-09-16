@@ -6,7 +6,7 @@
 - [x] 1. write-intent: intent.md approved
 - [x] 2. generate-spec: spec.md approved
 - [x] 3. generate-design: design.md approved
-- [ ] 4. generate-plan: plan.md approved
+- [x] 4. generate-plan: plan.md approved
 - [ ] 5. implement-plan: code and tests written
 - [ ] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
