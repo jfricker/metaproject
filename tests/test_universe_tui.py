@@ -1,12 +1,19 @@
-"""Tests for the universe TUI: screen-content builders and the degradation gate."""
+"""Tests for the universe TUI: screen-content builders, the degradation gate, and a
+headless pilot run of the real app (mount, selection, back navigation)."""
 
+import asyncio
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from metaproject.cli import app
+from metaproject.db import get_db
 from metaproject.gitinfo import WorktreeInfo
+from metaproject.universe import scan_universe
 from metaproject.universe_tui import (
+    ProjectDetailScreen,
+    UniverseListScreen,
+    UniverseTui,
     format_age,
     list_row,
     score_line,
@@ -174,3 +181,38 @@ class TestDegradationGate:
         # No scan on open: the TUI branch returns before the DB is touched (AC-8)
         assert not db_path.exists()
         assert "Project Universe Catalog" not in result.output
+
+
+class TestPilotRun:
+    """The real app mounts and navigates headlessly (AC-4) — the part pure-function
+    tests cannot see, e.g. that selection hands a project record, not a path string."""
+
+    def test_list_select_detail_and_back(self, tmp_path: Path) -> None:
+        home = tmp_path / "Projects"
+        home.mkdir()
+        proj = home / "proj"
+        proj.mkdir()
+        (proj / ".git").mkdir()
+        (proj / "README.md").write_text("# Pilot\n", encoding="utf-8")
+        write_project_home(home)
+        db_path = tmp_path / "universe.db"
+        scan_universe(home, db=get_db(db_path))
+
+        async def run() -> None:
+            app = UniverseTui(db_path=db_path, project_home=home)
+            async with app.run_test(size=(100, 30)) as pilot:
+                await pilot.pause()
+                assert isinstance(app.screen, UniverseListScreen)
+                from textual.widgets import DataTable
+
+                table = app.screen.query_one("#projects", DataTable)
+                assert table.row_count == 1
+                await pilot.press("enter")
+                for _ in range(20):
+                    await pilot.pause()
+                assert isinstance(app.screen, ProjectDetailScreen)
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, UniverseListScreen)
+
+        asyncio.run(run())

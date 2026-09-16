@@ -115,6 +115,7 @@ class UniverseListScreen(Screen):
     def __init__(self, owner: "UniverseTui") -> None:
         super().__init__()
         self._owner = owner
+        self._projects: dict = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -135,6 +136,7 @@ class UniverseListScreen(Screen):
             classification=self._owner.classification_filter,
             include_missing=False,
         )
+        self._projects = {project["path"]: project for project in projects}
         table = self.query_one("#projects", DataTable)
         table.clear()
         for project in projects:
@@ -145,8 +147,9 @@ class UniverseListScreen(Screen):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         path = event.row_key.value
-        if path:
-            self.app.push_screen(ProjectDetailScreen(self._owner, path))
+        project = self._projects.get(path) if path else None
+        if project:
+            self.app.push_screen(ProjectDetailScreen(self._owner, project))
 
 
 class ProjectDetailScreen(Screen):
