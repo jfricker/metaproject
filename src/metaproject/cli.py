@@ -695,7 +695,7 @@ CLASSIFICATION_COLORS = {
 def universe_cmd(
     target_dir: Optional[str] = typer.Argument(
         None,
-        help="Starting scan directory or 'summary' (default: cwd or project_home).",
+        help="Starting scan directory or 'summary' (default: project_home; a path outside project_home is refused).",
     ),
     db_path: Optional[Path] = typer.Option(
         None,
@@ -753,7 +753,7 @@ def universe_cmd(
     import json
 
     from metaproject.db import get_db, get_universe_summary
-    from metaproject.universe import scan_universe
+    from metaproject.universe import UniverseScopeError, resolve_scan_root, scan_universe
 
     cfg = load_config()
     resolved_db_path = db_path or Path(cfg.universe_db)
@@ -805,8 +805,14 @@ def universe_cmd(
         )
         return
 
-    # Determine target directory
-    start_path = (Path(target_dir) if target_dir else Path.cwd()).expanduser().resolve()
+    # The scan root is hard-scoped to project_home (R-UNV-1): the configured projects
+    # root is the single source of truth for where universe operates. The check runs
+    # before the database is opened so a refused path scans and writes nothing.
+    try:
+        start_path = resolve_scan_root(target_dir, cfg.project_home)
+    except UniverseScopeError as exc:
+        console.print(f"[red]Refusing to scan:[/red] {exc}")
+        raise typer.Exit(1) from exc
     db = get_db(resolved_db_path)
 
     if not list_only:
