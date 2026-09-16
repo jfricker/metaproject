@@ -38,3 +38,15 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - On a real machine, the identity check's anchorless list includes the scan root
   itself and nested worktree/skill directories cataloged by `universe` — the findings
   are genuine catalog data; doctor reports, the operator decides.
+
+## 2026-09-16 — [universe-hard-scoping-and-details-tui](../archive/2026-09-16-universe-hard-scoping-and-details-tui/)
+
+- Textual apps need a headless pilot run (`app.run_test`) in the suite: builder and
+  gate tests passed while the real `ProjectDetailScreen` crashed on mount (a path
+  string was passed where the DB record was expected). The pilot test is kept as a
+  regression guard (206db10).
+- A main-checkout-only suite failure can be untracked leftovers the worktree never
+  had: the stray repo-root `templates/` (only `.DS_Store`) tripped
+  `test_repo_root_templates_directory_is_gone` on main after the merge while the
+  worktree run was green. `Path(__file__).resolve()`-based repo checks see the
+  checkout they run in, untracked files included.
