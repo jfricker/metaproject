@@ -8,7 +8,7 @@
 - [x] 3. generate-design: design.md approved
 - [x] 4. generate-plan: plan.md approved
 - [x] 5. implement-plan: code and tests written
-- [ ] 6. execute-tests: tests passing
+- [x] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
 
 ## Implementation phases
@@ -32,3 +32,8 @@
 ## Verified facts (do not re-investigate)
 
 <!-- written by implement-plan/execute-tests; appended to docs/VERIFIED-FACTS.md by wrapup -->
+- Textual apps need a headless pilot run (`app.run_test`) in the suite: builder and
+  gate tests passed while the real `ProjectDetailScreen` crashed on mount (path string
+  where a record was expected). Fixed in 206db10; pilot test kept as a regression guard.
+- Worktree gate run: `--basetemp=/private/tmp/mp-gate-final`, suite run unsandboxed
+  (git-writing tests); 638 passed, ruff clean, wheel builds (2026-09-16).
