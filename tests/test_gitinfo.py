@@ -159,9 +159,7 @@ class TestInspectProject:
         # the worktree is also behind: age(2) + behind(1) = stale
         (tmp_path / "wt" / "note.txt").write_text("old\n", encoding="utf-8")
         git(tmp_path / "wt", "add", ".")
-        old_date = time.strftime(
-            "%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 200 * 86400)
-        )
+        old_date = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 200 * 86400))
         subprocess.run(
             ["git", "-C", str(tmp_path / "wt"), "commit", "-m", "ancient"],
             capture_output=True,

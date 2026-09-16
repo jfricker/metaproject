@@ -192,7 +192,7 @@ def test_cli_universe_defaults_to_project_home(runner: CliRunner, tmp_path: Path
 
 
 def test_cli_universe_refuses_outside_project_home(runner: CliRunner, tmp_path: Path) -> None:
-    """A target resolving outside project_home exits non-zero, names the boundary, writes nothing."""
+    """A target outside project_home exits non-zero, names the boundary, writes nothing."""
     home = tmp_path / "Projects"
     home.mkdir()
     write_project_home(home)

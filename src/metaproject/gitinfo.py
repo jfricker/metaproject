@@ -71,6 +71,26 @@ def _git(path: Path, *args: str) -> Optional[str]:
     return proc.stdout
 
 
+def age_score(head_age_days: Optional[float]) -> int:
+    """Staleness contribution of the HEAD age: <7d→0, <30d→1, ≥30d→2 (unknown→0)."""
+    if head_age_days is None:
+        return 0
+    if head_age_days < STALE_AGE_TIERS[0]:
+        return 0
+    if head_age_days < STALE_AGE_TIERS[1]:
+        return 1
+    return 2
+
+
+def behind_score(behind_count: int) -> int:
+    """Staleness contribution of the behind count: 0→0, ≤5→1, >5→2."""
+    if behind_count == 0:
+        return 0
+    if behind_count <= STALE_BEHIND_TIER:
+        return 1
+    return 2
+
+
 def score_worktree(
     head_age_days: Optional[float],
     behind_count: int,
@@ -79,28 +99,11 @@ def score_worktree(
 ) -> tuple:
     """Pure staleness scoring (R-UNV-3): returns `(stale, flag)`.
 
-    Age `<7d`→0, `<30d`→1, `≥30d`→2 (unknown age → 0); behind `0`→0, `≤5`→1, `>5`→2.
-    An unknown base contributes 0 for behind. The uncommitted flag never merges into
-    the verdict.
+    Age and behind each contribute via `age_score`/`behind_score`. An unknown base
+    contributes 0 for behind. The uncommitted flag never merges into the verdict.
     """
-    if head_age_days is None:
-        age_score = 0
-    elif head_age_days < STALE_AGE_TIERS[0]:
-        age_score = 0
-    elif head_age_days < STALE_AGE_TIERS[1]:
-        age_score = 1
-    else:
-        age_score = 2
-
     effective_behind = behind_count if base_known else 0
-    if effective_behind == 0:
-        behind_score = 0
-    elif effective_behind <= STALE_BEHIND_TIER:
-        behind_score = 1
-    else:
-        behind_score = 2
-
-    stale = age_score + behind_score >= STALE_SCORE_THRESHOLD
+    stale = age_score(head_age_days) + behind_score(effective_behind) >= STALE_SCORE_THRESHOLD
     return stale, bool(has_uncommitted)
 
 
