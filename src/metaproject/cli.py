@@ -1060,7 +1060,8 @@ def review_cmd(
 def backfill_cmd(
     files: Optional[List[str]] = typer.Argument(
         None,
-        help="Specific deliverables to create (e.g. HANDOFF.md). Default: every "
+        help="Specific deliverables to create (e.g. docs/HANDOFF.md; old names such as "
+        "intent.md resolve to their docs/ path). Default: every "
         "missing deliverable `new` scaffolds.",
     ),
     project_dir: Optional[Path] = typer.Option(

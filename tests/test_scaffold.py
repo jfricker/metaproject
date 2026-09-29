@@ -106,13 +106,13 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
     expected_files = [
         "README.md",
         "AGENTS.md",
-        "intent.md",
-        "spec.md",
-        "design.md",
-        "plan.md",
-        "STATE.md",
+        "docs/INTENT.md",
+        "docs/SPEC.md",
+        "docs/TECH-DESIGN.md",
+        "docs/PLAN.md",
+        "docs/STATE.md",
         "CLAUDE.md",
-        "ARCHITECTURE.md",
+        "docs/ARCHITECTURE.md",
         ".gitignore",
         "docs",
         "docs/DESIGN-INVARIANTS.md",
@@ -124,7 +124,9 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         assert (target / expected).exists(), f"Missing expected deliverable: {expected}"
 
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
-    assert not (target / "HANDOFF.md").exists()
+    assert not (target / "docs" / "HANDOFF.md").exists()
+    root_md = {p.name for p in target.iterdir() if p.suffix == ".md"}
+    assert root_md == {"AGENTS.md", "CLAUDE.md", "README.md"}
 
     # Verify content substitution
     readme_content = (target / "README.md").read_text(encoding="utf-8")
@@ -557,7 +559,7 @@ def test_scaffold_backfill_preserves_existing_files(tmp_path: Path) -> None:
     assert (target / "README.md") not in res["rendered_files"]
     # Missing templates are still backfilled.
     assert (target / "AGENTS.md").exists()
-    assert (target / "STATE.md").exists()
+    assert (target / "docs" / "STATE.md").exists()
     # The directory name supplies the project title.
     assert res["variables"]["ProjectTitle"] == "Existing Work"
 

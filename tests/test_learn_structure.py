@@ -36,9 +36,13 @@ _INTENT_TEMPLATE = (
 def _templates_dir(tmp_path: Path) -> Path:
     """A shared template store carrying STATE.md and intent.md templates only."""
     templates_dir = tmp_path / "templates"
-    templates_dir.mkdir(exist_ok=True)
-    (templates_dir / "STATE.template.md").write_text(_STATE_TEMPLATE, encoding="utf-8")
-    (templates_dir / "intent.template.md").write_text(_INTENT_TEMPLATE, encoding="utf-8")
+    (templates_dir / "docs.template").mkdir(parents=True, exist_ok=True)
+    (templates_dir / "docs.template" / "STATE.template.md").write_text(
+        _STATE_TEMPLATE, encoding="utf-8"
+    )
+    (templates_dir / "docs.template" / "INTENT.template.md").write_text(
+        _INTENT_TEMPLATE, encoding="utf-8"
+    )
     return templates_dir
 
 
@@ -47,6 +51,7 @@ def _project(tmp_path: Path, name: str, files: Dict[str, str]) -> Path:
     project_dir = tmp_path / name
     project_dir.mkdir()
     for rel, content in files.items():
+        (project_dir / rel).parent.mkdir(parents=True, exist_ok=True)
         (project_dir / rel).write_text(content, encoding="utf-8")
     return project_dir
 
@@ -91,12 +96,12 @@ def test_three_of_four_projects_removing_heading_yields_one_remove_proposal(
         project_dir = _project(
             tmp_path,
             name,
-            {"intent.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+            {"docs/INTENT.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
         )
-        records += _collect(project_dir, templates_dir, "intent.md")
+        records += _collect(project_dir, templates_dir, "docs/INTENT.md")
 
-    compliant = _project(tmp_path, "proj4", {"intent.md": _INTENT_TEMPLATE})
-    compliant_records = _collect(compliant, templates_dir, "intent.md")
+    compliant = _project(tmp_path, "proj4", {"docs/INTENT.md": _INTENT_TEMPLATE})
+    compliant_records = _collect(compliant, templates_dir, "docs/INTENT.md")
     assert compliant_records == []
     records += compliant_records
 
@@ -105,7 +110,7 @@ def test_three_of_four_projects_removing_heading_yields_one_remove_proposal(
     remove_proposals = [p for p in proposals if p.kind == "remove_heading"]
     assert len(remove_proposals) == 1
     proposal = remove_proposals[0]
-    assert proposal.target_file == "intent.md"
+    assert proposal.target_file == "docs/INTENT.md"
     assert proposal.proposed_body == "## Constraints"
     assert proposal.target_section == "Constraints"
     assert proposal.source_lines == ("## Constraints",)
@@ -126,7 +131,7 @@ def test_two_projects_adding_heading_anchor_after_shared_heading(tmp_path: Path)
             tmp_path,
             name,
             {
-                "STATE.md": (
+                "docs/STATE.md": (
                     f"# STATE.md\n\n## Process\n{_BODY}\n\n"
                     f"## Implementation phases\n{_BODY}\n\n"
                     f"## Risks\n{_BODY}\n\n"
@@ -134,14 +139,14 @@ def test_two_projects_adding_heading_anchor_after_shared_heading(tmp_path: Path)
                 )
             },
         )
-        records += _collect(project_dir, templates_dir, "STATE.md")
+        records += _collect(project_dir, templates_dir, "docs/STATE.md")
 
     proposals = structure.propose(records, _weights(records), min_evidence=2)
 
     add_proposals = [p for p in proposals if p.kind == "add_heading"]
     assert len(add_proposals) == 1
     proposal = add_proposals[0]
-    assert proposal.target_file == "STATE.md"
+    assert proposal.target_file == "docs/STATE.md"
     assert proposal.proposed_body == "## Risks"
     assert proposal.target_section == "Implementation phases"
     assert len(proposal.contributing_paths) == 2
@@ -157,7 +162,7 @@ def test_single_project_heading_yields_no_proposal_by_default(tmp_path: Path) ->
         tmp_path,
         "solo",
         {
-            "STATE.md": (
+            "docs/STATE.md": (
                 f"# STATE.md\n\n## Process\n{_BODY}\n\n"
                 f"## Implementation phases\n{_BODY}\n\n"
                 f"## OnlyMine\n{_BODY}\n\n"
@@ -165,7 +170,7 @@ def test_single_project_heading_yields_no_proposal_by_default(tmp_path: Path) ->
             )
         },
     )
-    records = _collect(project_dir, templates_dir, "STATE.md")
+    records = _collect(project_dir, templates_dir, "docs/STATE.md")
 
     assert structure.propose(records, _weights(records)) == []
 
@@ -177,7 +182,7 @@ def test_min_evidence_one_lets_a_single_project_proposal_through(tmp_path: Path)
         tmp_path,
         "solo",
         {
-            "STATE.md": (
+            "docs/STATE.md": (
                 f"# STATE.md\n\n## Process\n{_BODY}\n\n"
                 f"## Implementation phases\n{_BODY}\n\n"
                 f"## OnlyMine\n{_BODY}\n\n"
@@ -185,7 +190,7 @@ def test_min_evidence_one_lets_a_single_project_proposal_through(tmp_path: Path)
             )
         },
     )
-    records = _collect(project_dir, templates_dir, "STATE.md")
+    records = _collect(project_dir, templates_dir, "docs/STATE.md")
 
     proposals = structure.propose(records, _weights(records), min_evidence=1)
     assert len(proposals) == 1
@@ -207,14 +212,14 @@ def test_level_change_in_two_projects_yields_one_remove_and_one_add(tmp_path: Pa
             tmp_path,
             name,
             {
-                "STATE.md": (
+                "docs/STATE.md": (
                     f"# STATE.md\n\n### Process\n{_BODY}\n\n"
                     f"## Implementation phases\n{_BODY}\n\n"
                     f"## Open items\n{_BODY}\n"
                 )
             },
         )
-        records += _collect(project_dir, templates_dir, "STATE.md")
+        records += _collect(project_dir, templates_dir, "docs/STATE.md")
 
     proposals = structure.propose(records, _weights(records), min_evidence=2)
 
@@ -239,9 +244,9 @@ def test_drift_boost_raises_the_score_of_a_corroborated_removal(tmp_path: Path) 
         project_dir = _project(
             tmp_path,
             name,
-            {"intent.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+            {"docs/INTENT.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
         )
-        records += _collect(project_dir, templates_dir, "intent.md")
+        records += _collect(project_dir, templates_dir, "docs/INTENT.md")
 
     weights = _weights(records)
     boosted_path = records[0].project_path

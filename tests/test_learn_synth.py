@@ -729,7 +729,8 @@ def _api_scan_project(root: Path, name: str, agents_extra_line: str, state_text:
     (project_dir / "AGENTS.md").write_text(
         _AGENTS_GOVERNANCE_TEMPLATE.rstrip("\n") + f"\n{agents_extra_line}\n", encoding="utf-8"
     )
-    (project_dir / "STATE.md").write_text(state_text, encoding="utf-8")
+    (project_dir / "docs").mkdir()
+    (project_dir / "docs" / "STATE.md").write_text(state_text, encoding="utf-8")
 
 
 def test_structural_evidence_never_reaches_the_guard_manifest_or_a_prompt(tmp_path: Path):
@@ -742,7 +743,10 @@ def test_structural_evidence_never_reaches_the_guard_manifest_or_a_prompt(tmp_pa
     templates_dir = tmp_path / "templates"
     templates_dir.mkdir()
     (templates_dir / "AGENTS.template.md").write_text(_AGENTS_GOVERNANCE_TEMPLATE, encoding="utf-8")
-    (templates_dir / "STATE.template.md").write_text(_STATE_STRUCTURE_TEMPLATE, encoding="utf-8")
+    (templates_dir / "docs.template").mkdir()
+    (templates_dir / "docs.template" / "STATE.template.md").write_text(
+        _STATE_STRUCTURE_TEMPLATE, encoding="utf-8"
+    )
 
     state_with_extra_heading = (
         "# STATE.md\n\n## Process\n<process body.>\n\n"
@@ -783,7 +787,10 @@ def test_all_structural_scan_makes_zero_runner_calls_and_requests_no_confirmatio
     root.mkdir()
     templates_dir = tmp_path / "templates"
     templates_dir.mkdir()
-    (templates_dir / "STATE.template.md").write_text(_STATE_STRUCTURE_TEMPLATE, encoding="utf-8")
+    (templates_dir / "docs.template").mkdir()
+    (templates_dir / "docs.template" / "STATE.template.md").write_text(
+        _STATE_STRUCTURE_TEMPLATE, encoding="utf-8"
+    )
 
     state_with_extra_heading = (
         "# STATE.md\n\n## Process\n<process body.>\n\n"
@@ -794,7 +801,8 @@ def test_all_structural_scan_makes_zero_runner_calls_and_requests_no_confirmatio
         project_dir = root / name
         project_dir.mkdir()
         (project_dir / "pyproject.toml").write_text("", encoding="utf-8")
-        (project_dir / "STATE.md").write_text(state_with_extra_heading, encoding="utf-8")
+        (project_dir / "docs").mkdir()
+        (project_dir / "docs" / "STATE.md").write_text(state_with_extra_heading, encoding="utf-8")
 
     db = get_db(tmp_path / "universe.db")
     fake = FakeClaude()

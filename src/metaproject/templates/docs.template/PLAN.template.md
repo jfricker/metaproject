@@ -1,7 +1,7 @@
 # <Title> — Implementation Plan
 
 **Author**: {Author}.
-**Derived from**: spec.md, design.md (<date>).
+**Derived from**: SPEC.md, TECH-DESIGN.md (<date>).
 **Last updated**: {Date}.
 **Status**: Draft.
 **Approved by**: —

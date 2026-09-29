@@ -3,10 +3,10 @@
 ## Process
 
 <!-- each stage ticks its own item here as it completes -->
-- [ ] 1. write-intent: intent.md approved
-- [ ] 2. generate-spec: spec.md approved
-- [ ] 3. generate-design: design.md approved
-- [ ] 4. generate-plan: plan.md approved
+- [ ] 1. write-intent: INTENT.md approved
+- [ ] 2. generate-spec: SPEC.md approved
+- [ ] 3. generate-design: TECH-DESIGN.md approved
+- [ ] 4. generate-plan: PLAN.md approved
 - [ ] 5. implement-plan: code and tests written
 - [ ] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
@@ -19,7 +19,7 @@
 
 <!-- written by implement-plan/execute-tests; appended to docs/DESIGN-INVARIANTS.md by wrapup -->
 
-## Open items carried into plan.md
+## Open items carried into PLAN.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
 

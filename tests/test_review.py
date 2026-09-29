@@ -129,9 +129,9 @@ def test_review_missing_files_and_drift(tmp_path: Path) -> None:
 
     review = review_project(proj)
     assert review.is_compliant is False
-    # HANDOFF.md is on-demand (R-CLS-5): never scaffolded, never reported missing.
-    assert "HANDOFF.md" not in review.missing_files
-    assert "STATE.md" in review.missing_files
+    # docs/HANDOFF.md is on-demand (R-CLS-5): never scaffolded, never reported missing.
+    assert "docs/HANDOFF.md" not in review.missing_files
+    assert "docs/STATE.md" in review.missing_files
     assert "CLAUDE.md" in review.missing_files
     assert ".gitignore" in review.missing_files
     assert "docs" in review.missing_files
@@ -140,7 +140,7 @@ def test_review_missing_files_and_drift(tmp_path: Path) -> None:
     assert "AGENTS.md" in review.diffs
     assert "AGENTS.md" in review.updatable
     assert "AGENTS.md" not in review.deployable
-    assert "STATE.md" in review.deployable
+    assert "docs/STATE.md" in review.deployable
 
 
 def test_review_workspace_and_cli(runner: CliRunner, tmp_path: Path) -> None:
@@ -238,7 +238,13 @@ def test_ac1_filled_working_docs_keeping_headings_review_clean(tmp_path: Path) -
         no_git=True,
     )
 
-    for name in ("intent.md", "spec.md", "design.md", "plan.md", "STATE.md"):
+    for name in (
+        "docs/INTENT.md",
+        "docs/SPEC.md",
+        "docs/TECH-DESIGN.md",
+        "docs/PLAN.md",
+        "docs/STATE.md",
+    ):
         path = proj / name
         text = path.read_text(encoding="utf-8")
         lines = text.splitlines(keepends=True)
@@ -260,7 +266,7 @@ def test_ac1_filled_working_docs_keeping_headings_review_clean(tmp_path: Path) -
 def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_clean(
     tmp_path: Path,
 ) -> None:
-    """AC-2: dropping `## Verified facts...` from STATE.md drifts it; a `— 2026` suffix
+    """AC-2: dropping `## Verified facts...` from docs/STATE.md drifts it; a `— 2026` suffix
     on the same heading still satisfies the template."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "ac2_proj"
@@ -271,7 +277,7 @@ def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_cl
         interactive=False,
         no_git=True,
     )
-    state_path = proj / "STATE.md"
+    state_path = proj / "docs/STATE.md"
     original = state_path.read_text(encoding="utf-8")
 
     heading = "## Verified facts (do not re-investigate)"
@@ -279,13 +285,13 @@ def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_cl
     state_path.write_text(original.replace(heading, ""), encoding="utf-8")
 
     drifted = review_project(proj, templates_dir=templates)
-    assert "STATE.md" in drifted.structure
-    assert any("Verified facts" in line for line in drifted.structure["STATE.md"])
+    assert "docs/STATE.md" in drifted.structure
+    assert any("Verified facts" in line for line in drifted.structure["docs/STATE.md"])
     assert drifted.is_clean is False
 
     state_path.write_text(original.replace(heading, f"{heading} — 2026"), encoding="utf-8")
     renamed = review_project(proj, templates_dir=templates)
-    assert "STATE.md" not in renamed.structure
+    assert "docs/STATE.md" not in renamed.structure
     assert renamed.is_clean is True
 
 
@@ -301,7 +307,7 @@ def test_ac3_a_drifted_working_deliverable_is_never_updatable(tmp_path: Path) ->
         interactive=False,
         no_git=True,
     )
-    state_path = proj / "STATE.md"
+    state_path = proj / "docs/STATE.md"
     state_path.write_text(
         state_path.read_text(encoding="utf-8").replace(
             "## Verified facts (do not re-investigate)", ""
@@ -310,15 +316,15 @@ def test_ac3_a_drifted_working_deliverable_is_never_updatable(tmp_path: Path) ->
     )
 
     result = review_project(proj, templates_dir=templates)
-    assert "STATE.md" in result.structure
-    assert "STATE.md" not in result.updatable
+    assert "docs/STATE.md" in result.structure
+    assert "docs/STATE.md" not in result.updatable
 
     with pytest.raises(MetaProjectError, match="working document"):
-        update_entry(proj, "STATE.md", templates_dir=templates)
+        update_entry(proj, "docs/STATE.md", templates_dir=templates)
 
 
 def test_ac4_missing_handoff_is_never_incomplete(tmp_path: Path) -> None:
-    """AC-4: `new` does not create HANDOFF.md; review of a project without it is not
+    """AC-4: `new` does not create docs/HANDOFF.md; review of a project without it is not
     INCOMPLETE."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "ac4_proj"
@@ -330,10 +336,10 @@ def test_ac4_missing_handoff_is_never_incomplete(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    assert not (proj / "HANDOFF.md").exists()
+    assert not (proj / "docs/HANDOFF.md").exists()
     review = review_project(proj, templates_dir=templates)
-    assert "HANDOFF.md" not in review.missing_files
-    assert "HANDOFF.md" not in review.deployable
+    assert "docs/HANDOFF.md" not in review.missing_files
+    assert "docs/HANDOFF.md" not in review.deployable
     assert review.is_compliant is True
     assert review.is_clean is True
 
@@ -483,12 +489,12 @@ def test_deploy_entry_writes_missing_file_and_refuses_to_overwrite(tmp_path: Pat
     """Deploy creates a missing deliverable; it never clobbers one that exists."""
     proj = make_drifting_project(tmp_path)
 
-    written = deploy_entry(proj, "STATE.md")
-    assert (proj / "STATE.md").exists()
-    assert written == [proj / "STATE.md"]
+    written = deploy_entry(proj, "docs/STATE.md")
+    assert (proj / "docs/STATE.md").exists()
+    assert written == [proj / "docs/STATE.md"]
 
     with pytest.raises(MetaProjectError, match="already exists"):
-        deploy_entry(proj, "STATE.md")
+        deploy_entry(proj, "docs/STATE.md")
 
 
 def test_deploy_entry_renders_a_directory_deliverable(tmp_path: Path) -> None:
@@ -511,9 +517,9 @@ def test_update_entry_overwrites_drift_and_refuses_a_missing_file(tmp_path: Path
     with pytest.raises(MetaProjectError, match="does not exist"):
         update_entry(proj, "CLAUDE.md")
 
-    # HANDOFF.md is on-demand, not governance: refused for its class, not its absence.
+    # docs/HANDOFF.md is on-demand, not governance: refused for its class, not its absence.
     with pytest.raises(MetaProjectError, match="working document"):
-        update_entry(proj, "HANDOFF.md")
+        update_entry(proj, "docs/HANDOFF.md")
 
 
 def test_deployed_files_do_not_immediately_report_as_drifted(tmp_path: Path) -> None:
@@ -676,7 +682,7 @@ def test_board_columns_count_rather_than_list(tmp_path: Path) -> None:
 
     assert "Missing" in rendered and "Drifted" in rendered
     # The counts stand in for the names, which live on the detail screen.
-    assert "HANDOFF.md" not in rendered
+    assert "docs/HANDOFF.md" not in rendered
     assert "Actions" not in rendered
     assert str(missing_count) in rendered
 
@@ -809,7 +815,7 @@ def test_detail_entries_list_missing_then_drifted(tmp_path: Path) -> None:
 
 
 def structurally_drifted_project(tmp_path: Path) -> "tuple[Path, Path]":
-    """A scaffolded project whose STATE.md has lost a template heading (R-CLS-3)."""
+    """A scaffolded project whose docs/STATE.md has lost a template heading (R-CLS-3)."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "structure_drift_proj"
     scaffold_project(
@@ -819,7 +825,7 @@ def structurally_drifted_project(tmp_path: Path) -> "tuple[Path, Path]":
         interactive=False,
         no_git=True,
     )
-    state_path = proj / "STATE.md"
+    state_path = proj / "docs/STATE.md"
     original = state_path.read_text(encoding="utf-8")
     heading = "## Verified facts (do not re-investigate)"
     assert heading in original
@@ -834,9 +840,9 @@ def test_detail_entries_lists_structure_drifted_working_docs(tmp_path: Path) -> 
     result = review_project(proj, templates_dir=templates)
 
     entries = detail_entries(result)
-    assert "STATE.md" in entries
-    assert "STATE.md" not in result.updatable
-    assert "STATE.md" in result.structure
+    assert "docs/STATE.md" in entries
+    assert "docs/STATE.md" not in result.updatable
+    assert "docs/STATE.md" in result.structure
 
 
 def test_board_detail_shows_missing_headings_instead_of_a_diff(
@@ -852,7 +858,7 @@ def test_board_detail_shows_missing_headings_instead_of_a_diff(
 
     assert "missing headings:" in rendered
     assert "Verified facts" in rendered
-    state_line = next(line for line in rendered.splitlines() if "STATE.md" in line)
+    state_line = next(line for line in rendered.splitlines() if "docs/STATE.md" in line)
     assert "Update" not in state_line
 
 
@@ -863,8 +869,8 @@ def test_u_on_a_working_doc_refuses_without_writing(
     instead of calling `update_entry` (R-CLS-4)."""
     proj, templates = structurally_drifted_project(tmp_path)
     result = review_project(proj, templates_dir=templates)
-    row = detail_entries(result).index("STATE.md") + 1
-    original = (proj / "STATE.md").read_text(encoding="utf-8")
+    row = detail_entries(result).index("docs/STATE.md") + 1
+    original = (proj / "docs/STATE.md").read_text(encoding="utf-8")
     outcome = BoardResult()
 
     run_detail(
@@ -880,7 +886,7 @@ def test_u_on_a_working_doc_refuses_without_writing(
     assert "working documents are never updated" in rendered
     assert outcome.updated == []
     assert outcome.errors == []
-    assert (proj / "STATE.md").read_text(encoding="utf-8") == original
+    assert (proj / "docs/STATE.md").read_text(encoding="utf-8") == original
 
 
 def test_u_all_pool_stays_governance_only_with_structure_drift_present(tmp_path: Path) -> None:
@@ -889,9 +895,9 @@ def test_u_all_pool_stays_governance_only_with_structure_drift_present(tmp_path:
     (proj / "AGENTS.md").write_text("# local rules\nNever use make!\n", encoding="utf-8")
     result = review_project(proj, templates_dir=templates)
 
-    assert "STATE.md" in result.structure
+    assert "docs/STATE.md" in result.structure
     assert "AGENTS.md" in result.updatable
-    assert "STATE.md" not in result.updatable
+    assert "docs/STATE.md" not in result.updatable
 
 
 def test_board_renders_notes_dim_and_warnings_yellow(tmp_path: Path) -> None:
@@ -1032,16 +1038,16 @@ def test_board_deploy_action_writes_missing_files(tmp_path: Path, quiet_console:
     )
 
     assert outcome.errors == []
-    # HANDOFF.md is on-demand (R-CLS-5): never listed as missing, never deployed here.
+    # docs/HANDOFF.md is on-demand (R-CLS-5): never listed as missing, never deployed here.
     # Since D1 the bundled store templates every other deliverable, so `d all` deploys
     # everything that was missing.
     assert {name for _, name in outcome.deployed} == {
-        "intent.md",
-        "spec.md",
-        "design.md",
-        "plan.md",
-        "STATE.md",
-        "ARCHITECTURE.md",
+        "docs/INTENT.md",
+        "docs/SPEC.md",
+        "docs/TECH-DESIGN.md",
+        "docs/PLAN.md",
+        "docs/STATE.md",
+        "docs/ARCHITECTURE.md",
         "docs/DESIGN-INVARIANTS.md",
         "docs/VERIFIED-FACTS.md",
         "CLAUDE.md",
@@ -1049,7 +1055,7 @@ def test_board_deploy_action_writes_missing_files(tmp_path: Path, quiet_console:
         "docs",
         "docs/archive",
     }
-    assert not (proj / "HANDOFF.md").exists()
+    assert not (proj / "docs/HANDOFF.md").exists()
     assert set(review_project(proj).missing_files) == set()
 
 
@@ -1196,7 +1202,7 @@ def test_bare_update_refuses_to_write_anything(tmp_path: Path, quiet_console: Co
     assert outcome.updated == []
     assert outcome.deployed == []
     assert (proj / "AGENTS.md").read_text(encoding="utf-8") == before
-    assert not (proj / "HANDOFF.md").exists()
+    assert not (proj / "docs/HANDOFF.md").exists()
 
 
 def test_update_all_is_gated_on_a_typed_confirmation(
@@ -1286,7 +1292,7 @@ def test_board_quits_without_acting(tmp_path: Path, quiet_console: Console) -> N
 
     assert outcome.actioned == 0
     assert outcome.quit_early is True
-    assert not (proj / "HANDOFF.md").exists()
+    assert not (proj / "docs/HANDOFF.md").exists()
 
 
 # ---------------------------------------------------------------------------------- CLI

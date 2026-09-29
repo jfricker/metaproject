@@ -18,7 +18,7 @@ DEFAULT_UNIVERSE_DB = DEFAULT_CONFIG_DIR / "universe.db"
 # Governance + working deliverables (spec.md R-LRN-3), plus three targets kept from the
 # prior default that are not declared deliverables: `docs/` (directory-target
 # expansion), `Makefile` and `pyproject.toml` (untemplated/config-shaped targets). On-
-# demand deliverables (HANDOFF.md) are excluded. A `config.json` that already pins
+# demand deliverables (docs/HANDOFF.md) are excluded. A `config.json` that already pins
 # `learn.targets` is left untouched by this change (deferred `doctor`, FC-3).
 DEFAULT_LEARN_TARGETS = [*deliverables.learn_targets(), "docs/", "Makefile", "pyproject.toml"]
 

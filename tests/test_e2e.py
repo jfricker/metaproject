@@ -63,13 +63,13 @@ def test_full_lifecycle_and_performance(
 
     assert (project_target / "README.md").exists()
     assert (project_target / "AGENTS.md").exists()
-    assert (project_target / "intent.md").exists()
-    assert (project_target / "spec.md").exists()
-    assert (project_target / "design.md").exists()
-    assert (project_target / "plan.md").exists()
-    assert (project_target / "STATE.md").exists()
+    assert (project_target / "docs" / "INTENT.md").exists()
+    assert (project_target / "docs" / "SPEC.md").exists()
+    assert (project_target / "docs" / "TECH-DESIGN.md").exists()
+    assert (project_target / "docs" / "PLAN.md").exists()
+    assert (project_target / "docs" / "STATE.md").exists()
     assert (project_target / "CLAUDE.md").exists()
-    assert (project_target / "ARCHITECTURE.md").exists()
+    assert (project_target / "docs" / "ARCHITECTURE.md").exists()
     assert (project_target / ".gitignore").exists()
     assert (project_target / "docs").exists()
     assert (project_target / "docs" / "DESIGN-INVARIANTS.md").exists()
@@ -78,7 +78,7 @@ def test_full_lifecycle_and_performance(
     assert (project_target / ".git").exists()
     assert (project_target / ".metaproject.json").exists()
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
-    assert not (project_target / "HANDOFF.md").exists()
+    assert not (project_target / "docs" / "HANDOFF.md").exists()
     # Later commands load the config `init` wrote: universe's scan-root scoping
     # (R-UNV-1) reads project_home from it.
     monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(config_dir))

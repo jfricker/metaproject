@@ -1,7 +1,7 @@
 # <Title> — Spec
 
 **Author**: {Author}.
-**Derived from**: intent.md (<date>).
+**Derived from**: INTENT.md (<date>).
 **Last updated**: {Date}.
 **Status**: Draft.
 **Approved by**: —

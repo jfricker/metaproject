@@ -29,12 +29,12 @@ def test_default_learn_config() -> None:
         "CLAUDE.md",
         "README.md",
         ".gitignore",
-        "intent.md",
-        "spec.md",
-        "design.md",
-        "plan.md",
-        "STATE.md",
-        "ARCHITECTURE.md",
+        "docs/INTENT.md",
+        "docs/SPEC.md",
+        "docs/TECH-DESIGN.md",
+        "docs/PLAN.md",
+        "docs/STATE.md",
+        "docs/ARCHITECTURE.md",
         "docs/DESIGN-INVARIANTS.md",
         "docs/VERIFIED-FACTS.md",
         "docs/",
@@ -58,7 +58,7 @@ def test_default_learn_targets_cover_declared_and_untemplated_targets() -> None:
     """DEFAULT_LEARN_TARGETS = every learn_targets() deliverable, plus the untemplated
     and directory targets kept from the prior default (spec.md R-LRN-3)."""
     assert set(deliverables.learn_targets()) <= set(DEFAULT_LEARN_TARGETS)
-    assert "HANDOFF.md" not in DEFAULT_LEARN_TARGETS
+    assert "docs/HANDOFF.md" not in DEFAULT_LEARN_TARGETS
     assert "docs/" in DEFAULT_LEARN_TARGETS
     assert "Makefile" in DEFAULT_LEARN_TARGETS
     assert "pyproject.toml" in DEFAULT_LEARN_TARGETS
@@ -146,9 +146,9 @@ def test_bundled_templates_exist() -> None:
     expected_files = [
         "AGENTS.template.md",
         "README.template.md",
-        "intent.template.md",
-        "STATE.template.md",
-        "HANDOFF.template.md",
+        "docs.template/INTENT.template.md",
+        "docs.template/STATE.template.md",
+        "docs.template/HANDOFF.template.md",
         "CLAUDE.template.md",
         ".gitignore.template",
     ]

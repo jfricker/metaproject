@@ -1,7 +1,7 @@
 # <Title> — Design
 
 **Author**: {Author}.
-**Derived from**: spec.md (<date>).
+**Derived from**: SPEC.md (<date>).
 **Last updated**: {Date}.
 **Status**: Draft.
 **Approved by**: —

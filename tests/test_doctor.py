@@ -77,7 +77,7 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
     """AC-1: dry-run reports without writing; confirmed run restores; extras survive."""
     cfg, config_file = _make_env(tmp_path)
     store = Path(cfg.templates_dir)
-    victim = store / "intent.template.md"
+    victim = store / "docs.template" / "INTENT.template.md"
     victim.unlink()
     extra = store / "learned-extra.template.md"
     extra.write_text("# learned content\n", encoding="utf-8")
@@ -87,7 +87,7 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
     templates_result = results[0]
     assert templates_result.name == "template store"
     assert not templates_result.healthy
-    assert any("intent.template.md" in f for f in templates_result.findings)
+    assert any("docs.template/INTENT.template.md" in f for f in templates_result.findings)
     assert any("learned-extra.template.md" in f for f in templates_result.findings)
     assert not victim.exists()
 
@@ -114,7 +114,13 @@ def test_config_migration_is_additive_and_preserves_pins(tmp_path: Path) -> None
     reloaded = load_config(config_file)
     targets = reloaded.learn.targets
     assert targets[:5] == pinned  # pins untouched, order preserved
-    for core in ("intent.md", "spec.md", "STATE.md", "README.md", "ARCHITECTURE.md"):
+    for core in (
+        "docs/INTENT.md",
+        "docs/SPEC.md",
+        "docs/STATE.md",
+        "README.md",
+        "docs/ARCHITECTURE.md",
+    ):
         assert core in targets  # missing core targets appended
 
 
@@ -196,7 +202,7 @@ def test_identity_check_skips_vanished_project_dirs(tmp_path: Path) -> None:
 def test_declined_fix_does_not_block_other_checks(tmp_path: Path) -> None:
     """R-DR-8: saying no to one check leaves the rest runnable and applied."""
     cfg, config_file = _make_env(tmp_path)
-    (Path(cfg.templates_dir) / "intent.template.md").unlink()
+    (Path(cfg.templates_dir) / "docs.template" / "INTENT.template.md").unlink()
     pinned = ["AGENTS.md"]
     cfg.learn.targets = pinned
     save_config(cfg, config_file)
@@ -244,12 +250,12 @@ def test_cli_doctor_requires_initialization(runner: CliRunner, tmp_path: Path) -
 def test_cli_doctor_dry_run_reports_and_exits_nonzero(runner: CliRunner, tmp_path: Path) -> None:
     """R-DR-1/R-DR-7: dry-run writes nothing, exit 1 when findings exist."""
     cfg, config_file = _make_env(tmp_path)
-    victim = Path(cfg.templates_dir) / "intent.template.md"
+    victim = Path(cfg.templates_dir) / "docs.template" / "INTENT.template.md"
     victim.unlink()
 
     result = runner.invoke(app, ["doctor", "--dry-run"], env=_cli_env(config_file))
     assert result.exit_code == 1
-    assert "intent.template.md" in result.output
+    assert "INTENT.template.md" in result.output
     assert not victim.exists()
 
 
