@@ -22,7 +22,7 @@
 - [x] 6. Project skills, new/backfill, init (R-SKL-1..7, R-INI-1..2; doctor global-skill check removed here, pulled forward from step 7)
 - [x] 7. doctor (R-DRX-1..7; also fixed default confirm never prompting)
 - [x] 8. Skill text + skill tests (R-TXT-1..3, R-SKL-7)
-- [ ] 9. Documentation
+- [x] 9. Documentation (R-TXT-2..4, R-RET-1)
 - [ ] 10. Populate this repo's skills
 
 ## Design invariants (regression guards)

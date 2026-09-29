@@ -1,6 +1,6 @@
 # MetaProject — Architecture
 
-Long-lived index. Unlike `intent.md`/`spec.md`/`design.md`/`plan.md`/`STATE.md`, this
+Long-lived index. Unlike `INTENT.md`/`SPEC.md`/`TECH-DESIGN.md`/`PLAN.md`/`STATE.md`, this
 file is never reset — `wrapup` appends to it at the end of every cycle. It is the sum of
 every cycle's specifications plus the decisions made along the way, not a from-scratch
 description of the system.
@@ -25,8 +25,9 @@ learn all classify documents identically; `identity.py` writes a per-project
 compared structurally where structure is the meaning (`markdown.py` heading trees back
 `review`'s structure drift and `learn`'s local heading proposals — which never reach
 the model egress path), and textually where text is the meaning. The 7-stage SDLC cycle
-itself lives in the `sdlc-skills` plugin (`~/Projects/SDLC-skills`), which consumes
-these templates rather than carrying copies.
+skills ship in the metaproject wheel (`src/metaproject/sdlc_skills/`) and are copied
+into each project's `.agents/skills/` by `new`/`backfill`; cycle documents live in each
+project's `docs/`, and `doctor` migrates older layouts.
 
 ## Cycle index
 

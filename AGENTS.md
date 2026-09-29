@@ -66,7 +66,7 @@
 ### Core Subsystems
 1. **CLI Routing & Manifest (`src/metaproject/cli.py`, `__main__.py`)**:
    - Built on `typer` with `rich` console formatting.
-   - Registers commands (`init`, `new`, `backfill`, `universe`, `review`) and the `learn`
+   - Registers commands (`init`, `new`, `backfill`, `universe`, `review`, `doctor`) and the `learn`
      command group (`scan`, `review`, `list`, `show`, `apply`, `edit`, `reject`), whose
      bare `learn [ROOT]` form is routed to a hidden default command by
      `LearnGroup.parse_args`. Any new `learn` subcommand must be registered on
@@ -92,8 +92,8 @@
    - Exposes summary metrics via `metaproject universe summary` and `get_universe_summary()`.
 
 5. **Compliance & Drift Detection (`src/metaproject/review.py`, `src/metaproject/review_tui.py`)**:
-   - `review.py`: audits projects against active templates in `~/.metaproject/templates/`, identifying missing governance files and content drift across workspace repositories. One audit is one `ReviewResult` — a frozen dataclass that is the single declaration of the schema, storing only what the scan observed and deriving `updatable`, `is_compliant` ("nothing is missing") and `is_clean` ("nothing missing and nothing drifted") as properties. Every comparison renders the template with the project's own variables first (shared with `learn.collect`), so substituted placeholders are never reported as drift. It also owns the two remediations — `deploy_entry` writes a missing deliverable, `update_entry` rewrites a drifted one, and neither will do the other's job — and the `~/.metaproject/review-ignore.json` ledger of projects permitted to stay out of compliance.
-   - `review_tui.py`: the `rich` compliance board behind `metaproject review`. It opens with a summary header — the aggregate score over the scan root and the template store it was measured against — above the table. The `Compliance` column has three states, each named for the defect it reports and each carrying a glyph as well as a colour (`✓ CLEAN` / `~ DRIFTED` / `! INCOMPLETE`, the last winning when a project is both), so the verdict survives `NO_COLOR` and a pipe; `Missing` and `Drifted` are counts rather than file lists because the board is a triage view. Both screens read verb-first (`u 3`, `d 2`, `i 4`, `o 1`), with the board's old number-first form (`3u`) still accepted and `?` documenting both — `OK` dismisses a project for the session and it is checked again next review, `Ignore` is durable and it is not; `u <n>` and `d <n>` are the same door onto a detail screen listing that project's missing and drifted files, where each write calls the same `review.py` function a non-interactive path would, so there is no board-only code path. A bare `u`/`d` writes nothing and `u all`/`d all` are gated on a typed confirmation; a remediation batch resolves template variables once before its first write. A viewed diff stays pinned until `c` closes it, and one taller than the screen goes to the pager. Both loops run on the alternate screen so the operator's scrollback survives, and the whole thing degrades to the printed board (header included) without a TTY, with `--no-tui`, or under `TERM=dumb`.
+   - `review.py`: audits projects against active templates in `~/.metaproject/templates/`, identifying missing governance files and content drift across workspace repositories. One audit is one `ReviewResult` — a frozen dataclass that is the single declaration of the schema, storing only what the scan observed and deriving `updatable`, `is_compliant` ("nothing is missing"), `is_current` ("no cycle document at a legacy location") and `is_clean` ("nothing missing, nothing drifted, nothing legacy") as properties. A relocated document still at its old root or lowercase location is recorded in `legacy`, never in `missing_files`/`deployable`, so Deploy cannot create a blank copy beside the real one. Every comparison renders the template with the project's own variables first (shared with `learn.collect`), so substituted placeholders are never reported as drift. It also owns the two remediations — `deploy_entry` writes a missing deliverable, `update_entry` rewrites a drifted one, and neither will do the other's job — and the `~/.metaproject/review-ignore.json` ledger of projects permitted to stay out of compliance.
+   - `review_tui.py`: the `rich` compliance board behind `metaproject review`. It opens with a summary header — the aggregate score over the scan root and the template store it was measured against — above the table. The `Compliance` column has four states, each named for the defect it reports and each carrying a glyph as well as a colour (`✓ CLEAN` / `~ DRIFTED` / `↻ OUTOFDATE` / `! INCOMPLETE`, with precedence INCOMPLETE > OUTOFDATE > DRIFTED; legacy documents are listed on the detail screen under "Legacy location — run `metaproject doctor`" with no action key), so the verdict survives `NO_COLOR` and a pipe; `Missing` and `Drifted` are counts rather than file lists because the board is a triage view. Both screens read verb-first (`u 3`, `d 2`, `i 4`, `o 1`), with the board's old number-first form (`3u`) still accepted and `?` documenting both — `OK` dismisses a project for the session and it is checked again next review, `Ignore` is durable and it is not; `u <n>` and `d <n>` are the same door onto a detail screen listing that project's missing and drifted files, where each write calls the same `review.py` function a non-interactive path would, so there is no board-only code path. A bare `u`/`d` writes nothing and `u all`/`d all` are gated on a typed confirmation; a remediation batch resolves template variables once before its first write. A viewed diff stays pinned until `c` closes it, and one taller than the screen goes to the pager. Both loops run on the alternate screen so the operator's scrollback survives, and the whole thing degrades to the printed board (header included) without a TTY, with `--no-tui`, or under `TERM=dumb`.
 
 6. **Template Learning Pipeline (`src/metaproject/learn/`)**:
    - `collect.py`: renders each template with a project's own variables and diffs it against the project's file, so substituted placeholders are not mistaken for novel content.
@@ -120,8 +120,11 @@
 - `src/metaproject/review.py`: Template drift detection, compliance, remediation and the ignore list.
 - `src/metaproject/review_tui.py`: The `rich` compliance board and its per-project detail screen.
 - `src/metaproject/learn/`: Corroborated-proposal pipeline (`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui`).
-- `src/metaproject/skill/`: The bundled Claude Code skill (`SKILL.md` plus `references/`), shipped as package data.
-- `src/metaproject/skills.py`: Installs that skill into `~/.claude/skills/metaproject/` during `init`.
+- `src/metaproject/deliverables.py`: The single declaration of deliverable paths and classes, plus the legacy-name mapping (`LEGACY_NAMES`, `canonical_path`, `legacy_locations`, `exact_exists`) behind the `docs/` relocation.
+- `src/metaproject/skill/`: The bundled metaproject skill (`SKILL.md` plus `references/`), shipped as package data.
+- `src/metaproject/sdlc_skills/`: The eight bundled SDLC cycle skills (`write-intent` … `wrapup`, `backlog-new`), imported with history from the retired sdlc-skills repository.
+- `src/metaproject/skills.py`: `bundled_skills()` declares the nine project skills; `install_project_skills` copies missing ones into a project's `.agents/skills/` for `new`/`backfill` (create-only; `init` installs none).
+- `src/metaproject/doctor.py`: `metaproject doctor` — store layout, store, config, orphaned global skill, identity, and per-project docs migration and skills, each fix behind confirmation.
 - `src/metaproject/session.py`: Agent-session detection (`CLAUDECODE`, `AI_AGENT`, `CI`, `METAPROJECT_AGENT`) behind the TUI, scan, and backfill guards.
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.
@@ -145,19 +148,24 @@
 ## Process
 This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook with modifications. This document adds to the playbook and merges ideas. It doesn't supercede the playbook unless explicitly stated.
 
-### HANDOFF.md
- When work is interrupted before completion, create a HANDOFF.md to capture the state of the work and any other information needed to resume the work or hand it off to another agent at another time.
+The cycle documents live in `docs/`; the cycle skills are this project's own copies in `.agents/skills/` (reachable as `.claude/skills/`), invoked by bare name (`/write-intent`, …, `/wrapup`).
 
-### STATE.md
+### docs/HANDOFF.md
+ When work is interrupted before completion, create `docs/HANDOFF.md` (`metaproject backfill docs/HANDOFF.md`) to capture the state of the work and any other information needed to resume the work or hand it off to another agent at another time.
+
+### docs/STATE.md
  Maintain a running list of all tasks and their status. Update it as tasks are completed. Format the list as a checklist with a box, task number and a task description.
 
-### intent.md
- intent.md is a source of truth for proposed changes to the system. Read it when instructed to and mark it complete after all work is tested and merged.  
+### docs/INTENT.md
+ `docs/INTENT.md` is a source of truth for proposed changes to the system. Read it when instructed to and mark it complete after all work is tested and merged.
 
-### spec.md
- The agent will be instructed to create a design and requirements spec from the intent.md.
+### docs/SPEC.md
+ The agent will be instructed to create a requirements spec from `docs/INTENT.md`.
 
-### plan.md
- The agent will be instructed by the operated to create an implementation plan based up on the spec.md and any design artifacts. 
+### docs/TECH-DESIGN.md
+ The agent will be instructed to create a technical design from an approved `docs/SPEC.md`.
+
+### docs/PLAN.md
+ The agent will be instructed by the operator to create an implementation plan based upon `docs/SPEC.md` and `docs/TECH-DESIGN.md`.
 
 

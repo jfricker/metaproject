@@ -6,6 +6,8 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 - **Instant Scaffolding (`metaproject new`)**: Scaffold projects with full SDLC documentation and automatic git initialization.
 - **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
+- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new` and `backfill`.
+- **Repair & Migration (`metaproject doctor`)**: Bring the template store, config and cataloged projects up to date after an upgrade, behind per-fix confirmation.
 - **Workspace Universe (`metaproject universe`)**: Catalog and classify all projects across subdirectories into a SQLite database.
 - **Drift Auditing (`metaproject review`)**: Detect drift between project files and central templates.
 - **Template Learning (`metaproject learn`)**: Observe drift across many projects, synthesize corroborated template proposals, and apply them only after review.
@@ -33,12 +35,15 @@ make lint
 
 ## Upgrading
 
-After upgrading the installed package (e.g. `uv tool install -U .` or from PyPI), the
-copies metaproject installed outside it can lag behind: the template store at
-`~/.metaproject/templates`, `learn.targets` in `config.json`, the Claude Code skill at
-`~/.claude/skills/metaproject/`, and per-project `.metaproject.json` anchors. Run
-`metaproject doctor` to check all four and repair what's stale — each fix asks for
-confirmation first, and `--dry-run` previews findings without writing anything:
+After upgrading the installed package (e.g. `uv tool install -U .` or from PyPI), what
+metaproject put outside it can lag behind: the template store at
+`~/.metaproject/templates` (including its layout), `learn.targets` in `config.json`, an
+orphaned `~/.claude/skills/metaproject/` from releases that installed the skill globally,
+per-project `.metaproject.json` anchors, and — in each cataloged, metaproject-managed
+project — cycle documents still at the root under their old names and missing project
+skills. Run `metaproject doctor` to check them in that order and repair what's stale —
+each fix asks for confirmation first (once per project for the project checks), and
+`--dry-run` previews findings without writing anything:
 
 ```bash
 metaproject doctor --dry-run   # preview
@@ -53,8 +58,31 @@ Notes:
   the way to force content back to the bundled defaults.
 - `learn.targets` migration is additive — newly declared deliverables are appended;
   your own pinned targets are never removed or reordered.
-- The skill directory is package-owned: doctor reinstalls it exactly as bundled,
-  pruning stray files.
+- Cycle documents moved into `docs/` with new names (`intent.md` → `docs/INTENT.md`,
+  `spec.md` → `docs/SPEC.md`, `design.md` → `docs/TECH-DESIGN.md`, `plan.md` →
+  `docs/PLAN.md`, and `STATE.md`, `HANDOFF.md`, `ARCHITECTURE.md` into `docs/`). Doctor
+  moves the store's templates into `docs.template/` (one commit in the store, of only the
+  moved paths), rewrites old `learn.targets` paths in place, and moves each project's
+  documents with `git mv` when they are tracked. It never overwrites — a document already
+  at its new path is reported and both copies are kept — and it never commits inside a
+  project; review and commit the moves yourself. `review` shows an unmigrated project as
+  `↻ OUTOFDATE` until then.
+- Project skills are installed only where missing. A skill that differs from the release
+  (older, or your edit) is reported and never overwritten; delete its directory and run
+  `metaproject backfill` to take the bundled copy.
+
+### Retiring the sdlc-skills plugin
+
+The cycle skills used to ship as the separate `sdlc-skills` Claude Code plugin; they are
+absorbed into metaproject ≥ 0.9.0. In this order:
+
+1. Install the new release (`uv tool install -U .` or from PyPI).
+2. Uninstall the `sdlc-skills` plugin and remove its directory marketplace, so sessions
+   stop loading the old plugin-namespaced copies of the skills.
+3. Run `metaproject doctor` (after `--dry-run`) to migrate the store, config and projects
+   and install the project skills.
+4. Add a pointer to `~/Projects/SDLC-skills`'s README ("absorbed into metaproject ≥
+   0.9.0") and leave that repository read-only on disk.
 
 ---
 
@@ -76,17 +104,28 @@ The wizard will prompt for:
 
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
-#### Claude Code Skill
-`init` also installs a bundled Claude Code skill into `~/.claude/skills/metaproject/`. The
-skill teaches an agent when to reach for each command, which forms are safe to run
-unattended (`review --no-tui`, `learn list`, `universe`) and which need a human
-(`learn scan` calls a model; `learn apply` commits to your template store; scaffolding into an existing directory asks
-two confirmations). It ships inside the package, so it travels with every install.
+#### Project Skills
+`init` installs no skill. Nine skills ship inside the package and are copied into each
+project by `metaproject new` and `metaproject backfill`, into `.agents/skills/<name>/`
+(reachable as `.claude/skills/<name>/` through the symlink `new` creates), and committed
+with the project like any other file:
 
-- `metaproject init --no-skill` skips it.
-- An installed copy that differs from the release — an older version, or one you edited —
-  is left alone; `metaproject init --force` overwrites it.
-- Set `METAPROJECT_SKILL_DIR` to install somewhere other than `~/.claude/skills/metaproject`.
+- the eight SDLC cycle skills — `/write-intent`, `/generate-spec`, `/generate-design`,
+  `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, and `/backlog-new` for
+  parking ideas — invoked by bare name;
+- the `metaproject` skill, which teaches an agent when to reach for each command, which
+  forms are safe to run unattended (`review --no-tui`, `learn list`, `universe`) and which
+  need a human (`learn scan` calls a model; `learn apply` commits to your template store;
+  scaffolding into an existing directory asks two confirmations).
+
+Each cycle skill checks its own precondition: the project must have `.metaproject.json`
+and `metaproject` must be on `PATH`, otherwise it stops and asks the operator to run
+`metaproject new .`.
+
+Installation is create-only. `backfill` (with no file arguments) adds a skill whose
+directory is missing and never writes into an existing one; a copy that differs from the
+release is reported as stale. If `.claude/skills` is a real directory, or a symlink to
+somewhere other than `.agents/skills`, no skill is written and a notice says why.
 
 #### Agent-Session Guards
 The skill tells an agent what to do; the CLI enforces it either way. When `metaproject`
@@ -125,7 +164,7 @@ metaproject init --config-dir ~/.metaproject --project-home ~/Projects --force
 
 ### 2. Scaffolding a New Project (`metaproject new`)
 
-`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents (`intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`), the long-lived docs (`ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`), `docs/archive/`, and `.metaproject.json` — and initializes git with an initial commit in under a second. (`HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill HANDOFF.md` only when work is interrupted.)
+`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`), the long-lived docs (`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`), `docs/archive/`, `.metaproject.json`, and the project skills in `.agents/skills/` — and initializes git with an initial commit in under a second. The project root keeps only `README.md`, `AGENTS.md`, `CLAUDE.md` and `.gitignore`. (`docs/HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill docs/HANDOFF.md` only when work is interrupted.)
 
 #### Guided Wizard
 ```bash
@@ -193,11 +232,14 @@ Unlike scaffolding into an existing directory, it needs no confirmation, never o
 and never touches git — it is safe to run from an agent session or a hook:
 
 ```bash
-# Create every deliverable `new` scaffolds that is currently missing
+# Create every deliverable `new` scaffolds that is currently missing, plus missing skills
 metaproject backfill
 
-# Create specific documents by name, including the on-demand HANDOFF.md
-metaproject backfill spec.md HANDOFF.md
+# Create specific documents by name, including the on-demand docs/HANDOFF.md
+metaproject backfill docs/SPEC.md docs/HANDOFF.md
+
+# Old names still resolve to docs/ — this creates docs/TECH-DESIGN.md
+metaproject backfill design.md
 
 # Preview without writing
 metaproject backfill --dry-run
@@ -292,7 +334,7 @@ project's own name and description are never mistaken for drift.
 
 ```
 ╭─ Project Drift & Governance Review ───────────────────────────────────────────╮
-│ 3 projects · ✓ CLEAN 1 · ~ DRIFTED 1 · ! INCOMPLETE 1 · 2 on the ignore list  │
+│ 3 projects · ✓ CLEAN 1 · ~ DRIFTED 1 · ↻ OUTOFDATE 0 · ! INCOMPLETE 1 · 2 on …│
 │ scanned /Users/you/Projects against /Users/you/.metaproject/templates         │
 ╰───────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -300,7 +342,7 @@ project's own name and description are never mistaken for drift.
 | Column | Meaning |
 |---|---|
 | `#` | Row number — the handle you type to select a project. |
-| `Compliance` | `CLEAN`, `DRIFTED` or `INCOMPLETE` — see below. |
+| `Compliance` | `CLEAN`, `DRIFTED`, `OUTOFDATE` or `INCOMPLETE` — see below. |
 | `Missing` | How many standard deliverables the project does not have. |
 | `Drifted` | How many existing files no longer match their rendered template. |
 
@@ -308,12 +350,14 @@ project's own name and description are never mistaken for drift.
 |---|---|
 | `✓ CLEAN` | Nothing missing, nothing drifted, and no working document has lost a heading. |
 | `~ DRIFTED` | Every deliverable exists, but a governance file's content has diverged, or a working document is missing a heading its template expects. |
-| `! INCOMPLETE` | At least one standard deliverable is missing. A project that is both incomplete and drifted reads `INCOMPLETE`. |
+| `↻ OUTOFDATE` | Nothing is missing, but a cycle document is still at its old location (a root `intent.md`, a lowercase `docs/design.md`). It is listed on the detail screen under "Legacy location — run `metaproject doctor`" and is never offered for Deploy. Wins over `DRIFTED`. |
+| `! INCOMPLETE` | At least one standard deliverable is missing. Wins over every other state. |
 
 Governance deliverables (`AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) are diffed
 body-for-body and are the only files `u`/`update` can act on. Working deliverables
-(`intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`, `ARCHITECTURE.md`,
-`docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`) are checked for heading structure
+(`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,
+`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`) are checked
+for heading structure
 only — their body text is never diffed, and they are never offered for Update; the fix
 for a missing heading is filling it in yourself, not an automatic overwrite.
 
