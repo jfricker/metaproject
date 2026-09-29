@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Sequence, Tuple
 
 from metaproject.exceptions import GitError
 
@@ -185,3 +185,31 @@ def ensure_template_repository(
         target_dir, branch=branch, commit_message=commit_message, author_name=author_name
     )
     return True
+
+
+def _run_git(repo_dir: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["git", "-C", str(repo_dir), *args], capture_output=True, text=True, check=False
+    )
+
+
+def is_tracked(repo_dir: Path, rel_path: str) -> bool:
+    """Is `rel_path` tracked in the repository at `repo_dir`?"""
+    return _run_git(repo_dir, "ls-files", "--error-unmatch", "--", rel_path).returncode == 0
+
+
+def git_mv(repo_dir: Path, src_rel: str, dest_rel: str) -> None:
+    """`git mv` one path, so history follows the file."""
+    res = _run_git(repo_dir, "mv", "--", src_rel, dest_rel)
+    if res.returncode != 0:
+        raise GitError(f"git mv {src_rel} {dest_rel} failed: {res.stderr.strip()}")
+
+
+def commit_paths(repo_dir: Path, message: str, paths: Sequence[str]) -> None:
+    """Commit exactly `paths` (staged renames included); nothing else in the tree.
+
+    An unrelated dirty file in the repository is neither committed nor a blocker.
+    """
+    res = _run_git(repo_dir, "commit", "-m", message, "--", *paths)
+    if res.returncode != 0:
+        raise GitError(f"git commit in {repo_dir} failed: {res.stderr.strip() or res.stdout}")

@@ -22,7 +22,7 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Dict, Mapping, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 
 class DeliverableClass(Enum):
@@ -143,6 +143,40 @@ def exact_exists(path: Path) -> bool:
         return False
 
 
+def legacy_candidates(root: Path, new: str, template_suffix: bool = False) -> List[str]:
+    """Every legacy copy of one relocated document present under `root`, in move order.
+
+    Candidates are the root under the old name, the root under the new name, and
+    `docs/` under the old name; the declared path itself is never one. With
+    `template_suffix` the same rule is applied to a template store (`intent.template.md`,
+    `docs.template/intent.template.md`). Presence is exact-name (`exact_exists`).
+    """
+    old = _OLD_NAME_FOR[new]
+    names = [old, PurePosixPath(new).name, f"docs/{old}"]
+    if template_suffix:
+        names = [template_path(name) for name in names]
+        new = template_path(new)
+    root = Path(root)
+    return [
+        rel
+        for rel in dict.fromkeys(names)
+        if rel != new and exact_exists(root / rel) and (root / rel).is_file()
+    ]
+
+
+def template_path(path: str) -> str:
+    """The template-store path that renders to project path `path`.
+
+    `docs/INTENT.md` → `docs.template/INTENT.template.md`; the inverse of
+    `templates.transform_template_name` applied per component.
+    """
+    parts = PurePosixPath(path).parts
+    dirs = [f"{part}.template" for part in parts[:-1]]
+    stem, dot, suffix = parts[-1].rpartition(".")
+    leaf = f"{stem}.template.{suffix}" if dot and stem else f"{parts[-1]}.template"
+    return PurePosixPath(*dirs, leaf).as_posix()
+
+
 def legacy_locations(project_dir: Path) -> Dict[str, str]:
     """Declared path → the legacy file actually present, for unmigrated documents.
 
@@ -154,11 +188,7 @@ def legacy_locations(project_dir: Path) -> Dict[str, str]:
     for new in LEGACY_NAMES.values():
         if exact_exists(root / new):
             continue
-        old = _OLD_NAME_FOR[new]
-        basename = PurePosixPath(new).name
-        candidates = [old, basename, f"docs/{old}"]
-        for rel in dict.fromkeys(candidates):
-            if exact_exists(root / rel) and (root / rel).is_file():
-                found[new] = rel
-                break
+        candidates = legacy_candidates(root, new)
+        if candidates:
+            found[new] = candidates[0]
     return found

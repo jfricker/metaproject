@@ -1141,10 +1141,13 @@ def doctor_cmd(
 ) -> None:
     """Diagnose and repair a stale installed environment after an upgrade.
 
-    Checks the live template store, `learn.targets` in config.json, the installed
-    Claude Code skill, and per-project `.metaproject.json` anchors against the
-    installed package. Each fix needs an operator's confirmation; `--dry-run`
-    writes nothing and is the only form permitted inside an agent session.
+    Checks, in order: the template store's layout (cycle templates still at its root),
+    the template store, `learn.targets` in config.json, an orphaned
+    `~/.claude/skills/metaproject/` from older releases, per-project
+    `.metaproject.json` anchors, and — per cataloged, metaproject-managed project —
+    cycle documents at their old root locations and missing or stale project skills.
+    Each fix needs an operator's confirmation (per project for the project checks);
+    `--dry-run` writes nothing and is the only form permitted inside an agent session.
     """
     from metaproject import doctor
 
@@ -1154,8 +1157,8 @@ def doctor_cmd(
             console.print(
                 Panel.fit(
                     "[bold]`metaproject doctor` needs an operator.[/bold]\n\n"
-                    "Its fixes write to the template store, your config, the skill\n"
-                    "directory, and other projects — decisions that are the operator's\n"
+                    "Its fixes write to the template store, your config, ~/.claude,\n"
+                    "and other projects — decisions that are the operator's\n"
                     "to make, not an agent's.\n\n"
                     "[bold]Preview the findings instead:[/bold]\n"
                     "  [cyan]metaproject doctor --dry-run[/cyan]\n\n"
@@ -1187,14 +1190,21 @@ def doctor_cmd(
     for result in results:
         if result.healthy and not result.findings:
             status = "[green]healthy[/green]"
+        elif result.fixed and result.report_only:
+            status = "[yellow]fixed; needs attention[/yellow]"
         elif result.fixed:
             status = "[green]fixed[/green]"
+        elif result.healthy:
+            status = "[green]healthy[/green]"
+        elif result.report_only and set(result.findings) <= set(result.report_only):
+            status = "[yellow]needs attention[/yellow]"
         elif result.fixed is None and dry_run:
             status = "[yellow]would fix[/yellow]" if result.findings else "[green]healthy[/green]"
         else:
             status = "[red]stale (declined)[/red]"
         detail = "\n".join(result.findings) if result.findings else "—"
-        if result.findings:
+        fixable = not set(result.findings) <= set(result.report_only)
+        if result.findings and fixable and not (result.healthy and not result.fixed):
             detail += f"\n[dim]fix: {result.fix_summary}[/dim]"
         table.add_row(result.name, status, detail)
     console.print(table)
