@@ -3,7 +3,7 @@
 ## Process
 
 <!-- each stage ticks its own item here as it completes -->
-- [ ] 1. write-intent: intent.md approved
+- [x] 1. write-intent: intent.md approved
 - [ ] 2. generate-spec: spec.md approved
 - [ ] 3. generate-design: design.md approved
 - [ ] 4. generate-plan: plan.md approved

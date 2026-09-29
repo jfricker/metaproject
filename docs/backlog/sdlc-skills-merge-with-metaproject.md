@@ -1,6 +1,6 @@
 # Merge sdlc-skills into metaproject — research & design notes
 
-**Date:** 2026-09-15 · **Status:** brainstorm complete, design approved in session, not yet an SDLC cycle
+**Date:** 2026-09-15 · **Status:** promoted 2026-09-28 (sdlc-skills-in-metaproject)
 **Source:** planning session in worktree `merge-sdlc-skills` (branch `worktree-merge-sdlc-skills`)
 
 ## Problem
