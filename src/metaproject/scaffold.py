@@ -12,6 +12,7 @@ from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
 from metaproject.identity import IDENTITY_FILE, Identity, write_identity
+from metaproject.skills import install_project_skills
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
 from metaproject.variables import collect_variables
 
@@ -319,6 +320,10 @@ def scaffold_project(
             skip_existing=is_backfill,
         )
 
+        # 5a. Project skills, copied into .agents/skills before git init so the initial
+        # commit includes them (R-SKL-2, R-SKL-6). Create-only, rollback-tracked.
+        skills_report = install_project_skills(target_dir, dry_run=dry_run, tracker=tracker)
+
         # 6. Git initialisation. A backfill never touches an existing repository: staging
         # and committing there would sweep the operator's own working tree into a commit
         # they did not ask for.
@@ -348,6 +353,7 @@ def scaffold_project(
             ),
             "backfilled": is_backfill,
             "skills_link": skills_link,
+            "skills": skills_report,
             "git_initialized": git_initialized,
             "git_status": git_status,
             "dry_run": dry_run,

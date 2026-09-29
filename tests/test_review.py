@@ -1453,3 +1453,19 @@ def test_cli_review_reports_legacy_location(runner: CliRunner, tmp_path: Path) -
     assert result.exit_code == 0, result.output
     assert "OUTOFDATE" in result.output
     assert "metaproject doctor" in result.output
+
+
+def test_ac12_review_never_mentions_skill_files(runner: CliRunner, tmp_path: Path) -> None:
+    """AC-12 (R-SKL-8): a project with installed (and edited) skills reviews CLEAN and the
+    output names no skill file."""
+    proj = tmp_path / "skilled"
+    scaffold_project(project_name="skilled", output=proj, interactive=False, no_git=True)
+    (proj / ".agents" / "skills" / "wrapup" / "SKILL.md").write_text("edited\n", encoding="utf-8")
+
+    result = review_project(proj, templates_dir=get_bundled_templates_dir())
+    assert result.is_clean is True
+
+    cli = runner.invoke(app, ["review", str(proj), "--no-tui"])
+    assert cli.exit_code == 0, cli.output
+    assert ".agents" not in cli.output
+    assert "SKILL.md" not in cli.output

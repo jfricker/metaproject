@@ -30,13 +30,7 @@ from metaproject.scaffold import (
     scaffold_project,
 )
 from metaproject.session import agent_marker, override_hint
-from metaproject.skills import (
-    CURRENT,
-    INSTALLED,
-    STALE,
-    UPDATED,
-    install_skill,
-)
+from metaproject.skills import CURRENT, INSTALLED, STALE
 from metaproject.templates import seed_templates
 
 console = Console()
@@ -172,29 +166,33 @@ def main(
     pass
 
 
-def report_skill_install(force: bool) -> None:
-    """Install the bundled skill and narrate the outcome without failing init.
+def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: bool) -> None:
+    """Narrate one project-skills install pass (`new`, `backfill`).
 
-    A skill that cannot be written is an inconvenience, not a reason to abandon an
-    otherwise good environment setup.
+    Stale skills are named because they are the one state an operator may want to act
+    on: the directory differs from this release and was left untouched on purpose.
     """
-    try:
-        result = install_skill(force=force)
-    except MetaProjectError as skill_err:
-        console.print(f"[yellow]Notice:[/] Skill installation skipped ({skill_err})")
+    if notice:
+        console.print(f"[yellow]Notice:[/] {notice}")
         return
-
-    target = result["target_dir"]
-    state = result["state"]
-    if state in (INSTALLED, UPDATED):
-        verb = "Installed" if state == INSTALLED else "Updated"
-        console.print(f"[cyan]✓ {verb} the metaproject Claude Code skill at {target}[/cyan]")
-    elif state == CURRENT:
-        console.print(f"[cyan]✓ Claude Code skill already current at {target}[/cyan]")
-    elif state == STALE:
+    if not states:
+        return
+    installed = [name for name, state in states.items() if state == INSTALLED]
+    current = [name for name, state in states.items() if state == CURRENT]
+    stale = [name for name, state in states.items() if state == STALE]
+    if installed:
+        verb = "Would install" if dry_run else "Installed"
         console.print(
-            f"[yellow]Notice:[/] The skill at {target} differs from this release. "
-            f"Re-run with [bold cyan]--force[/bold cyan] to overwrite it."
+            f"[cyan]✓ {verb} {len(installed)} project skill(s) in .agents/skills/:[/cyan] "
+            + ", ".join(installed)
+        )
+    if current:
+        console.print(f"[dim]{len(current)} project skill(s) already current[/dim]")
+    if stale:
+        console.print(
+            "[yellow]Notice:[/] project skill(s) differ from this release and were left "
+            "untouched: " + ", ".join(stale) + ". Delete a skill's directory and run "
+            "[bold cyan]metaproject backfill[/bold cyan] to take the bundled copy."
         )
 
 
@@ -238,12 +236,7 @@ def init_cmd(
         False,
         "--force",
         "-f",
-        help="Overwrite existing configuration, templates, and skill.",
-    ),
-    no_skill: bool = typer.Option(
-        False,
-        "--no-skill",
-        help="Skip installing the bundled Claude Code skill.",
+        help="Overwrite existing configuration and templates.",
     ),
 ) -> None:
     """Initialize or repair the user environment for metaproject."""
@@ -308,10 +301,6 @@ def init_cmd(
             )
     except GitError as git_err:
         console.print(f"[yellow]Notice:[/] Template store git init skipped ({git_err})")
-
-    # 1c. Install the bundled Claude Code skill so an agent knows how to drive this CLI
-    if not no_skill:
-        report_skill_install(force=force)
 
     # 2. Configure defaults
     existing_cfg = load_config(config_file) if config_file.exists() and not force else Config()
@@ -646,6 +635,9 @@ def new_cmd(
             f"[dim]would create agent-skills layout: {skills_link.relative_to(target_dir)} "
             f"(-> ../.agents/skills) plus .agents/skills/.gitkeep[/dim]"
         )
+    skills_report = result.get("skills")
+    if skills_report is not None:
+        print_skills_report(skills_report.states, skills_report.notice, dry_run)
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")
     table.add_column("Relative Path", style="cyan")
@@ -1123,7 +1115,16 @@ def backfill_cmd(
             table.add_row(path)
         console.print(table)
 
-    if not (result.created or result.skipped or result.refused or result.missing_template):
+    print_skills_report(result.skills, result.skills_notice, dry_run)
+
+    wrote_skills = any(state == INSTALLED for state in result.skills.values())
+    if not (
+        result.created
+        or result.skipped
+        or result.refused
+        or result.missing_template
+        or wrote_skills
+    ):
         console.print("[dim]Nothing to do.[/dim]")
 
     if result.refused or result.missing_template:

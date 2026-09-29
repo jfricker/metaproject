@@ -588,6 +588,10 @@ class BackfillResult:
     skipped: List[str] = field(default_factory=list)
     refused: List[str] = field(default_factory=list)
     missing_template: List[str] = field(default_factory=list)
+    # Project skills, name → `installed` / `current` / `stale` (no-files mode only).
+    skills: Dict[str, str] = field(default_factory=dict)
+    # Why no skill was written, when `.claude/skills` would not see them (R-SKL-5).
+    skills_notice: Optional[str] = None
 
 
 def backfill_missing(
@@ -607,11 +611,13 @@ def backfill_missing(
     - **No `files`** — every `scaffolded()` deliverable missing from the project, in
       one call. Directory deliverables are created first (declaration order), then the
       rest, and existence is re-checked before each write: rendering a directory
-      template (e.g. `docs/`) can create files declared later in `DELIVERABLES`, so
-      those are reported `skipped` rather than deployed a second time. A deliverable
+      template (e.g. `docs/`) can create files declared later in `DELIVERABLES`; those
+      are reported `created` (the directory deploy wrote them) and never deployed a
+      second time. A deliverable
       with no template in the store is reported in `missing_template` — never a silent
       fallback to the bundled store (design.md "Alternatives considered") — but every
-      other target is still created.
+      other target is still created. Missing project skills are then copied into
+      `.agents/skills/` (create-only; `skills`, `skills_notice`).
     - **`files` given** — exactly those paths, which may be on-demand (`docs/HANDOFF.md`) or
       any other path the store has a template for. If *any* named file already exists,
       every existing one is reported in `refused` and **nothing at all is written**. If
@@ -682,8 +688,18 @@ def backfill_missing(
                     written_in_batch.add(written.relative_to(resolved_proj).as_posix())
         created.append(path)
 
+    # Skills only in no-files mode: naming files touches exactly those files (R-SKL-3).
+    from metaproject.skills import install_project_skills
+
+    skills = install_project_skills(resolved_proj, dry_run=dry_run)
+
     return BackfillResult(
-        created=created, skipped=skipped, refused=[], missing_template=missing_template
+        created=created,
+        skipped=skipped,
+        refused=[],
+        missing_template=missing_template,
+        skills=dict(skills.states),
+        skills_notice=skills.notice,
     )
 
 

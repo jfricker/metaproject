@@ -1,14 +1,13 @@
 """Tests for `metaproject doctor` — checks, fixes, dry-run, guards, exit codes.
 
 Spec: acceptance criteria 1–7 of the metaproject-doctor cycle. The conftest autouse
-fixture isolates METAPROJECT_CONFIG_DIR and METAPROJECT_SKILL_DIR to tmp dirs and pins
+fixture isolates METAPROJECT_CONFIG_DIR to a tmp dir and pins
 METAPROJECT_AGENT=0, so these tests never touch the operator's real environment.
 """
 
 from datetime import date
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from metaproject import db, templates
@@ -22,16 +21,14 @@ from metaproject.config import (
 )
 from metaproject.doctor import run_checks
 from metaproject.identity import Identity, read_identity, write_identity
-from metaproject.skills import get_bundled_skill_dir, install_skill, is_skill_current
 
 
 def _make_env(tmp_path: Path, learn_targets: list[str] | None = None) -> tuple[Config, Path]:
-    """An initialized-looking environment: config file, seeded store, installed skill."""
+    """An initialized-looking environment: config file and a seeded store."""
     config_dir = tmp_path / "cfg"
     config_dir.mkdir()
     store = tmp_path / "store"
     templates.seed_templates(store)
-    install_skill()  # lands in the conftest-isolated METAPROJECT_SKILL_DIR
     cfg = Config(
         author="Test Operator",
         templates_dir=str(store),
@@ -41,6 +38,12 @@ def _make_env(tmp_path: Path, learn_targets: list[str] | None = None) -> tuple[C
     config_file = config_dir / "config.json"
     save_config(cfg, config_file)
     return cfg, config_file
+
+
+def _check(results, name: str):
+    """The one check result named `name` — lookups by name survive check reordering."""
+    (match,) = [result for result in results if result.name == name]
+    return match
 
 
 def _catalog_project(cfg: Config, project_dir: Path) -> None:
@@ -84,7 +87,7 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
 
     # Dry-run: findings reported, nothing written.
     results = run_checks(cfg, config_file, dry_run=True)
-    templates_result = results[0]
+    templates_result = _check(results, "template store")
     assert templates_result.name == "template store"
     assert not templates_result.healthy
     assert any("docs.template/INTENT.template.md" in f for f in templates_result.findings)
@@ -93,8 +96,8 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
 
     # Confirmed run: missing template restored, extra untouched, check healthy.
     results = run_checks(cfg, config_file, confirm=_all_yes)
-    assert results[0].healthy is True
-    assert results[0].fixed is True
+    assert _check(results, "template store").healthy is True
+    assert _check(results, "template store").fixed is True
     assert victim.is_file()
     assert extra.read_text(encoding="utf-8") == "# learned content\n"
 
@@ -108,7 +111,7 @@ def test_config_migration_is_additive_and_preserves_pins(tmp_path: Path) -> None
     cfg, config_file = _make_env(tmp_path, learn_targets=pinned)
 
     results = run_checks(cfg, config_file, confirm=_all_yes)
-    config_result = results[1]
+    config_result = _check(results, "config (learn.targets)")
     assert config_result.fixed is True
 
     reloaded = load_config(config_file)
@@ -127,27 +130,7 @@ def test_config_migration_is_additive_and_preserves_pins(tmp_path: Path) -> None
 def test_config_check_healthy_when_current(tmp_path: Path) -> None:
     cfg, config_file = _make_env(tmp_path)
     results = run_checks(cfg, config_file, confirm=_fail_if_called)
-    assert results[1].healthy is True
-
-
-# -------------------------------------------------------------------------- skill
-
-
-def test_stale_skill_refreshed_and_pruned(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """AC-3: divergent content rewritten, extra file pruned, bundled set restored."""
-    skill_dir = tmp_path / "skills" / "metaproject"
-    monkeypatch.setenv("METAPROJECT_SKILL_DIR", str(skill_dir))
-    install_skill()
-    (skill_dir / "SKILL.md").write_text("# hand-edited\n", encoding="utf-8")
-    stray = skill_dir / "stray.md"
-    stray.write_text("# not in the bundle\n", encoding="utf-8")
-
-    cfg, config_file = _make_env(tmp_path)
-    results = run_checks(cfg, config_file, confirm=_all_yes)
-
-    assert results[2].fixed is True
-    assert is_skill_current(get_bundled_skill_dir(), skill_dir) is True
-    assert not stray.exists()
+    assert _check(results, "config (learn.targets)").healthy is True
 
 
 # ----------------------------------------------------------------------- identity
@@ -176,7 +159,7 @@ def test_identity_backfill_only_when_anchor_absent(tmp_path: Path) -> None:
     _catalog_project(cfg, anchored)
 
     results = run_checks(cfg, config_file, confirm=_all_yes)
-    identity_result = results[3]
+    identity_result = _check(results, "project identity")
     assert identity_result.fixed is True
 
     new_identity = read_identity(anchorless)
@@ -193,7 +176,7 @@ def test_identity_check_skips_vanished_project_dirs(tmp_path: Path) -> None:
     _catalog_project(cfg, vanished)  # cataloged but never created on disk
 
     results = run_checks(cfg, config_file, dry_run=True)
-    assert not any("gone" in f for f in results[3].findings)
+    assert not any("gone" in f for f in _check(results, "project identity").findings)
 
 
 # ------------------------------------------------------------------- run behavior
@@ -215,9 +198,11 @@ def test_declined_fix_does_not_block_other_checks(tmp_path: Path) -> None:
 
     results = run_checks(cfg, config_file, confirm=confirm_first_only)
 
-    assert results[0].fixed is True  # templates fixed (first confirm accepted)
-    assert results[1].fixed is None  # config declined
-    assert results[1].healthy is False
+    assert (
+        _check(results, "template store").fixed is True
+    )  # templates fixed (first confirm accepted)
+    assert _check(results, "config (learn.targets)").fixed is None  # config declined
+    assert _check(results, "config (learn.targets)").healthy is False
     assert load_config(config_file).learn.targets == pinned
 
 

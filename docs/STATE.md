@@ -19,7 +19,7 @@
 - [x] 3. Relocated deliverables + template store (R-DOC-0..4)
 - [x] 4. Review legacy detection + OUTOFDATE (R-DOC-5)
 - [x] 5. learn / universe markers (R-DOC-3, R-DOC-6, R-SKL-8)
-- [ ] 6. Project skills, new/backfill, init
+- [x] 6. Project skills, new/backfill, init (R-SKL-1..7, R-INI-1..2; doctor global-skill check removed here, pulled forward from step 7)
 - [ ] 7. doctor
 - [ ] 8. Skill text + skill tests
 - [ ] 9. Documentation

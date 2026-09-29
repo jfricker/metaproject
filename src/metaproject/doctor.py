@@ -15,7 +15,7 @@ from typing import Callable, List, Optional
 
 import questionary
 
-from metaproject import __version__, config, db, deliverables, identity, skills, templates
+from metaproject import __version__, config, db, deliverables, identity, templates
 from metaproject.config import Config
 
 
@@ -88,24 +88,6 @@ def fix_config(cfg: Config, config_file: Path) -> None:
         config.save_config(cfg, config_file)
 
 
-def check_skill() -> tuple[List[str], str]:
-    """Global skill copy vs the bundled skill (content + extra files)."""
-    bundled_dir = skills.get_bundled_skill_dir()
-    install_dir = skills.get_skill_install_dir()
-
-    findings: List[str] = []
-    if not skills.is_skill_current(bundled_dir, install_dir):
-        findings.append("installed skill differs from the bundled skill")
-    extras = sorted(_relative_files(install_dir) - _relative_files(bundled_dir))
-    findings += [f"extra file in skill dir (will be pruned): {p}" for p in extras]
-    fix_summary = "reinstall bundled skill and prune extra files (package-owned directory)"
-    return findings, fix_summary
-
-
-def fix_skill() -> None:
-    skills.install_skill(force=True, prune_extra=True)
-
-
 def check_identity(cfg: Config) -> tuple[List[str], str, List[Path]]:
     """Cataloged projects whose `.metaproject.json` anchor is absent."""
     database = db.get_db(cfg.universe_db)
@@ -173,11 +155,7 @@ def run_checks(
         )
     )
 
-    # 3. Skill
-    findings, fix_summary = check_skill()
-    results.append(_apply("skill", findings, fix_summary, fix_skill, dry_run, confirm))
-
-    # 4. Project identity
+    # 3. Project identity
     findings, fix_summary, anchorless = check_identity(cfg)
     results.append(
         _apply(

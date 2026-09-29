@@ -79,6 +79,26 @@ def test_full_lifecycle_and_performance(
     assert (project_target / ".metaproject.json").exists()
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
     assert not (project_target / "docs" / "HANDOFF.md").exists()
+    # AC-3: every project skill is installed and reachable through .claude/skills, the
+    # root carries no cycle document, and no lowercase cycle-doc name exists anywhere.
+    for skill in (
+        "metaproject",
+        "backlog-new",
+        "write-intent",
+        "generate-spec",
+        "generate-design",
+        "generate-plan",
+        "implement-plan",
+        "execute-tests",
+        "wrapup",
+    ):
+        assert (project_target / ".claude" / "skills" / skill / "SKILL.md").is_file()
+    root_md = {p.name for p in project_target.iterdir() if p.suffix == ".md"}
+    assert root_md == {"AGENTS.md", "CLAUDE.md", "README.md"}
+    legacy_names = {"intent.md", "spec.md", "design.md", "plan.md"}
+    assert not [
+        p for p in project_target.rglob("*.md") if ".git" not in p.parts and p.name in legacy_names
+    ]
     # Later commands load the config `init` wrote: universe's scan-root scoping
     # (R-UNV-1) reads project_home from it.
     monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(config_dir))
