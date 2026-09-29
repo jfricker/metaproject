@@ -441,3 +441,27 @@ def test_agents_md_behavior_is_unchanged_by_structure_evidence(workspace) -> Non
     assert agents.kind == "edit"
     assert agents.removed_lines == ()
     assert C2_LINE in agents.added_lines
+
+
+def test_skill_directories_are_never_collected_even_when_configured(tmp_path: Path) -> None:
+    """AC-12 (R-SKL-8): nothing under `.agents/` or `.claude/` is a learn target, even if
+    an operator lists it or a directory target would expand into it."""
+    project_dir = tmp_path / "proj"
+    skill = project_dir / ".agents" / "skills" / "write-intent"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+    (project_dir / ".claude").mkdir()
+    (project_dir / ".claude" / "notes.md").write_text("x\n", encoding="utf-8")
+    (project_dir / "AGENTS.md").write_text("# a\n", encoding="utf-8")
+
+    found = iter_target_files(
+        project_dir,
+        [
+            "AGENTS.md",
+            ".agents/skills/write-intent/SKILL.md",
+            ".agents/",
+            ".claude/",
+            ".claude/notes.md",
+        ],
+    )
+    assert found == ["AGENTS.md"]

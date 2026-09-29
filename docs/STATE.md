@@ -18,7 +18,7 @@
 - [x] 2. Import the skills with history (R-IMP-1..4)
 - [x] 3. Relocated deliverables + template store (R-DOC-0..4)
 - [x] 4. Review legacy detection + OUTOFDATE (R-DOC-5)
-- [ ] 5. learn / universe markers
+- [x] 5. learn / universe markers (R-DOC-3, R-DOC-6, R-SKL-8)
 - [ ] 6. Project skills, new/backfill, init
 - [ ] 7. doctor
 - [ ] 8. Skill text + skill tests

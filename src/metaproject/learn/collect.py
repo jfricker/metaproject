@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 from metaproject.config import Config, load_config
-from metaproject.deliverables import DeliverableClass
+from metaproject.deliverables import SKILL_ROOTS, DeliverableClass
 from metaproject.deliverables import classify as classify_deliverable
 from metaproject.exceptions import TemplateError
 from metaproject.markdown import Heading, heading_matches, headings, missing_headings
@@ -123,6 +123,10 @@ def iter_target_files(project_dir: Path, targets: Sequence[str]) -> List[str]:
     it; it is never opened as a file. Symlinks are skipped entirely and symlinked
     directories are never traversed, so a self-referential link cannot be counted twice
     and a link pointing outside the project cannot be followed (acceptance case C26).
+
+    Nothing under an agent-skill root (`deliverables.SKILL_ROOTS`) is ever returned,
+    even when a configured target names it: project skills are package-owned copies,
+    not evidence (R-SKL-8).
     """
     project_dir = Path(project_dir)
     found: List[str] = []
@@ -150,7 +154,11 @@ def iter_target_files(project_dir: Path, targets: Sequence[str]) -> List[str]:
                 continue
             found.append(PurePosixPath(target).as_posix())
 
-    return sorted(set(found))
+    return sorted(path for path in set(found) if not _is_skill_path(path))
+
+
+def _is_skill_path(rel_path: str) -> bool:
+    return PurePosixPath(rel_path).parts[0] in SKILL_ROOTS
 
 
 def render_template(template_file: Path, variables: Dict[str, Any]) -> str:

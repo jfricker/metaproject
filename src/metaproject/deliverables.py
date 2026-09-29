@@ -87,6 +87,10 @@ def learn_targets() -> Tuple[str, ...]:
     )
 
 
+# Top-level directories that hold agent skills. Never a deliverable, never learn evidence.
+SKILL_ROOTS: Tuple[str, ...] = (".agents", ".claude")
+
+
 # Old root-level name → declared path, for every relocated deliverable (R-DOC-0).
 LEGACY_NAMES: Mapping[str, str] = {
     "intent.md": "docs/INTENT.md",

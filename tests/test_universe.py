@@ -448,3 +448,40 @@ def test_cli_universe_summary(runner: CliRunner, tmp_path: Path) -> None:
     assert len(flag_lines) == 2
     assert "1 projects" in flag_lines[0]
     assert "Last update to the db" in flag_lines[1]
+
+
+def test_is_project_root_recognises_both_intent_locations(tmp_path: Path) -> None:
+    """R-DOC-6: `docs/INTENT.md` is a marker, and an unmigrated root `intent.md` still is."""
+    migrated = tmp_path / "migrated"
+    (migrated / "docs").mkdir(parents=True)
+    (migrated / "docs" / "INTENT.md").write_text("# x", encoding="utf-8")
+    assert is_project_root(migrated) is True
+
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / "intent.md").write_text("# x", encoding="utf-8")
+    assert is_project_root(legacy) is True
+
+
+def test_has_doc_columns_count_either_location(tmp_path: Path) -> None:
+    """`has_*_md` is true for the `docs/` path or the legacy root name (R-DOC-3)."""
+    root = tmp_path / "ws"
+    migrated = root / "migrated"
+    (migrated / "docs").mkdir(parents=True)
+    for name in ("INTENT.md", "STATE.md", "HANDOFF.md"):
+        (migrated / "docs" / name).write_text("# x", encoding="utf-8")
+    legacy = root / "legacy"
+    legacy.mkdir()
+    for name in ("intent.md", "STATE.md"):
+        (legacy / name).write_text("# x", encoding="utf-8")
+
+    records = {
+        r["name"]: r
+        for r in scan_universe(root, max_depth=2, interactive=False, db=get_db(tmp_path / "u.db"))
+    }
+    assert records["migrated"]["has_intent_md"] == 1
+    assert records["migrated"]["has_state_md"] == 1
+    assert records["migrated"]["has_handoff_md"] == 1
+    assert records["legacy"]["has_intent_md"] == 1
+    assert records["legacy"]["has_state_md"] == 1
+    assert records["legacy"]["has_handoff_md"] == 0

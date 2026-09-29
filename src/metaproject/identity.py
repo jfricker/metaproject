@@ -186,8 +186,9 @@ def fallback_identity(project_dir: Path) -> Tuple[str, str]:
     """Title/description fallback when no `.metaproject.json` exists (R-ID-3).
 
     Order: `README.md` (first `# ` heading / first paragraph) -> `pyproject.toml`
-    `[project]` -> `package.json` -> title-cased directory name. `intent.md` is never
-    read. A title is used only when non-empty and not an unfilled placeholder.
+    `[project]` -> `package.json` -> title-cased directory name. `docs/INTENT.md` (or a
+    legacy `intent.md`) is never read. A title is used only when non-empty and not an
+    unfilled placeholder.
     """
     project_dir = Path(project_dir)
 

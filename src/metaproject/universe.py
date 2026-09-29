@@ -74,9 +74,11 @@ def is_project_root(path: Path) -> bool:
     if (path / ".git").exists():
         return True
 
-    # 2. SDLC root indicators
-    if (path / "AGENTS.md").exists() or (path / "intent.md").exists():
-        return True
+    # 2. SDLC root indicators. Root `intent.md` stays a marker so an unmigrated project
+    # is still recognised (R-DOC-6).
+    for marker in ("AGENTS.md", "docs/INTENT.md", "intent.md"):
+        if (path / marker).exists():
+            return True
 
     # 3. Standard build/package manifests
     for manifest in PROJECT_MANIFESTS:
@@ -84,6 +86,11 @@ def is_project_root(path: Path) -> bool:
             return True
 
     return False
+
+
+def _has_doc(project_dir: Path, *locations: str) -> int:
+    """1 when a cycle document exists at its `docs/` path or its legacy root name."""
+    return 1 if any((project_dir / rel).exists() for rel in locations) else 0
 
 
 def is_archived_path(path: Path) -> bool:
@@ -97,7 +104,7 @@ def is_archived_path(path: Path) -> bool:
 def extract_title(project_dir: Path) -> str:
     """Extract project title: `.metaproject.json` first, else manifest fallback (R-ID-3).
 
-    `intent.md` is never consulted and a hyphenated title is never truncated.
+    `docs/INTENT.md` is never consulted and a hyphenated title is never truncated.
     """
     identity = read_identity(project_dir)
     if identity is not None:
@@ -109,7 +116,7 @@ def extract_title(project_dir: Path) -> str:
 def extract_description(project_dir: Path) -> str:
     """Extract project description: `.metaproject.json` first, else manifest fallback.
 
-    `intent.md` is never consulted (R-ID-3).
+    `docs/INTENT.md` is never consulted (R-ID-3).
     """
     identity = read_identity(project_dir)
     if identity is not None:
@@ -238,9 +245,9 @@ def scan_universe(
                 "is_git": is_git,
                 "git_branch": branch,
                 "has_agents_md": 1 if (current / "AGENTS.md").exists() else 0,
-                "has_intent_md": 1 if (current / "intent.md").exists() else 0,
-                "has_state_md": 1 if (current / "STATE.md").exists() else 0,
-                "has_handoff_md": 1 if (current / "HANDOFF.md").exists() else 0,
+                "has_intent_md": _has_doc(current, "docs/INTENT.md", "intent.md"),
+                "has_state_md": _has_doc(current, "docs/STATE.md", "STATE.md"),
+                "has_handoff_md": _has_doc(current, "docs/HANDOFF.md", "HANDOFF.md"),
                 "has_readme_md": 1 if (current / "README.md").exists() else 0,
                 "scanned_at": scan_start_iso,
                 "scan_root": str(resolved_root),
