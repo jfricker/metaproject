@@ -3,7 +3,7 @@
 **Author**: John Fricker.
 **Last updated**: 2026-09-28.
 **Status**: Approved.
-**Approved by**: John Fricker (2026-09-28).
+**Approved by**: John Fricker (2026-09-28; amended and re-approved 2026-09-28).
 
 ## Problem
 
@@ -34,6 +34,9 @@ installed per project by `new`, not globally by `init`.
   project's `.agents/skills/` (reachable through the existing `.claude/skills` symlink),
   so a freshly scaffolded project has the whole cycle available with no plugin install.
   `metaproject backfill` adds any that are missing to an existing project, create-only.
+- Cycle documents are renamed to uppercase, with the design document renamed:
+  `INTENT.md`, `SPEC.md`, `TECH-DESIGN.md`, `PLAN.md` (plus the existing `STATE.md`,
+  `HANDOFF.md`, `ARCHITECTURE.md`).
 - `metaproject init` no longer installs any skill into `~/.claude/skills/`; its focus is
   the operator's metaproject environment (config and template store).
 - Cycle documents — `intent.md`, `spec.md`, `design.md`, `plan.md`, `STATE.md`,
@@ -110,6 +113,9 @@ installed per project by `new`, not globally by `init`.
 - **Docs location**: cycle docs + `HANDOFF.md` + `ARCHITECTURE.md` move to `docs/`;
   `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore` stay at root. `docs/archive/`,
   `docs/backlog/`, `DESIGN-INVARIANTS.md`, `VERIFIED-FACTS.md` stay where they are.
+- **Cycle document names** (amendment, 2026-09-28): `intent.md` → `INTENT.md`,
+  `spec.md` → `SPEC.md`, `design.md` → `TECH-DESIGN.md`, `plan.md` → `PLAN.md`; migration
+  renames as well as moves. Existing archives keep their old names.
 - **Migration**: explicit, via `metaproject doctor`, confirmed per project.
 - **Retirement order** (from backlog): uninstall the plugin and remove its directory
   marketplace *before* archiving `~/Projects/SDLC-skills`; leave the old repo on disk,
