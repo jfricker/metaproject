@@ -15,7 +15,7 @@
 
 <!-- written by implement-plan as steps land -->
 - [x] 1. Self-migrate this repo's documents to docs/ (R-SELF-1)
-- [ ] 2. Import the skills with history
+- [x] 2. Import the skills with history (R-IMP-1..4)
 - [ ] 3. Relocated deliverables + template store
 - [ ] 4. Review legacy detection + OUTOFDATE
 - [ ] 5. learn / universe markers
