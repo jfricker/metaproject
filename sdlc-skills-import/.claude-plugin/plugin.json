@@ -1,0 +1,9 @@
+{
+  "name": "sdlc-skills",
+  "description": "Skills implementing an agent-centered SDLC loop: backlog-new, write-intent, generate-spec, generate-design, generate-plan, implement-plan, execute-tests, wrapup.",
+  "version": "0.0.2",
+  "author": {
+    "name": "John Fricker",
+    "email": "john.fricker@icloud.com"
+  }
+}
