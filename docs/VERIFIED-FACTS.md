@@ -50,3 +50,16 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
   `test_repo_root_templates_directory_is_gone` on main after the merge while the
   worktree run was green. `Path(__file__).resolve()`-based repo checks see the
   checkout they run in, untracked files included.
+
+## 2026-09-29 — [absorb-sdlc-skills-into-metaproject-move-cycle-docs-to-docs](archive/2026-09-29-absorb-sdlc-skills-into-metaproject-move-cycle-docs-to-docs/)
+
+- `git subtree add` from a local-path remote brings the full SDLC-skills history (merge
+  d67cc74, parent 2 = e6f42a4); `git mv` of the skill directories then records renames,
+  but `--follow` stops at the prefix move (2026-09-28).
+- `markdown.normalize_heading` casefolds, so renaming the STATE heading "Open items
+  carried into plan.md" → "PLAN.md" causes no structure drift in existing projects.
+- A scratch gate script piping pytest into `tail` masks failures unless `pipefail` is set
+  — one commit went through red and was amended (2026-09-28).
+- hatchling's `WheelBuilder(root).build(directory=...)` builds the wheel in-process with
+  no network, so wheel-content tests need neither `uv build` nor an unsandboxed run.
+
