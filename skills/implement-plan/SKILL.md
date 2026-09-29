@@ -27,6 +27,10 @@ Stage 3b of the SDLC loop: execute the approved plan, not a reinterpretation of 
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Never set it to `Approved` yourself.
 - Tick STATE.md Process item 5 once this stage is done.
+- Before editing, grep to locate the exact target and count matches. After editing,
+  diff to confirm no sibling or identically-structured code changed. If a direct Edit
+  fails twice on this file, switch to a perl/python scripted edit instead of retrying
+  blind.
 
 ## When to use
 
