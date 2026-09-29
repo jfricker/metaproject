@@ -28,9 +28,12 @@ from metaproject.review_tui import (
     GLYPH_CLEAN,
     GLYPH_DRIFTED,
     GLYPH_INCOMPLETE,
+    GLYPH_OUTOFDATE,
+    LEGACY_SECTION_TITLE,
     STATE_CLEAN,
     STATE_DRIFTED,
     STATE_INCOMPLETE,
+    STATE_OUTOFDATE,
     BoardResult,
     compliance_cell,
     count_cell,
@@ -1343,3 +1346,110 @@ def test_cli_hides_ignored_projects_unless_asked(runner: CliRunner, tmp_path: Pa
 
     shown = runner.invoke(app, ["review", str(workspace), "--all", "--show-ignored"])
     assert "hidden_proj" in shown.output
+
+
+# ------------------------------------------------------------- legacy locations (R-DOC-5)
+
+
+def _legacy_project(tmp_path: Path, name: str = "legacy_proj") -> Path:
+    """A freshly scaffolded project whose `docs/INTENT.md` has been put back at the root
+    under its old name, as an unmigrated project would have it."""
+    proj = tmp_path / name
+    scaffold_project(project_name=name, output=proj, interactive=False, no_git=True)
+    (proj / "docs" / "INTENT.md").rename(proj / "intent.md")
+    return proj
+
+
+def test_ac8_root_intent_is_legacy_not_missing(tmp_path: Path) -> None:
+    """AC-8: root `intent.md` is reported at a legacy location, not missing, and is not
+    offered for Deploy."""
+    proj = _legacy_project(tmp_path)
+    result = review_project(proj, templates_dir=get_bundled_templates_dir())
+
+    assert result.legacy == {"docs/INTENT.md": "intent.md"}
+    assert "docs/INTENT.md" not in result.missing_files
+    assert "docs/INTENT.md" not in result.deployable
+    assert result.is_compliant is True
+    assert result.is_current is False
+    assert result.is_clean is False
+    assert compliance_cell(result) == STATE_OUTOFDATE
+    assert "docs/INTENT.md" not in detail_entries(result)
+
+
+def test_lowercase_docs_intent_is_legacy_on_a_case_insensitive_filesystem(
+    tmp_path: Path,
+) -> None:
+    """R-NFR-6: `docs/intent.md` is legacy even where `Path.exists()` would find
+    `docs/INTENT.md` through it."""
+    proj = tmp_path / "lower_proj"
+    scaffold_project(project_name="lower_proj", output=proj, interactive=False, no_git=True)
+    (proj / "docs" / "INTENT.md").rename(proj / "docs" / "intent.tmp")
+    (proj / "docs" / "intent.tmp").rename(proj / "docs" / "intent.md")
+
+    result = review_project(proj, templates_dir=get_bundled_templates_dir())
+
+    assert result.legacy == {"docs/INTENT.md": "docs/intent.md"}
+    assert compliance_cell(result) == STATE_OUTOFDATE
+
+
+def test_verdict_precedence_incomplete_over_outofdate_over_drifted(tmp_path: Path) -> None:
+    """INCOMPLETE > OUTOFDATE > DRIFTED."""
+    proj = _legacy_project(tmp_path)
+    (proj / "AGENTS.md").write_text("# local rules\n", encoding="utf-8")
+    both = review_project(proj, templates_dir=get_bundled_templates_dir())
+    assert both.diffs and both.legacy
+    assert compliance_cell(both) == STATE_OUTOFDATE
+
+    (proj / "docs" / "SPEC.md").unlink()
+    worst = review_project(proj, templates_dir=get_bundled_templates_dir())
+    assert worst.missing_files and worst.legacy
+    assert compliance_cell(worst) == STATE_INCOMPLETE
+
+
+def test_legacy_survives_from_mapping() -> None:
+    """A caller-injected mapping keeps its legacy entries."""
+    result = ReviewResult.from_mapping(
+        {"project_name": "p", "legacy": {"docs/INTENT.md": "intent.md"}}
+    )
+    assert result.legacy == {"docs/INTENT.md": "intent.md"}
+    assert result.is_current is False
+
+
+def test_outofdate_glyph_survives_no_color(tmp_path: Path) -> None:
+    """The printed board carries the `↻` glyph and the doctor hint without colour."""
+    proj = _legacy_project(tmp_path)
+    result = review_project(proj, templates_dir=get_bundled_templates_dir())
+
+    console = Console(width=160, record=True, no_color=True)
+    console.print(review_table([result]))
+    rendered = console.export_text()
+
+    assert f"{GLYPH_OUTOFDATE} OUTOFDATE" in rendered
+    assert "intent.md is at a legacy location" in rendered
+    assert "metaproject doctor" in rendered
+
+
+def test_detail_screen_lists_legacy_without_an_action(
+    tmp_path: Path, recording_console: Console
+) -> None:
+    """The detail screen shows the legacy section with no verb to act on it."""
+    proj = _legacy_project(tmp_path)
+    result = review_project(proj, templates_dir=get_bundled_templates_dir())
+
+    render_detail(recording_console, result)
+    screen = recording_console.export_text()
+
+    assert "Legacy location" in screen and "metaproject doctor" in screen
+    assert LEGACY_SECTION_TITLE.startswith("Legacy location")
+    assert "intent.md → docs/INTENT.md" in screen
+    assert "CLEAN — nothing missing" not in screen
+    assert "Deploy" not in screen
+
+
+def test_cli_review_reports_legacy_location(runner: CliRunner, tmp_path: Path) -> None:
+    """`review --no-tui` on an unmigrated project names the legacy file and doctor."""
+    proj = _legacy_project(tmp_path)
+    result = runner.invoke(app, ["review", str(proj), "--no-tui"])
+    assert result.exit_code == 0, result.output
+    assert "OUTOFDATE" in result.output
+    assert "metaproject doctor" in result.output

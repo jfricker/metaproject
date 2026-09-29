@@ -5,7 +5,7 @@ framework's event loop, matching `learn`'s reviewer (plan.md R9):
 
 **The board** is the `Project Drift & Governance Review` table: one row per project,
 answering *which project do I open next* and nothing finer. It opens with the aggregate
-score and the scan context, names the defect (`CLEAN` / `DRIFTED` / `INCOMPLETE`) and
+score and the scan context, names the defect (`CLEAN` / `DRIFTED` / `OUTOFDATE` / `INCOMPLETE`) and
 counts what is wrong; the file names themselves live on the detail screen one keystroke
 away, because a triage view that comma-joins eight deliverables into a wrapping cell
 stops being scannable at exactly the moment it matters.
@@ -74,10 +74,14 @@ ACTION_BACK = "b"
 GLYPH_CLEAN = "✓"
 GLYPH_DRIFTED = "~"
 GLYPH_INCOMPLETE = "!"
+GLYPH_OUTOFDATE = "↻"
 
 STATE_CLEAN = f"[green]{GLYPH_CLEAN} CLEAN[/green]"
 STATE_DRIFTED = f"[yellow]{GLYPH_DRIFTED} DRIFTED[/yellow]"
 STATE_INCOMPLETE = f"[red]{GLYPH_INCOMPLETE} INCOMPLETE[/red]"
+STATE_OUTOFDATE = f"[cyan]{GLYPH_OUTOFDATE} OUTOFDATE[/cyan]"
+
+LEGACY_SECTION_TITLE = "Legacy location — run `metaproject doctor`"
 
 BOARD_TITLE = "Project Drift & Governance Review"
 
@@ -111,7 +115,12 @@ BOARD_HELP = (
     "?        this help\n"
     "q        quit\n"
     "\n"
-    "Verb first (u 3) or number first (3u) — both select the same row."
+    "Verb first (u 3) or number first (3u) — both select the same row.\n"
+    "\n"
+    f"{GLYPH_INCOMPLETE} INCOMPLETE  a deliverable is missing\n"
+    f"{GLYPH_OUTOFDATE} OUTOFDATE   a cycle document is at its old location (run doctor)\n"
+    f"{GLYPH_DRIFTED} DRIFTED     content or heading structure has diverged from the templates\n"
+    f"{GLYPH_CLEAN} CLEAN       matches the templates"
 )
 
 DETAIL_HELP = (
@@ -126,7 +135,9 @@ DETAIL_HELP = (
     "i        ignore this project — it is not checked again until --unignore\n"
     "?        this help\n"
     "b        back to the board\n"
-    "q        quit"
+    "q        quit\n"
+    "\n"
+    "Documents under 'Legacy location' have no action here: `metaproject doctor` moves them."
 )
 
 
@@ -155,15 +166,18 @@ class BoardResult:
 
 
 def compliance_cell(result: ReviewResult) -> str:
-    """The `Compliance` column: three states, each named for the defect it reports.
+    """The `Compliance` column: four states, each named for the defect it reports.
 
     `CLEAN` matches the templates exactly, `DRIFTED` has every deliverable but has
-    diverged in content, `INCOMPLETE` is missing one. A project that is both incomplete
-    and drifted reads `INCOMPLETE`, because the missing file is the defect that has to be
-    fixed first — a file that is not there cannot be reconciled.
+    diverged in content, `OUTOFDATE` has a cycle document at its legacy location
+    (R-DOC-5), `INCOMPLETE` is missing one. Precedence is INCOMPLETE > OUTOFDATE >
+    DRIFTED: a file that is not there cannot be reconciled, and a file that has not been
+    migrated is not yet where drift would be judged.
     """
     if not result.is_compliant:
         return STATE_INCOMPLETE
+    if not result.is_current:
+        return STATE_OUTOFDATE
     return STATE_CLEAN if result.is_clean else STATE_DRIFTED
 
 
@@ -196,6 +210,7 @@ def summary_header(
             f"[bold]{len(results)}[/bold] projects",
             f"{STATE_CLEAN} {states.count(STATE_CLEAN)}",
             f"{STATE_DRIFTED} {states.count(STATE_DRIFTED)}",
+            f"{STATE_OUTOFDATE} {states.count(STATE_OUTOFDATE)}",
             f"{STATE_INCOMPLETE} {states.count(STATE_INCOMPLETE)}",
         )
     )
@@ -257,6 +272,13 @@ def review_table(
         table,
     ]
     for res in results:
+        for declared, where in sorted(res.legacy.items()):
+            lines.append(
+                Text.from_markup(
+                    f"[cyan]{res.project_name}: {GLYPH_OUTOFDATE} {where} is at a legacy "
+                    f"location (expected {declared}) — run `metaproject doctor`[/cyan]"
+                )
+            )
         for note in res.notes:
             lines.append(Text.from_markup(f"[dim]{res.project_name}: {note}[/dim]"))
         for warning in res.warnings:
@@ -300,6 +322,21 @@ def detail_entries(result: ReviewResult) -> List[str]:
     then working deliverables that have lost a heading (R-CLS-3) — never updatable, but
     still something the operator sees when this project is opened."""
     return [*result.missing_files, *result.updatable, *sorted(result.structure)]
+
+
+def legacy_panel(result: ReviewResult) -> Panel:
+    """Documents still at their old location (R-DOC-5). Listed, never numbered: no verb
+    on this screen applies to them, `metaproject doctor` does."""
+    lines = [
+        f"{GLYPH_OUTOFDATE} {where} → {declared}"
+        for declared, where in sorted(result.legacy.items())
+    ]
+    return Panel(
+        Text("\n".join(lines)),
+        title=LEGACY_SECTION_TITLE,
+        title_align="left",
+        border_style="cyan",
+    )
 
 
 def structure_panel(name: str, headings: List[str]) -> Panel:
@@ -359,16 +396,19 @@ def render_detail(
         )
     )
 
-    if not detail_entries(result):
+    if not detail_entries(result) and result.is_current:
         console.print(
             f"{STATE_CLEAN} — nothing missing, nothing drifted. "
             "[dim]Press o to dismiss it for now; it is checked again next review.[/dim]",
             highlight=False,
         )
     else:
-        console.print(detail_table(result))
+        if detail_entries(result):
+            console.print(detail_table(result))
         for name in sorted(result.structure):
             console.print(structure_panel(name, result.structure[name]))
+        if result.legacy:
+            console.print(legacy_panel(result))
 
     if diff_for:
         diff = result.diffs.get(diff_for)

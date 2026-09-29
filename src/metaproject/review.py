@@ -30,6 +30,7 @@ from metaproject.deliverables import (
     DeliverableClass,
     canonical_path,
     exact_exists,
+    legacy_locations,
 )
 from metaproject.exceptions import MetaProjectError
 from metaproject.markdown import Heading, missing_headings
@@ -194,6 +195,11 @@ class ReviewResult:
     failure would make the column meaningless. `is_clean` is the stronger one — nothing
     missing *and* nothing drifted — and it is what the board's `CLEAN` state is drawn
     from; `is_compliant` alone only rules out `INCOMPLETE`.
+
+    `legacy` maps a relocated document's declared path to where it actually sits (the
+    root, or an old lowercase name — R-DOC-5). Such a document is neither missing nor
+    deployable; `is_current` is "no document is at a legacy location", and `is_clean`
+    requires it, which is what the board's `OUTOFDATE` state is drawn from.
     """
 
     project_name: str
@@ -203,6 +209,7 @@ class ReviewResult:
     deployable: List[str] = field(default_factory=list)
     diffs: Dict[str, str] = field(default_factory=dict)
     structure: Dict[str, List[str]] = field(default_factory=dict)
+    legacy: Dict[str, str] = field(default_factory=dict)
     notes: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     is_ignored: bool = False
@@ -222,9 +229,15 @@ class ReviewResult:
         return not self.missing_files
 
     @property
+    def is_current(self) -> bool:
+        """No relocated document sits at its legacy location (R-DOC-5)."""
+        return not self.legacy
+
+    @property
     def is_clean(self) -> bool:
-        """Nothing missing, nothing drifted, and no working document has lost a heading."""
-        return not self.missing_files and not self.diffs and not self.structure
+        """Nothing missing, nothing drifted, nothing at a legacy location, and no working
+        document has lost a heading."""
+        return not self.missing_files and not self.diffs and not self.structure and self.is_current
 
     @classmethod
     def from_mapping(cls, data: Mapping[str, Any]) -> "ReviewResult":
@@ -246,6 +259,7 @@ class ReviewResult:
                 str(name): [str(line) for line in (lines or [])]
                 for name, lines in (data.get("structure") or {}).items()
             },
+            legacy={str(name): str(where) for name, where in (data.get("legacy") or {}).items()},
             notes=[str(note) for note in (data.get("notes") or [])],
             warnings=[str(warning) for warning in (data.get("warnings") or [])],
             is_ignored=bool(data.get("is_ignored")),
@@ -356,6 +370,8 @@ def review_project(
     structure: Dict[str, List[str]] = {}
     notes: List[str] = []
     warnings: List[str] = []
+    legacy_found = legacy_locations(resolved_proj)
+    legacy: Dict[str, str] = {}
 
     if read_identity(resolved_proj) is None:
         # Informational only (R-ID-4): `.metaproject.json` is not itself reviewable, and
@@ -372,7 +388,12 @@ def review_project(
         target_path = resolved_proj / path
         template_entry = resolve_template_entry(path, resolved_templates)
 
-        if not target_path.exists():
+        if not _present(resolved_proj, path):
+            # A document still at its old location is not missing: Deploy would create a
+            # blank `docs/INTENT.md` beside the real root `intent.md` (R-DOC-5).
+            if path in legacy_found:
+                legacy[path] = legacy_found[path]
+                continue
             missing_files.append(path)
             if template_entry is not None:
                 deployable.append(path)
@@ -405,6 +426,7 @@ def review_project(
         deployable=deployable,
         diffs=diffs,
         structure=structure,
+        legacy=legacy,
         notes=notes,
         warnings=warnings,
         is_ignored=is_ignored(resolved_proj, config_dir),
