@@ -206,7 +206,7 @@ A project root is anything with a git repo, a `.metaproject` marker, or marker f
 
 ## doctor
 
-`metaproject doctor [--dry-run]` — **interactive**: diagnoses an environment and projects
+`metaproject doctor [PROJECT] [--dry-run]` — **interactive**: diagnoses an environment and projects
 left behind by an upgrade, and repairs each finding behind its own confirmation.
 
 | Check | Fix (on confirmation) |
@@ -224,6 +224,13 @@ confirmation per project. Declining one fix never blocks the rest. A second run 
 full migration is clean (a stale skill stays reported until its directory is deleted and
 `backfill` is re-run). In an agent session only `--dry-run` runs; it writes nothing.
 Exit code `1` while any finding remains.
+
+With a PROJECT path the run is scoped to that one project — `metaproject doctor .` for
+the current directory, `metaproject doctor Projects/PPPS` for another. Only its checks
+run, in the full run's order: identity (the anchor is backfilled on confirmation even if
+the project is not cataloged — accepting is what puts it in scope), then docs, then
+skills. The store, config, and global-skill checks are skipped; a path that is not a
+directory is refused.
 
 ## Agent-session guards
 

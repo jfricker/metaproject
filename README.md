@@ -43,11 +43,15 @@ per-project `.metaproject.json` anchors, and — in each cataloged, metaproject-
 project — cycle documents still at the root under their old names and missing project
 skills. Run `metaproject doctor` to check them in that order and repair what's stale —
 each fix asks for confirmation first (once per project for the project checks), and
-`--dry-run` previews findings without writing anything:
+`--dry-run` previews findings without writing anything. Name a project to scope the run
+to it — `metaproject doctor Projects/PPPS`, or `metaproject doctor .` for the current
+directory — and only that project's anchor, cycle documents, and skills are checked; the
+environment-wide checks are skipped:
 
 ```bash
 metaproject doctor --dry-run   # preview
 metaproject doctor             # diagnose, confirm each fix
+metaproject doctor .           # just this project: its anchor, docs, and skills
 ```
 
 Notes:

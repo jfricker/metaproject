@@ -124,7 +124,7 @@
 - `src/metaproject/skill/`: The bundled metaproject skill (`SKILL.md` plus `references/`), shipped as package data.
 - `src/metaproject/sdlc_skills/`: The eight bundled SDLC cycle skills (`write-intent` … `wrapup`, `backlog-new`), imported with history from the retired sdlc-skills repository.
 - `src/metaproject/skills.py`: `bundled_skills()` declares the nine project skills; `install_project_skills` copies missing ones into a project's `.agents/skills/` for `new`/`backfill` (create-only; `init` installs none).
-- `src/metaproject/doctor.py`: `metaproject doctor` — store layout, store, config, orphaned global skill, identity, and per-project docs migration and skills, each fix behind confirmation.
+- `src/metaproject/doctor.py`: `metaproject doctor` — store layout, store, config, orphaned global skill, identity, and per-project docs migration and skills, each fix behind confirmation. An optional `[PROJECT]` path (`metaproject doctor .`) scopes the run to that one project's identity, docs, and skills checks.
 - `src/metaproject/session.py`: Agent-session detection (`CLAUDECODE`, `AI_AGENT`, `CI`, `METAPROJECT_AGENT`) behind the TUI, scan, and backfill guards.
 - `scripts/bump_version.sh`: AI-native version bumping script.
 - `scripts/bump_version.py`: Python helper for version bumping.

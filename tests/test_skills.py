@@ -215,7 +215,9 @@ def test_ac5_real_claude_skills_directory_refuses_skills_not_deliverables(
     result = runner.invoke(app, ["backfill", "--dir", str(proj)])
 
     assert result.exit_code == 0, result.output
-    assert "real directory" in result.output
+    # The notice renders in an 80-column console: a long tmp path can wrap it
+    # mid-phrase, so match on whitespace-collapsed text.
+    assert "real directory" in " ".join(result.output.split())
     assert not (proj / ".agents" / "skills").exists()
     assert (proj / "docs" / "INTENT.md").is_file()
     assert list((proj / ".claude" / "skills").iterdir()) == []

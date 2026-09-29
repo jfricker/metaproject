@@ -579,3 +579,144 @@ def test_default_confirm_asks_and_respects_no(
 
     assert asked, "doctor must prompt before fixing"
     assert not victim.exists()
+
+
+# ------------------------------------------------------------- single project
+
+
+def test_scoped_dry_run_checks_only_that_project(tmp_path: Path) -> None:
+    """`doctor <project> --dry-run`: that project's three checks, nothing written."""
+    cfg, config_file = _make_env(tmp_path)
+    target = _legacy_project(cfg, tmp_path / "projects", "target", git_repo=False)
+    bystander = _legacy_project(cfg, tmp_path / "projects", "bystander", git_repo=False)
+    before = _snapshot(tmp_path / "projects", Path(cfg.templates_dir), config_file.parent)
+
+    results = run_checks(cfg, config_file, dry_run=True, confirm=_fail_if_called, project=target)
+
+    assert [r.name for r in results] == [
+        "project identity",
+        f"project docs: {target}",
+        f"project skills: {target}",
+    ]
+    assert results[0].healthy  # the anchor `_legacy_project` writes is seen
+    assert all(not r.healthy for r in results[1:])
+    assert _snapshot(tmp_path / "projects", Path(cfg.templates_dir), config_file.parent) == before
+    assert (bystander / "intent.md").is_file()
+
+
+def test_scoped_run_fixes_only_that_project(tmp_path: Path) -> None:
+    cfg, config_file = _make_env(tmp_path)
+    target = _legacy_project(cfg, tmp_path / "projects", "target", git_repo=False)
+    bystander = _legacy_project(cfg, tmp_path / "projects", "bystander", git_repo=False)
+    store = Path(cfg.templates_dir)
+    before = _snapshot(store, config_file.parent)
+
+    results = run_checks(cfg, config_file, confirm=_all_yes, project=target)
+
+    assert all(r.healthy for r in results)
+    assert (target / "docs" / "INTENT.md").is_file()
+    assert (target / ".agents" / "skills" / "write-intent" / "SKILL.md").is_file()
+    # The bystander project and the environment stay out of scope.
+    assert (bystander / "intent.md").is_file()
+    assert not (bystander / "docs").exists()
+    assert _snapshot(store, config_file.parent) == before
+
+    # A full run afterwards still sees the bystander's findings, and the environment
+    # checks the scoped run skipped have nothing to report.
+    full = run_checks(cfg, config_file, confirm=lambda message: False)
+    assert any(r.name == f"project docs: {bystander}" for r in full)
+    assert not any("template store" in r.name and r.findings for r in full)
+
+
+def test_scoped_identity_backfill_brings_project_into_scope(tmp_path: Path) -> None:
+    """An anchorless project named on the command line: backfill, then docs and skills.
+
+    It is not in the catalog — the scoped run works on the named directory.
+    """
+    cfg, config_file = _make_env(tmp_path)
+    project = tmp_path / "projects" / "solo"
+    project.mkdir(parents=True)
+    (project / "intent.md").write_text("the project's own words\n", encoding="utf-8")
+
+    results = run_checks(cfg, config_file, confirm=_all_yes, project=project)
+
+    assert _check(results, "project identity").fixed is True
+    new_identity = read_identity(project)
+    assert new_identity is not None and new_identity.author == "Test Operator"
+    assert (project / "docs" / "INTENT.md").read_text(encoding="utf-8") == (
+        "the project's own words\n"
+    )
+    assert (project / ".agents" / "skills" / "write-intent" / "SKILL.md").is_file()
+
+
+def test_scoped_declined_identity_keeps_project_unmanaged(tmp_path: Path) -> None:
+    """Declining the backfill leaves docs and skills out of scope (R-DRX-3/4)."""
+    cfg, config_file = _make_env(tmp_path)
+    project = tmp_path / "projects" / "solo"
+    project.mkdir(parents=True)
+    (project / "intent.md").write_text("legacy\n", encoding="utf-8")
+
+    results = run_checks(
+        cfg, config_file, confirm=lambda message: "identity" not in message, project=project
+    )
+
+    assert [r.name for r in results] == ["project identity"]
+    assert _check(results, "project identity").fixed is None
+    assert read_identity(project) is None
+    assert (project / "intent.md").is_file()
+
+
+def test_cli_doctor_scoped_project_dry_run(runner: CliRunner, tmp_path: Path) -> None:
+    """`doctor <project> --dry-run` reports that project only, exit 1 on findings."""
+    cfg, config_file = _make_env(tmp_path)
+    project = _legacy_project(cfg, tmp_path / "projects", "cli_target", git_repo=False)
+    bystander = _legacy_project(cfg, tmp_path / "projects", "cli_bystander", git_repo=False)
+
+    result = runner.invoke(app, ["doctor", "--dry-run", str(project)], env=_cli_env(config_file))
+
+    assert result.exit_code == 1
+    assert "cli_target" in result.output
+    assert "docs/INTENT.md" in result.output
+    assert "cli_bystander" not in result.output
+    assert (bystander / "intent.md").is_file()
+
+
+def test_cli_doctor_scoped_current_directory(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`doctor .` from inside a current, managed project: healthy, exit 0."""
+    cfg, config_file = _make_env(tmp_path)
+    project = tmp_path / "projects" / "here"
+    project.mkdir(parents=True)
+    write_identity(
+        project,
+        Identity(
+            title="here",
+            description="",
+            author="T",
+            created=date(2026, 9, 1),
+            metaproject_version="0.8.0",
+        ),
+    )
+    install_project_skills(project)
+    monkeypatch.chdir(project)
+
+    result = runner.invoke(app, ["doctor", "--dry-run", "."], env=_cli_env(config_file))
+
+    assert result.exit_code == 0, result.output
+    assert "project identity" in result.output
+    assert "project docs" in result.output and "project skills" in result.output
+    # Scoped, not the environment-wide board.
+    assert "Environment Health" not in result.output
+
+
+def test_cli_doctor_bad_project_path(runner: CliRunner, tmp_path: Path) -> None:
+    """A path that isn't a directory is refused, even under --dry-run."""
+    _, config_file = _make_env(tmp_path)
+
+    result = runner.invoke(
+        app, ["doctor", "--dry-run", str(tmp_path / "nope")], env=_cli_env(config_file)
+    )
+
+    assert result.exit_code == 1
+    assert "Not a directory" in result.output

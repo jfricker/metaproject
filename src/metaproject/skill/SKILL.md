@@ -224,7 +224,9 @@ templates into `docs.template/` (one commit in the store), rewrites old paths in
 `learn.targets`, moves each cataloged project's documents into `docs/` with their new
 names (`git mv` when tracked; it never overwrites and never commits in the project),
 installs missing project skills (a stale copy is reported, never overwritten), and
-removes the old global `~/.claude/skills/metaproject/`. Only `metaproject doctor
+removes the old global `~/.claude/skills/metaproject/`. Naming a project scopes the run
+to it — `metaproject doctor .` checks only that project's anchor, cycle documents, and
+skills, skipping the environment-wide checks. Only `metaproject doctor
 --dry-run` runs in an agent session — run it to show the findings, then hand the
 operator `metaproject doctor`.
 

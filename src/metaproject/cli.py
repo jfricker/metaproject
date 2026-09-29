@@ -1133,6 +1133,13 @@ def backfill_cmd(
 
 @app.command(name="doctor")
 def doctor_cmd(
+    project: Optional[Path] = typer.Argument(
+        None,
+        help=(
+            "Operate on this one project — its anchor, cycle documents, and skills — "
+            "instead of the whole environment (e.g. `metaproject doctor .`)."
+        ),
+    ),
     dry_run: bool = typer.Option(
         False,
         "--dry-run",
@@ -1141,15 +1148,29 @@ def doctor_cmd(
 ) -> None:
     """Diagnose and repair a stale installed environment after an upgrade.
 
-    Checks, in order: the template store's layout (cycle templates still at its root),
-    the template store, `learn.targets` in config.json, an orphaned
+    Without a project, checks, in order: the template store's layout (cycle templates
+    still at its root), the template store, `learn.targets` in config.json, an orphaned
     `~/.claude/skills/metaproject/` from older releases, per-project
     `.metaproject.json` anchors, and — per cataloged, metaproject-managed project —
     cycle documents at their old root locations and missing or stale project skills.
-    Each fix needs an operator's confirmation (per project for the project checks);
+    With a PROJECT path, only that project is examined — its anchor, its cycle
+    documents, its skills — and the environment-wide checks are skipped. Each fix
+    needs an operator's confirmation (per project for the project checks);
     `--dry-run` writes nothing and is the only form permitted inside an agent session.
     """
     from metaproject import doctor
+
+    if project is not None:
+        project = project.resolve()
+        if not project.is_dir():
+            console.print(
+                Panel.fit(
+                    f"Not a directory: [cyan]{project}[/cyan]\n\n"
+                    "Doctor's project checks repair a project's directory.",
+                    title="[red]Bad Project Path[/red]",
+                )
+            )
+            raise typer.Exit(code=1)
 
     if not dry_run:
         marker = agent_marker()
@@ -1181,9 +1202,10 @@ def doctor_cmd(
         raise typer.Exit(code=1)
 
     cfg = load_config(config_file)
-    results = doctor.run_checks(cfg, config_file, dry_run=dry_run)
+    results = doctor.run_checks(cfg, config_file, dry_run=dry_run, project=project)
 
-    table = Table(title="Doctor — Environment Health")
+    title = f"Doctor — {project}" if project is not None else "Doctor — Environment Health"
+    table = Table(title=title)
     table.add_column("Check", style="bold")
     table.add_column("Status")
     table.add_column("Detail", overflow="fold")

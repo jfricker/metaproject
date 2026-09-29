@@ -11,6 +11,10 @@ module that owns the concern, so doctor and ``init``/``new`` cannot drift apart
 The checks, in order: template-store layout, template store, config, orphaned global
 skill, project identity, project docs, project skills. Layout runs first so a store
 whose cycle templates are still at the root is migrated, not re-seeded beside them.
+
+`run_checks(..., project=...)` scopes the run to one operator-named project: only
+that project's identity, docs, and skills checks run, and none of the
+environment-wide ones.
 """
 
 import os
@@ -239,6 +243,12 @@ def fix_global_skill() -> None:
         shutil.rmtree(orphan)
 
 
+def _identity_findings(anchorless: Sequence[Path]) -> tuple[List[str], str]:
+    findings = [f"no .metaproject.json anchor: {p}" for p in anchorless]
+    fix_summary = f"backfill identity for {len(anchorless)} project(s)"
+    return findings, fix_summary
+
+
 def check_identity(cfg: Config) -> tuple[List[str], str, List[Path]]:
     """Cataloged projects whose `.metaproject.json` anchor is absent."""
     database = db.get_db(cfg.universe_db)
@@ -251,8 +261,20 @@ def check_identity(cfg: Config) -> tuple[List[str], str, List[Path]]:
         if identity.read_identity(project_dir) is None:
             anchorless.append(project_dir)
 
-    findings = [f"no .metaproject.json anchor: {p}" for p in anchorless]
-    fix_summary = f"backfill identity for {len(anchorless)} project(s)"
+    findings, fix_summary = _identity_findings(anchorless)
+    return findings, fix_summary, anchorless
+
+
+def check_project_identity(project_dir: Path) -> tuple[List[str], str, List[Path]]:
+    """Identity scoped to one operator-named project.
+
+    The full run only notices cataloged projects; here the operator pointed doctor
+    at the directory, so catalog membership is not required.
+    """
+    anchorless: List[Path] = []
+    if project_dir.is_dir() and identity.read_identity(project_dir) is None:
+        anchorless.append(project_dir)
+    findings, fix_summary = _identity_findings(anchorless)
     return findings, fix_summary, anchorless
 
 
@@ -274,15 +296,19 @@ def fix_identity(cfg: Config, projects: List[Path]) -> None:
 # ------------------------------------------------------------------- projects
 
 
+def _is_managed(project_dir: Path) -> bool:
+    """`project_dir` exists and carries `.metaproject.json` (R-DRX-3/4 scope)."""
+    return project_dir.is_dir() and (project_dir / identity.IDENTITY_FILE).is_file()
+
+
 def _managed_projects(cfg: Config) -> List[Path]:
     """Cataloged projects that exist and carry `.metaproject.json` (R-DRX-3/4)."""
     database = db.get_db(cfg.universe_db)
-    found: List[Path] = []
-    for row in db.query_projects(database):
-        project_dir = Path(row["path"])
-        if project_dir.is_dir() and (project_dir / identity.IDENTITY_FILE).is_file():
-            found.append(project_dir)
-    return found
+    return [
+        project_dir
+        for project_dir in (Path(row["path"]) for row in db.query_projects(database))
+        if _is_managed(project_dir)
+    ]
 
 
 def check_project_docs(project_dir: Path) -> tuple[List[str], List[str], str]:
@@ -331,18 +357,69 @@ def _confirm_with_questionary(message: str) -> bool:
     return bool(questionary.confirm(message, default=False).ask())
 
 
+def _project_checks(
+    cfg: Config,
+    project_dir: Path,
+    dry_run: bool,
+    confirm: Callable[[str], bool],
+) -> List[CheckResult]:
+    """The checks for one operator-named project, in the full run's order.
+
+    Every check reports even when healthy — one project, so the board is small and
+    the operator sees what was looked at. Identity runs first: accepting its backfill
+    puts an anchorless project in scope for the docs and skills checks, which need a
+    `.metaproject.json` anchor exactly as the full run's project checks do (R-DRX-3/4).
+    """
+    results: List[CheckResult] = []
+    findings, fix_summary, anchorless = check_project_identity(project_dir)
+    results.append(
+        _apply(
+            "project identity",
+            findings,
+            fix_summary,
+            lambda: fix_identity(cfg, anchorless),
+            dry_run,
+            confirm,
+        )
+    )
+    if not _is_managed(project_dir):
+        return results
+    for name, check, fix in (
+        ("project docs", check_project_docs, fix_project_docs),
+        ("project skills", check_project_skills, fix_project_skills),
+    ):
+        findings, report_only, fix_summary = check(project_dir)
+        results.append(
+            _apply(
+                f"{name}: {project_dir}",
+                findings,
+                fix_summary,
+                lambda fix=fix, project_dir=project_dir: fix(project_dir),
+                dry_run,
+                confirm,
+                report_only,
+            )
+        )
+    return results
+
+
 def run_checks(
     cfg: Config,
     config_file: Path,
     dry_run: bool = False,
     confirm: Optional[Callable[[str], bool]] = None,
+    project: Optional[Path] = None,
 ) -> List[CheckResult]:
     """Run every check in order, fixing behind per-check (per-project) confirmation.
 
     Declining one fix never blocks the remaining checks (spec R-DR-8, R-DRX-7).
+    With `project`, run only that project's checks — identity, then docs, then
+    skills — and none of the environment-wide ones.
     """
     if confirm is None:
         confirm = _confirm_with_questionary
+    if project is not None:
+        return _project_checks(cfg, project, dry_run, confirm)
     results: List[CheckResult] = []
 
     # 1. Template-store layout — before the store check, so it is not re-seeded.
