@@ -14,6 +14,16 @@
 ## Implementation phases
 
 <!-- written by implement-plan as steps land -->
+- [x] 1. Self-migrate this repo's documents to docs/ (R-SELF-1)
+- [ ] 2. Import the skills with history
+- [ ] 3. Relocated deliverables + template store
+- [ ] 4. Review legacy detection + OUTOFDATE
+- [ ] 5. learn / universe markers
+- [ ] 6. Project skills, new/backfill, init
+- [ ] 7. doctor
+- [ ] 8. Skill text + skill tests
+- [ ] 9. Documentation
+- [ ] 10. Populate this repo's skills
 
 ## Design invariants (regression guards)
 
