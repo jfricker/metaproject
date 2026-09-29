@@ -5,10 +5,14 @@ description: Capture an idea that is NOT ready to become an SDLC cycle — brain
 
 # backlog-new
 
+> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
+> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
+
 Pre-cycle idea parking lot: brainstorm an idea the user does not want to start yet and
 distill the session into a version-controlled backlog doc. The 7-stage cycle starts at
 `write-intent`; this skill sits before it and is not a cycle stage — it does not touch
-`intent.md`, `STATE.md`, or the Process list.
+`docs/INTENT.md`, `docs/STATE.md`, or the Process list.
 
 ## When to use
 
@@ -20,7 +24,7 @@ distill the session into a version-controlled backlog doc. The 7-stage cycle sta
 ## Inputs
 
 - The user's raw description of the idea (however rough).
-- `ARCHITECTURE.md` and `docs/VERIFIED-FACTS.md`, if they exist — frame the idea
+- `docs/ARCHITECTURE.md` and `docs/VERIFIED-FACTS.md`, if they exist — frame the idea
   against what's already known instead of rediscovering it.
 - Existing docs in `docs/backlog/`, if any — avoid duplicating a parked idea; extend
   the existing doc instead of writing a second one.
@@ -75,8 +79,8 @@ place.
 
 ## Stop conditions / human gate
 
-- Do not create or modify cycle documents (`intent.md`, `spec.md`, `design.md`,
-  `plan.md`, `STATE.md`) — this skill never starts a cycle.
+- Do not create or modify cycle documents (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`,
+  `docs/PLAN.md`, `docs/STATE.md`) — this skill never starts a cycle.
 - Do not implement anything the session dreamed up; the doc is the only artifact.
 - If the session reveals the user actually wants to start now, stop and hand off to
   `write-intent` (which can consume this doc once written).

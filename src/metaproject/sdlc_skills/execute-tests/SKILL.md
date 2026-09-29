@@ -5,29 +5,31 @@ description: Run the project's test/build/lint feedback loop (via make, per AGEN
 
 # execute-tests
 
+> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
+> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
+
 Stage 4 of the SDLC loop: the self-check loop that runs before a person is asked to
 look — tests, build, and (for UI work) screenshots.
 
 ## Conventions (metaproject)
 
-- **Session assumption**: a `SessionStart` hook already checked that metaproject ≥
-  0.7.0 is installed and `.metaproject.json` exists; this skill doesn't re-check. If
-  the session-start `[sdlc-skills]` notice reported a failure, stop and repeat its fix
-  instead of proceeding. If a metaproject command fails anyway, stop and show the user
-  its output.
 - **Documents come from metaproject**: working documents are templated by metaproject,
-  not by this skill. Create a missing one with `metaproject backfill <file>`
-  (create-only — it never overwrites); `metaproject backfill` with no files creates
-  every missing scaffolded deliverable at once. `HANDOFF.md` is on-demand:
-  `metaproject backfill HANDOFF.md`.
-- **Blank rule**: a cycle document (intent/spec/design/plan) is blank iff its first
+  not by this skill, and live in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`,
+  `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, `docs/ARCHITECTURE.md`).
+  Create a missing one with `metaproject backfill docs/<FILE>.md` (create-only — it
+  never overwrites); `metaproject backfill` with no files creates every missing
+  scaffolded deliverable at once. `docs/HANDOFF.md` is on-demand:
+  `metaproject backfill docs/HANDOFF.md`.
+- If a metaproject command fails, stop and show the user its output.
+- **Blank rule**: a cycle document (INTENT/SPEC/TECH-DESIGN/PLAN) is blank iff its first
   `# ` heading contains `<Title>`.
 - **Status vocabulary**: `Draft`, `Approved`, `Complete`, `Cancelled`, `Deferred`,
-  `Superseded`. Header fields are `Author`, `Derived from` (not on intent.md),
+  `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Never set it to `Approved` yourself.
-- Tick STATE.md Process item 6 once this stage is done.
+- Tick `docs/STATE.md` Process item 6 once this stage is done.
 
 ## When to use
 
@@ -36,7 +38,7 @@ look — tests, build, and (for UI work) screenshots.
 
 ## Inputs
 
-- `plan.md`'s **Verification plan** section and `spec.md`'s **Acceptance criteria**.
+- `docs/PLAN.md`'s **Verification plan** section and `docs/SPEC.md`'s **Acceptance criteria**.
 - This project's `Makefile` (`make help` for targets) — the primary test/build entry
   point per `AGENTS.md`.
 
@@ -49,8 +51,8 @@ look — tests, build, and (for UI work) screenshots.
    actually run the app and take a screenshot confirming the change works, not just that
    tests pass.
 4. On failure: fix the code and re-run, don't just report the failure and stop, unless
-   the fix requires a decision outside `plan.md`'s scope — then stop and flag it.
-5. Check each item in `spec.md`'s Acceptance criteria against what was actually
+   the fix requires a decision outside `docs/PLAN.md`'s scope — then stop and flag it.
+5. Check each item in `docs/SPEC.md`'s Acceptance criteria against what was actually
    implemented; note any criteria not yet met.
 6. Report results plainly: what passed, what failed, what was fixed, and anything still
    open — never claim tests pass without having run them.
@@ -63,5 +65,5 @@ ready for `wrapup`/PR.
 ## Stop conditions / human gate
 
 - Do not silently skip or delete a failing test to make the suite pass.
-- If fixing a failure would require deviating from the approved `plan.md`, stop and ask
+- If fixing a failure would require deviating from the approved `docs/PLAN.md`, stop and ask
   rather than reinterpreting the plan.

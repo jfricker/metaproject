@@ -21,7 +21,7 @@
 - [x] 5. learn / universe markers (R-DOC-3, R-DOC-6, R-SKL-8)
 - [x] 6. Project skills, new/backfill, init (R-SKL-1..7, R-INI-1..2; doctor global-skill check removed here, pulled forward from step 7)
 - [x] 7. doctor (R-DRX-1..7; also fixed default confirm never prompting)
-- [ ] 8. Skill text + skill tests
+- [x] 8. Skill text + skill tests (R-TXT-1..3, R-SKL-7)
 - [ ] 9. Documentation
 - [ ] 10. Populate this repo's skills
 
