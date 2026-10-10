@@ -1,6 +1,6 @@
 ---
 name: generate-spec
-description: Turn an approved INTENT.md into a requirements/design SPEC.md, applying any organization policy skills (security, compliance, brand, UX) as it's written and flagging concerns for the product owner to resolve. Use when INTENT.md is approved and the user wants requirements defined before design or planning starts. Second step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Turns an approved INTENT.md into a requirements/design SPEC.md, applying any organization policy skills (security, compliance, brand, UX) as it's written and flagging concerns for the product owner to resolve. Use when INTENT.md is approved and the user wants requirements defined before design or planning starts. Second step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # generate-spec
@@ -9,7 +9,7 @@ description: Turn an approved INTENT.md into a requirements/design SPEC.md, appl
 > repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 2a of the SDLC loop: policy is applied while the spec is written, not discovered
+Stage 2 of 7: policy is applied while the spec is written, not discovered
 in a review weeks later.
 
 ## Conventions (metaproject)
@@ -28,7 +28,8 @@ in a review weeks later.
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 2 once this stage is done.
 
 ## When to use

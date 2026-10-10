@@ -1,6 +1,6 @@
 ---
 name: generate-plan
-description: Turn approved SPEC.md and TECH-DESIGN.md into an implementation PLAN.md — files touched, sequencing, risks — using Claude Code's plan mode so no code is written until the plan is approved. Use when SPEC.md and TECH-DESIGN.md are approved and the user is ready to plan implementation. Fourth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Turns approved SPEC.md and TECH-DESIGN.md into an implementation PLAN.md — files touched, sequencing, risks — using Claude Code's plan mode so no code is written until the plan is approved. Use when SPEC.md and TECH-DESIGN.md are approved and the user is ready to plan implementation. Fourth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # generate-plan
@@ -9,7 +9,7 @@ description: Turn approved SPEC.md and TECH-DESIGN.md into an implementation PLA
 > repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 3a of the SDLC loop: plan mode prevents code generation until strategy is
+Stage 4 of 7: plan mode prevents code generation until strategy is
 approved.
 
 ## Conventions (metaproject)
@@ -28,7 +28,8 @@ approved.
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 4 once this stage is done.
 
 ## When to use
@@ -53,10 +54,9 @@ approved.
    considerations. Reference existing functions/utilities to reuse rather than
    reinventing them.
 5. Exit plan mode (`ExitPlanMode`) to get user approval on the plan content. The
-   operator's approval through `ExitPlanMode` counts as their sign-off — write
-   `**Status**: Approved.` and `**Approved by**: <name> (<YYYY-MM-DD>).` into `docs/PLAN.md`
-   on that basis; don't ask for a second, separate approval.
-6. Once approved, write the approved plan into `docs/PLAN.md` with **Status: Approved**.
+   operator's approval through `ExitPlanMode` counts as their sign-off — write the
+   approved plan into `docs/PLAN.md` with `**Status**: Approved.` and
+   `**Approved by**: <name> (<YYYY-MM-DD>).`; don't ask for a second, separate approval.
 
 ## Output artifact
 

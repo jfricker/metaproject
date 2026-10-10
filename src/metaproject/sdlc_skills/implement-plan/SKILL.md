@@ -1,6 +1,6 @@
 ---
 name: implement-plan
-description: Implement strictly against an approved PLAN.md, following CLAUDE.md conventions, producing code and tests and keeping STATE.md updated as each step lands. Use when PLAN.md is approved and the user wants the actual code written. Fifth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Implements strictly against an approved PLAN.md, following CLAUDE.md conventions, producing code and tests and keeping STATE.md updated as each step lands. Use when PLAN.md is approved and the user wants the actual code written. Fifth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # implement-plan
@@ -9,7 +9,7 @@ description: Implement strictly against an approved PLAN.md, following CLAUDE.md
 > repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 3b of the SDLC loop: execute the approved plan, not a reinterpretation of it.
+Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
 
 ## Conventions (metaproject)
 
@@ -27,7 +27,8 @@ Stage 3b of the SDLC loop: execute the approved plan, not a reinterpretation of 
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 5 once this stage is done.
 - Before editing, grep to locate the exact target and count matches. After editing,
   diff to confirm no sibling or identically-structured code changed. If a direct Edit
@@ -61,6 +62,13 @@ Stage 3b of the SDLC loop: execute the approved plan, not a reinterpretation of 
 6. If work is interrupted before the plan is fully implemented, run
    `metaproject backfill docs/HANDOFF.md` (it's an on-demand document) and fill it in with
    exact state and next step, per `AGENTS.md`.
+7. **Delegation.** Run each plan step through clean-context subagents, one step at a
+   time (concurrent agents collide on the shared working tree and gate): a Sonnet agent
+   implements and runs targeted tests without committing; then a Haiku agent runs the
+   full gate and commits the explicit paths, copying the exact test-summary lines.
+   Subagents report only the commit sha or a blocker. Consult an Opus agent on
+   ambiguity or a complex step. Use the `Workflow` tool only if the operator explicitly
+   asked for a workflow.
 
 ## Output artifact
 

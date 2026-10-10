@@ -1,6 +1,6 @@
 ---
 name: write-intent
-description: Start a new SDLC cycle by brainstorming a raw problem statement (an idea, ticket, or incident) into a version-controlled INTENT.md. Use when the user wants to kick off new work, propose a change, or capture "what we want to build and why" before any spec or code exists. First step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Starts a new SDLC cycle by brainstorming a raw problem statement (an idea, ticket, or incident) into a version-controlled INTENT.md. Use when the user wants to kick off new work, propose a change, or capture "what we want to build and why" before any spec or code exists. First step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # write-intent
@@ -9,7 +9,7 @@ description: Start a new SDLC cycle by brainstorming a raw problem statement (an
 > repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 1 of the SDLC loop: capture intent once, in the originator's own words, as a
+Stage 1 of 7: capture intent once, in the originator's own words, as a
 version-controlled artifact — before any requirements, design, or code work starts.
 
 ## Conventions (metaproject)
@@ -28,7 +28,8 @@ version-controlled artifact — before any requirements, design, or code work st
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 1 once this stage is done.
 
 ## When to use
@@ -42,6 +43,7 @@ version-controlled artifact — before any requirements, design, or code work st
 ## Inputs
 
 - The user's raw description of the problem (however rough).
+- Optionally, a `docs/backlog/` doc to start from (see step 2).
 - `docs/ARCHITECTURE.md` and `docs/VERIFIED-FACTS.md`, if they exist — check them so the
   intent is framed against what's already known about the system, instead of
   rediscovering it.
@@ -57,7 +59,8 @@ version-controlled artifact — before any requirements, design, or code work st
    typed.
 2. **From the backlog.** If the idea comes from a `docs/backlog/` doc, use that doc as
    the raw problem statement — verify its "Current behavior" still holds, carry its
-   Goal and Open questions into INTENT.md, and flip the doc's Status line to
+   Goal and Open questions into INTENT.md, add an `**Origin**: docs/backlog/<slug>.md`
+   header field to INTENT.md, and flip the backlog doc's Status line to
    `promoted YYYY-MM-DD (<cycle name>)` when the cycle starts.
 3. Draft `docs/INTENT.md` in place, filling every section:
    - **Problem** — what's wrong or missing, for whom.

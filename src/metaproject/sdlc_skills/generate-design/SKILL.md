@@ -1,6 +1,6 @@
 ---
 name: generate-design
-description: Turn an approved SPEC.md into a technical TECH-DESIGN.md — affected components, data flow, interfaces, and trade-offs — the design artifact generate-plan consumes alongside SPEC.md. Use when SPEC.md is approved and the user wants the technical approach worked out before an implementation plan is written. Third step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Turns an approved SPEC.md into a technical TECH-DESIGN.md — affected components, data flow, interfaces, and trade-offs — the design artifact generate-plan consumes alongside SPEC.md. Use when SPEC.md is approved and the user wants the technical approach worked out before an implementation plan is written. Third step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # generate-design
@@ -9,7 +9,7 @@ description: Turn an approved SPEC.md into a technical TECH-DESIGN.md — affect
 > repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 2b of the SDLC loop: the technical-design half of "Requirements & Spec" — kept
+Stage 3 of 7: the technical-design half of "Requirements & Spec" — kept
 separate from `generate-spec` because requirements (what/why) and technical design
 (how) are different reviews with different reviewers, and `docs/PLAN.md` needs both as
 distinct inputs (per this repo's `AGENTS.md`).
@@ -30,7 +30,8 @@ distinct inputs (per this repo's `AGENTS.md`).
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 3 once this stage is done.
 
 ## When to use

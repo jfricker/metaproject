@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: End-of-cycle archive and reset. First resolves STATE.md's Open items carried into PLAN.md with the operator (discard, carry forward into the next INTENT.md, or send the cycle back to implement-plan if genuinely unfinished) — only then sets INTENT.md's Status to Complete, appends STATE.md's Design invariants and Verified facts into the long-lived docs/DESIGN-INVARIANTS.md and docs/VERIFIED-FACTS.md, updates ARCHITECTURE.md's cycle index, archives INTENT.md, SPEC.md, TECH-DESIGN.md, PLAN.md, STATE.md, and HANDOFF.md (if present) into docs/archive/, removes worktrees created for the cycle, and recreates INTENT.md, SPEC.md, TECH-DESIGN.md, PLAN.md, and STATE.md with `metaproject backfill` so main is ready for the next write-intent cycle. Touches only SDLC documents, ARCHITECTURE.md, docs/DESIGN-INVARIANTS.md, docs/VERIFIED-FACTS.md, docs/archive/, and worktrees — never source code or tests. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into docs/archive/, removes the cycle's worktrees, and recreates blank cycle documents with `metaproject backfill`. Never touches source code or tests. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # wrapup
@@ -29,7 +29,8 @@ what's worth keeping long-term, and reset `docs/` to a blank slate for the next
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 7 once this stage is done (before it's archived — see
   Process below).
 
@@ -105,8 +106,9 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    `metaproject backfill docs/archive` rather than `mkdir -p`-ing it into existence.
    Once confirmed, `git mv` (or move + `git add`) each of `docs/INTENT.md`, `docs/SPEC.md`,
    `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, and `docs/HANDOFF.md` (if present) into the derived
-   archive directory, preserving history. STATE.md is archived whole, only after step 6
-   has already copied its invariants/facts elsewhere.
+   archive directory, preserving history. If INTENT.md has an `**Origin**` field pointing
+   at a `docs/backlog/` doc, `git mv` that doc into the archive directory too. STATE.md is
+   archived whole, only after step 6 has already copied its invariants/facts elsewhere.
 8. Remove worktrees created for this cycle: for each one listed by `git worktree list`
    under `.claude/worktrees/` that belongs to this cycle, run
    `git worktree remove <path>` (add `--force` only after confirming with the user
@@ -124,7 +126,7 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
 
 - Either: a completed wrapup —
   - `docs/archive/YYYY-MM-DD-<slug>/{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md` (+ `…/HANDOFF.md`
-    if it existed).
+    if it existed, + the promoted backlog doc if INTENT.md had an `**Origin**`).
   - `docs/ARCHITECTURE.md` with a new cycle-index row (and diagram update if applicable).
   - `docs/DESIGN-INVARIANTS.md` / `docs/VERIFIED-FACTS.md` with a new dated section, if
     STATE.md had content to preserve.

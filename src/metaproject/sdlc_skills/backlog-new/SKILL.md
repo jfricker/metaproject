@@ -1,6 +1,6 @@
 ---
 name: backlog-new
-description: Capture an idea that is NOT ready to become an SDLC cycle — brainstorm it with the user and park the result as docs/backlog/<slug>.md. Use when the user says "new backlog", "backlog-new", "park this idea", "add to backlog", "save this for later", or wants to brainstorm a direction without starting work. Not for work starting now — that is write-intent.
+description: Captures an idea that is NOT ready to become an SDLC cycle — brainstorms it with the user and parks the result as docs/backlog/<slug>.md. Use when the user says "new backlog", "backlog-new", "park this idea", "add to backlog", "save this for later", or wants to brainstorm a direction without starting work. Not for work starting now — that is write-intent.
 ---
 
 # backlog-new

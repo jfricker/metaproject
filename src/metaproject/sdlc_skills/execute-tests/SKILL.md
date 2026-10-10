@@ -1,6 +1,6 @@
 ---
 name: execute-tests
-description: Run the project's test/build/lint feedback loop (via make, per AGENTS.md) and fix failures before a human reviews the work — every session checks its own work before a person sees it. Use after implement-plan, before opening or updating a PR. Sixth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Runs the project's test/build/lint feedback loop (via make, per AGENTS.md) and fix failures before a human reviews the work — every session checks its own work before a person sees it. Use after implement-plan, before opening or updating a PR. Sixth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # execute-tests
@@ -9,7 +9,7 @@ description: Run the project's test/build/lint feedback loop (via make, per AGEN
 > repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 4 of the SDLC loop: the self-check loop that runs before a person is asked to
+Stage 6 of 7: the self-check loop that runs before a person is asked to
 look — tests, build, and (for UI work) screenshots.
 
 ## Conventions (metaproject)
@@ -28,7 +28,8 @@ look — tests, build, and (for UI work) screenshots.
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 6 once this stage is done.
 
 ## When to use
