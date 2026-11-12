@@ -33,6 +33,15 @@ from metaproject.deliverables import (
     legacy_locations,
 )
 from metaproject.exceptions import MetaProjectError
+from metaproject.hooks import (
+    HOOK_SCRIPT_PATH,
+    STALE,
+    SettingsError,
+    hook_script_state,
+    hooks_installed,
+    install_hooks,
+    settings_problem,
+)
 from metaproject.markdown import Heading, missing_headings
 from metaproject.templates import (
     find_unknown_placeholders,
@@ -386,6 +395,22 @@ def review_project(
 
         path = deliverable.path
         target_path = resolved_proj / path
+
+        # The merged settings deliverable (`.claude/settings.json`) has no template: it is
+        # missing until the hook script is installed and every metaproject hook entry is
+        # merged. A file that cannot be merged into is missing but not deployable.
+        if deliverable.cls is DeliverableClass.SETTINGS:
+            if not hooks_installed(resolved_proj):
+                missing_files.append(path)
+                problem = settings_problem(resolved_proj)
+                if problem is not None:
+                    warnings.append(problem)
+                else:
+                    deployable.append(path)
+            elif hook_script_state(resolved_proj) == STALE:
+                notes.append(f"{HOOK_SCRIPT_PATH} differs from this release; left untouched.")
+            continue
+
         template_entry = resolve_template_entry(path, resolved_templates)
 
         if not _present(resolved_proj, path):
@@ -517,6 +542,12 @@ def deploy_entry(
     from metaproject.templates import render_template_string
 
     resolved_proj = Path(project_dir).expanduser().resolve()
+
+    from metaproject.deliverables import classify
+
+    if classify(deliverable) is DeliverableClass.SETTINGS:
+        return _deploy_hooks(resolved_proj, deliverable)
+
     resolved_templates = resolve_templates_dir(templates_dir)
     target = resolved_proj / deliverable
 
@@ -566,15 +597,54 @@ def deploy_entry(
     return [target]
 
 
+def _deploy_hooks(project_dir: Path, deliverable: str) -> List[Path]:
+    """Deploy the merged settings deliverable: hook script plus merged hook entries.
+
+    Merge, never overwrite (`hooks.merge_hooks`): every key already in the settings file
+    is kept. Refuses when everything is already installed, as any other deploy does when
+    its target exists, and when the settings file cannot be merged into.
+    """
+    from metaproject.hooks import INSTALLED, SETTINGS_PATH
+
+    if hooks_installed(project_dir):
+        raise MetaProjectError(f"{deliverable} already has the metaproject hooks.")
+    report = install_hooks(project_dir)
+    if report.notice is not None:
+        raise SettingsError(report.notice)
+    written: List[Path] = []
+    if report.added:
+        written.append(project_dir / SETTINGS_PATH)
+    if report.script == INSTALLED:
+        written.append(project_dir / HOOK_SCRIPT_PATH)
+    return written
+
+
 _RELOCATED_PATHS = frozenset(LEGACY_NAMES.values())
 
 
 def _present(project_dir: Path, path: str) -> bool:
-    """Is `path` present in the project? Exact-name for relocated documents (R-NFR-6)."""
+    """Is `path` present in the project? Exact-name for relocated documents (R-NFR-6).
+
+    The merged settings deliverable is present only once its hooks are installed, so a
+    settings file the operator wrote themselves still gets the metaproject hooks merged.
+    """
+    from metaproject.deliverables import classify
+
     target = project_dir / path
+    if classify(path) is DeliverableClass.SETTINGS:
+        return hooks_installed(project_dir)
     if path in _RELOCATED_PATHS:
         return exact_exists(target)
     return target.exists()
+
+
+def _has_source(path: str, templates_dir: Path) -> bool:
+    """Can `path` be created? A template backs it, or it is the merged settings file."""
+    from metaproject.deliverables import classify
+
+    if classify(path) is DeliverableClass.SETTINGS:
+        return True
+    return resolve_template_entry(path, templates_dir) is not None
 
 
 @dataclass(frozen=True)
@@ -592,6 +662,8 @@ class BackfillResult:
     skills: Dict[str, str] = field(default_factory=dict)
     # Why no skill was written, when `.claude/skills` would not see them (R-SKL-5).
     skills_notice: Optional[str] = None
+    # Why `.claude/settings.json` was refused (it is not mergeable JSON).
+    hooks_notice: Optional[str] = None
 
 
 def backfill_missing(
@@ -643,20 +715,31 @@ def backfill_missing(
         named = list(dict.fromkeys(canonical_path(path) for path in files))
 
         existing = [path for path in named if _present(resolved_proj, path)]
+        hooks_notice = _settings_refusal(resolved_proj, named)
+        if hooks_notice is not None:
+            existing.append(".claude/settings.json")
         if existing:
-            return BackfillResult(refused=existing)
+            return BackfillResult(refused=existing, hooks_notice=hooks_notice)
 
-        missing_template = [
-            path for path in named if resolve_template_entry(path, resolved_templates) is None
-        ]
+        missing_template = [path for path in named if not _has_source(path, resolved_templates)]
         if missing_template:
             return BackfillResult(missing_template=missing_template)
 
-        for path in named:
-            write(path)
-        return BackfillResult(created=named)
+        from metaproject.deliverables import classify
 
-    from metaproject.deliverables import DELIVERABLES, DeliverableClass
+        # The merged settings file is written last: it is the one write that can still be
+        # refused at write time (Claude Code's `.claude/` protection), and every other
+        # named file should land regardless.
+        settings = [path for path in named if classify(path) is DeliverableClass.SETTINGS]
+        others = [path for path in named if path not in settings]
+        for path in others:
+            write(path)
+        try:
+            for path in settings:
+                write(path)
+        except SettingsError as exc:
+            return BackfillResult(created=others, refused=settings, hooks_notice=str(exc))
+        return BackfillResult(created=named)
 
     directory_paths = [d.path for d in DELIVERABLES if d.cls is DeliverableClass.DIRECTORY]
     other_paths = [
@@ -667,6 +750,8 @@ def backfill_missing(
 
     created: List[str] = []
     skipped: List[str] = []
+    refused: List[str] = []
+    hooks_notice: Optional[str] = None
     missing_template = []
     # Files a directory deploy wrote earlier in this batch are reported created, not
     # skipped: rendering `docs/` writes the cycle documents declared after it.
@@ -678,12 +763,24 @@ def backfill_missing(
         if _present(resolved_proj, path):
             skipped.append(path)
             continue
-        entry = resolve_template_entry(path, resolved_templates)
-        if entry is None:
+        if not _has_source(path, resolved_templates):
             missing_template.append(path)
             continue
+        problem = _settings_refusal(resolved_proj, [path])
+        if problem is not None:
+            refused.append(path)
+            hooks_notice = problem
+            continue
         if not dry_run:
-            for written in deploy_entry(resolved_proj, path, resolved_templates, cfg, variables):
+            try:
+                deployed = deploy_entry(resolved_proj, path, resolved_templates, cfg, variables)
+            except SettingsError as exc:
+                # The hooks could not be written (e.g. Claude Code's own write protection
+                # on `.claude/`): reported, never fatal to the rest of the batch.
+                refused.append(path)
+                hooks_notice = str(exc)
+                continue
+            for written in deployed:
                 if written.is_file():
                     written_in_batch.add(written.relative_to(resolved_proj).as_posix())
         created.append(path)
@@ -696,11 +793,21 @@ def backfill_missing(
     return BackfillResult(
         created=created,
         skipped=skipped,
-        refused=[],
+        refused=refused,
         missing_template=missing_template,
         skills=dict(skills.states),
         skills_notice=skills.notice,
+        hooks_notice=hooks_notice,
     )
+
+
+def _settings_refusal(project_dir: Path, named: Sequence[str]) -> Optional[str]:
+    """Why the settings deliverable in `named` cannot be merged into, else None."""
+    from metaproject.deliverables import classify
+
+    if not any(classify(path) is DeliverableClass.SETTINGS for path in named):
+        return None
+    return settings_problem(project_dir)
 
 
 def update_entry(
@@ -723,6 +830,10 @@ def update_entry(
     from metaproject.templates import render_template_string
 
     deliverable_class = classify(deliverable)
+    if deliverable_class is DeliverableClass.SETTINGS:
+        raise MetaProjectError(
+            f"{deliverable} is merged, never updated; metaproject only adds its hook entries."
+        )
     if deliverable_class is not None and deliverable_class is not DeliverableClass.GOVERNANCE:
         raise MetaProjectError(
             f"{deliverable} is a working document; working documents are never updated."

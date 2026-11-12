@@ -52,6 +52,11 @@ INTENT.md   SPEC.md    TECH-DESIGN.md  PLAN.md   code + tests    STATE.md      a
   `review`. Create it with `metaproject backfill docs/HANDOFF.md` only when work stops
   mid-stream.
 - **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
+- **settings** — `.claude/settings.json`. Never rendered from a template and never
+  overwritten: `new`/`backfill` merge two hook entries into it (`PostToolUse` `Edit|Write`
+  and `PreToolUse` `Bash`, both running `.claude/hooks/metaproject_hook.py`) and keep every
+  other key. `review` reports it missing until both entries are merged; it is never
+  diffed or offered for Update. Invalid JSON there is refused and reported, not fixed.
 
 ## `.metaproject.json`
 
@@ -64,6 +69,20 @@ records which version of `metaproject` last brought the project's documents up t
 `new` writes it, and `doctor` when it backfills a missing anchor. It is not itself a
 reviewable deliverable — never diffed, never `DRIFTED` — and its absence is an
 informational note from `review`, not `! INCOMPLETE`.
+
+Optional keys the hooks read at run time (metaproject keeps them when it rewrites the
+identity fields):
+
+```json
+{
+  "commands": { "lint": "make lint", "typecheck": "npx tsc --noEmit -p ." },
+  "e2e_port": 4173
+}
+```
+
+With no `commands.lint`/`commands.typecheck` the post-edit hook does nothing; with no
+`e2e_port` the pre-Bash hook does nothing. To lint after edits, set `commands.lint` to the
+project's own lint command (the one AGENTS.md names).
 
 ## The blank rule
 

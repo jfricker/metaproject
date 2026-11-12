@@ -53,10 +53,11 @@ def test_no_bundled_template_has_an_unknown_placeholder() -> None:
 
 def test_every_scaffolded_deliverable_has_a_bundled_template() -> None:
     """R-TPL-4/R-NF-4: every deliverable `new`/`backfill` scaffold resolves to a
-    template in the bundled store, except on-demand ones."""
+    template in the bundled store, except on-demand ones and the merged settings file,
+    which is never rendered from a template."""
     missing = []
     for deliverable in DELIVERABLES:
-        if deliverable.cls is DeliverableClass.ON_DEMAND:
+        if deliverable.cls in (DeliverableClass.ON_DEMAND, DeliverableClass.SETTINGS):
             continue
         entry = resolve_template_entry(deliverable.path, TEMPLATES_DIR)
         if entry is None:

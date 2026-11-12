@@ -1,7 +1,7 @@
 """The single declaration of deliverable classes (spec.md R-CLS-1).
 
 Every file (or directory) `metaproject` scaffolds, reviews, or learns from belongs to
-exactly one of four classes, declared once here rather than re-decided by each caller:
+exactly one of five classes, declared once here rather than re-decided by each caller:
 
 - **governance** — `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`. Rendered and
   diffed in full; offered for both Update and Deploy.
@@ -12,6 +12,11 @@ exactly one of four classes, declared once here rather than re-decided by each c
 - **on-demand** — `docs/HANDOFF.md`. Never scaffolded by `new` and never reported missing
   by `review`; created only when asked for by name (`backfill HANDOFF.md`).
 - **directory** — `docs`, `docs/archive`. A presence check, nothing more.
+- **settings** — `.claude/settings.json`. Never rendered from the template store and
+  never overwritten: metaproject *merges* its hook entries into it (`hooks.py`), keeping
+  every key the operator already has. Present means "the hook script is installed and
+  every metaproject hook entry is merged"; never diffed, never offered for Update, never
+  learn evidence.
 
 `review.py`, `scaffold.py`, `config.py` and `learn/` all read this module rather than
 import it from one another, so `learn` in particular never has to import `review` just
@@ -26,12 +31,13 @@ from typing import Dict, List, Mapping, Optional, Tuple
 
 
 class DeliverableClass(Enum):
-    """The four classes a deliverable can belong to. See module docstring."""
+    """The five classes a deliverable can belong to. See module docstring."""
 
     GOVERNANCE = "governance"
     WORKING = "working"
     ON_DEMAND = "on_demand"
     DIRECTORY = "directory"
+    SETTINGS = "settings"
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,8 @@ DELIVERABLES: Tuple[Deliverable, ...] = (
     # directory
     Deliverable("docs", DeliverableClass.DIRECTORY),
     Deliverable("docs/archive", DeliverableClass.DIRECTORY),
+    # settings (merged, never rendered)
+    Deliverable(".claude/settings.json", DeliverableClass.SETTINGS),
 )
 
 _BY_PATH = {d.path: d for d in DELIVERABLES}
@@ -87,7 +95,8 @@ def learn_targets() -> Tuple[str, ...]:
     )
 
 
-# Top-level directories that hold agent skills. Never a deliverable, never learn evidence.
+# Top-level directories that hold agent skills. Never learn evidence; the only deliverable
+# under them is the merged `.claude/settings.json`.
 SKILL_ROOTS: Tuple[str, ...] = (".agents", ".claude")
 
 
