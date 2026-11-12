@@ -51,7 +51,7 @@ catalog summary instead of changing anything — a safe way to inspect the envir
 | `--no-git` | Skip `git init` and the initial commit |
 
 Also writes `.metaproject.json` (`title`, `description`, `author`, `created`,
-`metaproject_version`) and copies the project skills (this one plus the eight SDLC cycle
+`metaproject_version`) and copies the project skills (this one plus the nine SDLC
 skills) into `.agents/skills/<name>/`, reachable as `.claude/skills/<name>/`; both are
 tracked in the initial commit. Cycle documents land in `docs/` (`docs/INTENT.md`,
 `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,

@@ -91,6 +91,7 @@ def test_full_lifecycle_and_performance(
         "implement-plan",
         "execute-tests",
         "wrapup",
+        "shipit",
     ):
         assert (project_target / ".claude" / "skills" / skill / "SKILL.md").is_file()
     root_md = {p.name for p in project_target.iterdir() if p.suffix == ".md"}
