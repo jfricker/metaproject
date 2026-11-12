@@ -1404,7 +1404,7 @@ def doctor_cmd(
     # project checks still run — against an explicit PROJECT, else the current
     # directory, the one project the session has.
     web = web_profile_notice(
-        "`metaproject doctor`'s store, config and catalog checks",
+        "Running `metaproject doctor`'s store, config and catalog checks",
         instead="running the project checks only",
     )
     if web and project is None:
@@ -1420,7 +1420,7 @@ def doctor_cmd(
             why = (
                 f"{marker} is set"
                 if marker is not None
-                else f"questionary is not installed: {INSTALL_HINT}"
+                else f"questionary is not installed: {escape(INSTALL_HINT)}"
             )
             console.print(
                 "[yellow]Notice:[/] doctor's fixes need an operator to confirm them; "
