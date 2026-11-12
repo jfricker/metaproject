@@ -131,9 +131,11 @@ Read-only or safe to run whenever they would help — none of these write anythi
 `universe`, `learn list`, `learn show`, `backfill`, `adopt` (and any `--dry-run`).
 
 In a Claude Code on the web session (the *web profile*: `CLAUDE_CODE_REMOTE=true` with
-no config, or `METAPROJECT_PROFILE=web`) `universe`, `learn` and `doctor` only print a
-"not available in web sessions" notice and exit 0; `adopt`, `backfill` and
-`review --no-tui` work as usual. See `references/commands.md`.
+no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a
+"not available in web sessions" notice and exit 0; `doctor` skips its store, config and
+catalog checks with that notice but still checks the current project (identity, docs,
+skills); `adopt`, `backfill` and `review --no-tui` work as usual. See
+`references/commands.md`.
 
 ## Scaffolding a new project
 

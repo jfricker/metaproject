@@ -55,3 +55,11 @@ invariant established in one cycle isn't accidentally violated in the next.
 - Web profile precedence: `METAPROJECT_PROFILE` (both directions) > an existing config's
   `profile` ("local" when absent) > `CLAUDE_CODE_REMOTE` truthy. A local machine's config
   is never reclassified by the environment.
+- In the web profile `doctor` suppresses only its environment-wide checks (store layout,
+  store, config, orphaned global skill, catalog); the per-project checks run against the
+  current directory via `doctor.run_checks(..., project=...)`, and the agent gate on
+  fixes is unchanged.
+- A machine-readable web-profile notice never corrupts stdout: it goes to stderr, and
+  `--format json` writes an `{"available": false, ...}` envelope.
+- The `FALLBACK_AUTHOR` placeholder is never written to `config.json` (`Config.to_dict`
+  writes ""), so an undetected identity cannot outrank a later real git `user.name`.

@@ -305,7 +305,8 @@ holds; a config without that key is a local machine whatever the environment say
 | Command | In the web profile |
 |---|---|
 | `init` | Minimal config (`"profile": "web"`), no prompt, no template-store seeding, no workspace scan |
-| `universe`, `learn` (every subcommand), `doctor` (including `--dry-run`) | One-line "not available in web sessions" notice, exit 0 |
+| `universe`, `learn` (every subcommand) | One-line "not available in web sessions" notice, exit 0. With `universe --format json` the notice goes to stderr and stdout carries `{"available": false, "profile": "web", ...}`; with `--format csv` stdout stays empty |
+| `doctor` | One-line notice that the store, config and catalog checks are skipped; the per-project checks (identity, docs, skills) still run against the current directory. `--dry-run` reports; a fix still needs an operator, as everywhere |
 | `review` | One-line notice, then the printed board (as `--no-tui`), exit 0 |
 | `adopt`, `backfill`, `new`, `review --no-tui`, `--version` | Unchanged; render from the bundled templates when the store is absent |
 

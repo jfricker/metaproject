@@ -55,8 +55,10 @@ and exits 1. `twine` is a `dev` dependency (release tooling), not a runtime one.
 In a Claude Code on the web session (`CLAUDE_CODE_REMOTE=true` with no
 `~/.metaproject/config.json`, or `METAPROJECT_PROFILE=web` anywhere) metaproject runs in
 the **web profile**: `init` writes a minimal config (`"profile": "web"`), never prompts,
-and skips template-store seeding and the workspace scan; `universe`, `learn` and `doctor`
-print a one-line "not available in web sessions" notice and exit 0; `review` prints the
+and skips template-store seeding and the workspace scan; `universe` and `learn` print a
+one-line "not available in web sessions" notice and exit 0 (`universe --format json`
+keeps stdout JSON); `doctor` skips its store, config and catalog checks with that notice
+and runs only the current project's identity, docs and skills checks; `review` prints the
 board instead of opening it. `adopt`, `backfill`, `review --no-tui` and `--version` work
 as usual, rendering from the bundled templates. `METAPROJECT_PROFILE=local` forces the
 local profile.

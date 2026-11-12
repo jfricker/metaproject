@@ -128,8 +128,17 @@ class Config:
         self.universe_db = str(Path(self.universe_db).expanduser().resolve())
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert config to dictionary representation."""
-        return asdict(self)
+        """Convert config to dictionary representation.
+
+        The `FALLBACK_AUTHOR` placeholder is never persisted: it means "no identity was
+        detected", and a saved one would outrank a later real `git config user.name`
+        (config beats git in `variables.resolve_author`). It is written as "", which
+        `__post_init__` re-detects on every load.
+        """
+        data = asdict(self)
+        if data.get("author", "").strip() == FALLBACK_AUTHOR:
+            data["author"] = ""
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Config":

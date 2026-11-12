@@ -79,8 +79,6 @@ def test_profile_detection_precedence(tmp_path: Path) -> None:
         ["learn"],
         ["learn", "list"],
         ["learn", "scan", "--yes"],
-        ["doctor"],
-        ["doctor", "--dry-run"],
     ],
 )
 def test_web_profile_commands_print_one_line_notice_and_exit_zero(
@@ -90,6 +88,90 @@ def test_web_profile_commands_print_one_line_notice_and_exit_zero(
     assert result.exit_code == 0, result.output
     assert NOTICE in result.output
     assert len(result.output.strip().splitlines()) == 1
+
+
+def test_web_profile_universe_json_stays_json(runner: CliRunner, web) -> None:
+    """A JSON consumer gets a JSON envelope on stdout; the notice goes to stderr."""
+    result = runner.invoke(app, ["universe", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["available"] is False
+    assert payload["profile"] == "web"
+    assert NOTICE in result.stderr
+
+
+def test_web_profile_universe_csv_keeps_stdout_empty(runner: CliRunner, web) -> None:
+    result = runner.invoke(app, ["universe", "--format", "csv"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout.strip() == ""
+    assert NOTICE in result.stderr
+
+
+def test_web_profile_doctor_skips_environment_checks_but_runs_project_checks(
+    runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj = tmp_path / "proj"
+    scaffold_project("proj", output=proj, no_git=True)
+    monkeypatch.chdir(proj)
+
+    result = runner.invoke(app, ["doctor", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert NOTICE in result.output
+    for check in ("project identity", "project docs", "project skills"):
+        assert check in result.output
+    for check in ("template store", "config (learn.targets)", "orphaned global skill"):
+        assert check not in result.output
+    # No `init` ran: the project checks need no config and write none.
+    assert not get_config_file_path().exists()
+
+
+def test_web_profile_doctor_reports_project_findings(
+    runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj = tmp_path / "bare"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+
+    result = runner.invoke(app, ["doctor", "--dry-run"])
+
+    assert result.exit_code == 1, result.output
+    assert NOTICE in result.output
+    assert "no .metaproject.json anchor" in result.output
+    assert not (proj / ".metaproject.json").exists()
+
+
+def test_web_profile_doctor_fix_still_needs_an_operator(
+    runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj = tmp_path / "bare"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+
+    refused = runner.invoke(app, ["doctor"])
+    assert refused.exit_code == 1
+    assert "Doctor Refused" in refused.output
+
+    # With the agent override cleared and the operator confirming, the project fix runs.
+    monkeypatch.setenv("METAPROJECT_AGENT", "0")
+    monkeypatch.setattr("metaproject.doctor._confirm_with_questionary", lambda message: True)
+    fixed = runner.invoke(app, ["doctor"])
+    assert NOTICE in fixed.output
+    assert (proj / ".metaproject.json").is_file()
+
+
+def test_fallback_author_placeholder_is_never_persisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    git_user(monkeypatch, "Claude", user="root")
+    config_file = tmp_path / "config.json"
+    save_config(Config(), config_file)
+    assert json.loads(config_file.read_text(encoding="utf-8"))["author"] == ""
+
+    # A real identity configured later wins, because nothing stale outranks it.
+    git_user(monkeypatch, "Jane Doe")
+    assert load_config(config_file).author == "Jane Doe"
+    assert resolve_author(config=load_config(config_file)) == "Jane Doe"
 
 
 def test_web_profile_review_prints_board_with_notice(
@@ -141,6 +223,8 @@ def test_web_init_writes_minimal_config_and_skips_scan(
     data = json.loads(config_file.read_text(encoding="utf-8"))
     assert data["profile"] == "web"
     assert data["author"] != "Claude"
+    # Nothing real was detected, so no placeholder is persisted to outrank git later.
+    assert data["author"] == ""
     assert not (get_config_dir() / "templates").exists()
     assert not (get_config_dir() / "universe.db").exists()
 

@@ -179,16 +179,36 @@ app = typer.Typer(
 )
 
 
-def web_profile_notice(what: str) -> bool:
+def web_profile_notice(what: str, output_format: str = "table") -> bool:
     """Print the one-line web-profile notice for `what`. True when it was printed.
 
     The caller returns (exit 0) on True: in a Claude Code on the web container there is
     no catalog, no persistent template store and no operator, so these commands have
     nothing to act on. Saying so in one line is the whole answer, not an error.
+
+    A machine-readable `output_format` keeps stdout parseable: the notice goes to
+    stderr, and `json` writes an `{"available": false, ...}` envelope to stdout so a
+    JSON consumer still receives JSON (`csv` writes nothing to stdout).
     """
     reason = web_profile_reason()
     if reason is None:
         return False
+    if output_format in ("json", "csv"):
+        Console(stderr=True).print(
+            f"[yellow]Notice:[/] {what} is not available in web sessions ({reason}).",
+            soft_wrap=True,
+        )
+        if output_format == "json":
+            import json
+
+            envelope = {
+                "available": False,
+                "profile": "web",
+                "reason": reason,
+                "notice": f"{what} is not available in web sessions.",
+            }
+            typer.echo(json.dumps(envelope, indent=2))
+        return True
     console.print(
         f"[yellow]Notice:[/] {what} is not available in web sessions ({reason}).",
         soft_wrap=True,
@@ -452,8 +472,8 @@ def init_web_profile(
     `profile: web` so the profile survives once config exists.
     """
     target_config_dir.mkdir(parents=True, exist_ok=True)
-    resolved_author = (author or "").strip() or detect_git_user_name()
-    cfg = Config(author=resolved_author, profile="web")
+    # Empty lets `Config` detect it; an undetected identity is never persisted.
+    cfg = Config(author=(author or "").strip(), profile="web")
     save_config(cfg, config_file)
     console.print(f"[cyan]✓ Saved minimal web-profile configuration to {config_file}[/cyan]")
     console.print(
@@ -859,7 +879,7 @@ def universe_cmd(
     import io
     import json
 
-    if web_profile_notice("`metaproject universe`"):
+    if web_profile_notice("`metaproject universe`", output_format):
         return
     # Every universe path reads or writes the SQLite catalog (the `tui` extra).
     require("sqlite_utils", "`metaproject universe`")
@@ -1358,6 +1378,11 @@ def doctor_cmd(
     documents, its skills — and the environment-wide checks are skipped. Each fix
     needs an operator's confirmation (per project for the project checks);
     `--dry-run` writes nothing and is the only form permitted inside an agent session.
+
+    In the web profile the environment-wide checks (store layout, store, config,
+    orphaned global skill, the catalog) are skipped with a one-line notice — none of
+    them outlives a web container — and the per-project checks (identity, docs,
+    skills) run against the current directory, the one project the session has.
     """
     from metaproject import doctor
 
@@ -1373,10 +1398,14 @@ def doctor_cmd(
             )
             raise typer.Exit(code=1)
 
-    # Every doctor check reads the template store, config.json, ~/.claude or the
-    # catalog, none of which outlive a web container.
-    if web_profile_notice("`metaproject doctor` (store, config and catalog checks)"):
-        return
+    # In the web profile the environment-wide checks have nothing to act on; the
+    # project checks still run — against an explicit PROJECT, else the current
+    # directory, the one project the session has.
+    web = web_profile_notice(
+        "`metaproject doctor`'s store, config and catalog checks (project checks still run)"
+    )
+    if web and project is None:
+        project = Path.cwd().resolve()
 
     if not dry_run:
         marker = agent_marker()
@@ -1396,7 +1425,10 @@ def doctor_cmd(
             raise typer.Exit(code=1)
 
     config_file = get_config_file_path()
-    if not config_file.exists():
+    if web:
+        # A web container may never have run `init`; the project checks need no config.
+        cfg = load_config(config_file) if config_file.exists() else Config(profile="web")
+    elif not config_file.exists():
         console.print(
             Panel.fit(
                 f"No configuration found at [cyan]{config_file}[/cyan].\n\n"
@@ -1406,8 +1438,8 @@ def doctor_cmd(
             )
         )
         raise typer.Exit(code=1)
-
-    cfg = load_config(config_file)
+    else:
+        cfg = load_config(config_file)
     results = doctor.run_checks(cfg, config_file, dry_run=dry_run, project=project)
 
     title = f"Doctor — {project}" if project is not None else "Doctor — Environment Health"
