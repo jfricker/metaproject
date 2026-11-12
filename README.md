@@ -58,7 +58,8 @@ the **web profile**: `init` writes a minimal config (`"profile": "web"`), never 
 and skips template-store seeding and the workspace scan; `universe` and `learn` print a
 one-line "not available in web sessions" notice and exit 0 (`universe --format json`
 keeps stdout JSON); `doctor` skips its store, config and catalog checks with that notice
-and runs only the current project's identity, docs and skills checks (in an agent session,
+and runs only one project's identity, docs and skills checks — `[PROJECT]` if given, else
+the current directory (in an agent session,
 or without `questionary`, it reports them as `--dry-run` would instead of refusing: exit 0
 when healthy, 1 with findings); `review` prints the notice and then the board instead of
 opening it, exit 0. `adopt`, `backfill`, `review --no-tui` and `--version` work
@@ -304,7 +305,10 @@ typically one that was just cloned — under metaproject. It writes `.metaprojec
 the directory name), the `.agents/skills` layout with its `.claude/skills` link, and
 every missing deliverable and project skill. It never overwrites a file (an existing
 `.metaproject.json` is kept as written), runs no git command, needs no confirmation, and
-is permitted in agent sessions. `--dry-run` previews; re-running it is a no-op.
+is permitted in agent sessions. `--dry-run` previews; re-running it is a no-op. The
+author comes from `--author`, config, then git/`$USER` (never a container identity such
+as "Claude"); when none yields a real name, adopt writes nothing and asks for `--author`,
+because `.metaproject.json` would otherwise pin a placeholder author for good.
 `metaproject new .` keeps its interactive, operator-confirmed semantics.
 
 ```bash

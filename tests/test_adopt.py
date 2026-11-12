@@ -66,7 +66,7 @@ def test_adopt_in_agent_session_creates_identity_docs_and_skills(
     repo = existing_repo(tmp_path)
     git_before = sorted(p.name for p in (repo / ".git").iterdir())
 
-    result = runner.invoke(app, ["adopt", "--dir", str(repo)])
+    result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Jo F"])
 
     assert result.exit_code == 0, result.output
     identity = read_identity(repo)
@@ -161,6 +161,51 @@ def test_adopt_author_prefers_config_over_git(tmp_path: Path, container_git_iden
     repo = tmp_path / "repo"
     repo.mkdir()
     assert adopt_project(repo).identity.author == "Jane Doe"
+
+
+def test_adopt_refuses_a_placeholder_author_in_a_web_container(
+    runner: CliRunner,
+    tmp_path: Path,
+    container_git_identity,
+    agent_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No config, git user "Claude", USER=root, no --author: nothing is written.
+
+    `.metaproject.json` is create-only and top of the author precedence, so recording
+    the "Developer" placeholder would outrank every real author set afterwards.
+    """
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    assert not config_module.get_config_file_path().exists()
+    repo = existing_repo(tmp_path)
+    before = sorted(p.relative_to(repo) for p in repo.rglob("*"))
+
+    result = runner.invoke(app, ["adopt", "--dir", str(repo)])
+
+    assert result.exit_code == 1, result.output
+    assert "--author" in result.output
+    assert not (repo / IDENTITY_FILE).exists()
+    assert sorted(p.relative_to(repo) for p in repo.rglob("*")) == before
+
+
+def test_adopt_with_author_flag_in_a_web_container(
+    runner: CliRunner,
+    tmp_path: Path,
+    container_git_identity,
+    agent_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    repo = existing_repo(tmp_path)
+
+    result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Jo F"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert data["author"] == "Jo F"
+    assert config_module.FALLBACK_AUTHOR not in (repo / "docs" / "SPEC.md").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_adopt_refuses_to_overwrite_an_invalid_identity_file(

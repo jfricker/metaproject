@@ -126,6 +126,25 @@ def test_web_profile_doctor_skips_environment_checks_but_runs_project_checks(
     assert not get_config_file_path().exists()
 
 
+def test_web_profile_doctor_explicit_project_wins_over_cwd(
+    runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`doctor PROJECT` in the web profile checks PROJECT, not the current directory."""
+    healthy = tmp_path / "healthy"
+    scaffold_project("healthy", output=healthy, no_git=True)
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    monkeypatch.chdir(healthy)
+
+    result = runner.invoke(app, ["doctor", str(bare), "--dry-run"])
+
+    assert result.exit_code == 1, result.output
+    assert NOTICE in result.output
+    assert "no .metaproject.json anchor" in result.output
+    assert str(healthy) not in " ".join(result.output.split())
+    assert not (bare / ".metaproject.json").exists()
+
+
 def test_web_profile_doctor_reports_project_findings(
     runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -171,7 +190,7 @@ def test_web_profile_doctor_in_agent_session_exits_zero_for_a_healthy_project(
     proj = tmp_path / "proj"
     proj.mkdir()
     monkeypatch.chdir(proj)
-    assert runner.invoke(app, ["adopt"]).exit_code == 0
+    assert runner.invoke(app, ["adopt", "--author", "Jo F"]).exit_code == 0
 
     result = runner.invoke(app, ["doctor"])
 

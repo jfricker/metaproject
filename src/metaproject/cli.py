@@ -1330,7 +1330,7 @@ def adopt_cmd(
             dry_run=dry_run,
         )
     except MetaProjectError as exc:
-        console.print(f"[bold red]Adopt Error:[/bold red] {exc}")
+        console.print(f"[bold red]Adopt Error:[/bold red] {exc}", soft_wrap=True)
         raise typer.Exit(code=1)
 
     verb = "Would adopt" if dry_run else "Adopted"
@@ -1383,7 +1383,8 @@ def doctor_cmd(
     In the web profile the environment-wide checks (store layout, store, config,
     orphaned global skill, the catalog) are skipped with a one-line notice — none of
     them outlives a web container — and the per-project checks (identity, docs,
-    skills) run against the current directory, the one project the session has.
+    skills) run against PROJECT when given, else the current directory — the one
+    project the session has.
     """
     from metaproject import doctor
 

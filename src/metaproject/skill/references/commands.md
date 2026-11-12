@@ -134,7 +134,7 @@ interactive, operator-confirmed semantics and is refused in an agent session.
 | `--dir`, `-d <path>` | Repository to adopt (default: current directory) |
 | `--title <str>` | Title (default: `README.md` heading, `pyproject.toml`/`package.json` name, then the directory name) |
 | `--description <str>` | One-line summary (default: the paragraph under the README heading) |
-| `--author`, `-a <str>` | Author (default: config, then `git config user.name`; never a container identity) |
+| `--author`, `-a <str>` | Author (default: config, then `git config user.name`, then `$USER`; never a container identity). When none yields a real name — a web container with no config — adopt refuses before writing anything and asks for `--author` |
 | `--templates <path>` | Template directory to create from |
 | `--dry-run` | Preview; writes nothing |
 
@@ -306,7 +306,7 @@ holds; a config without that key is a local machine whatever the environment say
 |---|---|
 | `init` | Minimal config (`"profile": "web"`), no prompt, no template-store seeding, no workspace scan |
 | `universe`, `learn` (every subcommand) | One-line "not available in web sessions" notice, exit 0. With `universe --format json` the notice goes to stderr and stdout carries `{"available": false, "profile": "web", ...}`; with `--format csv` stdout stays empty |
-| `doctor` | One-line notice that the store, config and catalog checks are skipped; the per-project checks (identity, docs, skills) still run against the current directory. `--dry-run` reports. Without `--dry-run`, an agent session (or a core install without `questionary`) gets the same report instead of a refusal; exit 0 when the project is healthy, 1 when there are findings. A fix still needs an operator to confirm it |
+| `doctor` | One-line notice that the store, config and catalog checks are skipped; the per-project checks (identity, docs, skills) still run against `PROJECT` when given, else the current directory. `--dry-run` reports. Without `--dry-run`, an agent session (or a core install without `questionary`) gets the same report instead of a refusal; exit 0 when the project is healthy, 1 when there are findings. A fix still needs an operator to confirm it |
 | `review` | The interactive board is not available: one-line notice, then the printed board (as `--no-tui`), exit 0 |
 | `adopt`, `backfill`, `new`, `review --no-tui`, `--version` | Unchanged; render from the bundled templates when the store is absent |
 

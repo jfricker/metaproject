@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from metaproject import __version__
 from metaproject import variables as variables_module
-from metaproject.config import Config, load_config
+from metaproject.config import FALLBACK_AUTHOR, Config, load_config
 from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
@@ -404,6 +404,8 @@ def adopt_project(
     with no `.metaproject.json` (`--title` > README / manifest > directory name), so
     recording it does not change how `review` renders the project. Author: `--author`
     > config > `git config user.name` (never a container identity such as "Claude").
+    When none of those yields a real name, adopt refuses before writing anything rather
+    than record the `FALLBACK_AUTHOR` placeholder in `.metaproject.json`.
     """
     from metaproject.identity import fallback_identity, read_identity
     from metaproject.review import backfill_missing
@@ -425,11 +427,19 @@ def adopt_project(
             "and run adopt again."
         )
     else:
+        resolved_author = variables_module.resolve_author(author, cfg)
+        if resolved_author == FALLBACK_AUTHOR and not (author or "").strip():
+            # `.metaproject.json` is create-only and outranks config and git, so a
+            # placeholder recorded here would outlive every real author set later.
+            raise MetaProjectError(
+                "No author found (no config author; git user.name and $USER are unset "
+                'or a container identity). Pass --author "Your Name".'
+            )
         fallback_title, fallback_description = fallback_identity(target_dir)
         identity = Identity(
             title=(title or "").strip() or fallback_title,
             description=(description or "").strip() or fallback_description,
-            author=variables_module.resolve_author(author, cfg),
+            author=resolved_author,
             created=variables_module._today(),
             metaproject_version=__version__,
         )

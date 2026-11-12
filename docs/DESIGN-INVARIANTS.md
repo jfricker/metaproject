@@ -56,10 +56,14 @@ invariant established in one cycle isn't accidentally violated in the next.
   `profile` ("local" when absent) > `CLAUDE_CODE_REMOTE` truthy. A local machine's config
   is never reclassified by the environment.
 - In the web profile `doctor` suppresses only its environment-wide checks (store layout,
-  store, config, orphaned global skill, catalog); the per-project checks run against the
-  current directory via `doctor.run_checks(..., project=...)`, and the agent gate on
-  fixes is unchanged.
+  store, config, orphaned global skill, catalog); the per-project checks run against an
+  explicit `doctor PROJECT`, else the current directory, via
+  `doctor.run_checks(..., project=...)`. Every fix still needs an operator to confirm it.
 - A machine-readable web-profile notice never corrupts stdout: it goes to stderr, and
   `--format json` writes an `{"available": false, ...}` envelope.
 - The `FALLBACK_AUTHOR` placeholder is never written to `config.json` (`Config.to_dict`
   writes ""), so an undetected identity cannot outrank a later real git `user.name`.
+- `adopt` never records `FALLBACK_AUTHOR` in `.metaproject.json`: that file is
+  create-only and tops the author precedence, so when no `--author`, config author or
+  non-container git/`$USER` name exists, adopt refuses (exit 1, "pass --author") before
+  writing anything.
