@@ -156,8 +156,10 @@ and metaproject only adds its own entries under `hooks`, keyed by their command 
 a re-run adds nothing. A settings file that is not valid JSON is left untouched and
 reported. `review` reports `.claude/settings.json` missing until both hooks are merged.
 Claude Code's sandbox can deny an agent writes to `.claude/settings.json` and
-`.claude/hooks/`; `backfill` then reports the hooks as refused instead of failing — run it
-yourself.
+`.claude/hooks/`; a default-mode `backfill` then lists the hooks as "Not written" with a
+notice and still exits 0 — run it yourself to install them. The hook commands are guarded
+(`[ -f "$f" ] || exit 0`), so a settings file whose script is missing never blocks a tool
+call.
 
 #### Agent-Session Guards
 The skill tells an agent what to do; the CLI enforces it either way. When `metaproject`

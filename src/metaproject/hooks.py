@@ -50,6 +50,14 @@ class SettingsError(MetaProjectError):
     """An existing settings file that cannot be merged into without losing content."""
 
 
+class HooksWriteDenied(SettingsError):
+    """The hooks could not be written at all (e.g. Claude Code's `.claude/` protection).
+
+    Not a defect in the project: the operator installs them by running `backfill`
+    themselves, so a default-mode backfill reports it as a notice, not a refusal.
+    """
+
+
 @dataclass(frozen=True)
 class HookEntry:
     """One hook metaproject owns: an event, an optional tool matcher, and a command.
@@ -76,7 +84,14 @@ class HookEntry:
 
 
 def _script_command(mode: str) -> str:
-    return f'python3 "$CLAUDE_PROJECT_DIR/{HOOK_SCRIPT_PATH}" {mode}'
+    """The hook command: a no-op (exit 0) when the script file is absent.
+
+    Without the guard, `python3 <missing file>` exits 2, and exit 2 from a PreToolUse
+    hook blocks the tool call — so a deleted, gitignored or not-yet-checked-out script
+    would block every Bash call. The string is the entry's identity; never change it
+    casually, or re-runs add a second entry beside the old one.
+    """
+    return f'f="$CLAUDE_PROJECT_DIR/{HOOK_SCRIPT_PATH}"; [ -f "$f" ] || exit 0; python3 "$f" {mode}'
 
 
 POST_EDIT_HOOK = HookEntry(
@@ -249,6 +264,8 @@ class HooksReport:
     added: List[HookEntry] = field(default_factory=list)
     settings_created: bool = False
     notice: Optional[str] = None
+    # True when `notice` is a write failure (sandbox/permissions), not unmergeable JSON.
+    write_denied: bool = False
 
     @property
     def wrote(self) -> bool:
@@ -318,6 +335,7 @@ def install_hooks(
         # and `.claude/hooks/`, so an agent-driven backfill lands here: report, never crash.
         return HooksReport(
             script=hook_script_state(project_dir),
+            write_denied=True,
             notice=(
                 f"Could not write the metaproject hooks ({exc}). Claude Code's sandbox can "
                 "deny agents writes to .claude/settings.json and .claude/hooks; run "

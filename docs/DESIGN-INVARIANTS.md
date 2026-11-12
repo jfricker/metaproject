@@ -51,6 +51,11 @@ invariant established in one cycle isn't accidentally violated in the next.
 - The hook script is installed create-only, like the project skills; a differing copy
   is only reported (review note), never rewritten.
 - The hook script never blocks the operator's work: every internal problem exits 0;
-  only a configured lint/typecheck command that fails exits 2.
+  only a configured lint/typecheck command that fails exits 2. The merged command string
+  itself exits 0 when the script file is absent (deleted, gitignored, not checked out),
+  since `python3 <missing file>` exits 2 and would block every Bash call.
+- A hooks install the sandbox denies is a notice, not a failure, in default-mode
+  `backfill` (exit 0, listed "Not written"); unmergeable settings JSON, or an explicitly
+  named `.claude/settings.json` that cannot be written, is refused with exit 1.
 - `write_identity` keeps keys of `.metaproject.json` it does not own (`commands`,
   `e2e_port`).

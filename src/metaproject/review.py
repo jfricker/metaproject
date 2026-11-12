@@ -36,6 +36,7 @@ from metaproject.exceptions import MetaProjectError
 from metaproject.hooks import (
     HOOK_SCRIPT_PATH,
     STALE,
+    HooksWriteDenied,
     SettingsError,
     hook_script_state,
     hooks_installed,
@@ -610,7 +611,7 @@ def _deploy_hooks(project_dir: Path, deliverable: str) -> List[Path]:
         raise MetaProjectError(f"{deliverable} already has the metaproject hooks.")
     report = install_hooks(project_dir)
     if report.notice is not None:
-        raise SettingsError(report.notice)
+        raise (HooksWriteDenied if report.write_denied else SettingsError)(report.notice)
     written: List[Path] = []
     if report.added:
         written.append(project_dir / SETTINGS_PATH)
@@ -662,8 +663,11 @@ class BackfillResult:
     skills: Dict[str, str] = field(default_factory=dict)
     # Why no skill was written, when `.claude/skills` would not see them (R-SKL-5).
     skills_notice: Optional[str] = None
-    # Why `.claude/settings.json` was refused (it is not mergeable JSON).
+    # Why `.claude/settings.json` was refused or not written.
     hooks_notice: Optional[str] = None
+    # Deliverables that could not be written for a reason outside the project (the hooks
+    # under Claude Code's sandbox); reported with `hooks_notice`, not a failure.
+    not_written: List[str] = field(default_factory=list)
 
 
 def backfill_missing(
@@ -751,6 +755,7 @@ def backfill_missing(
     created: List[str] = []
     skipped: List[str] = []
     refused: List[str] = []
+    not_written: List[str] = []
     hooks_notice: Optional[str] = None
     missing_template = []
     # Files a directory deploy wrote earlier in this batch are reported created, not
@@ -774,6 +779,12 @@ def backfill_missing(
         if not dry_run:
             try:
                 deployed = deploy_entry(resolved_proj, path, resolved_templates, cfg, variables)
+            except HooksWriteDenied as exc:
+                # Claude Code's sandbox denies agents writes under `.claude/`: the rest of
+                # the batch landed, so this is a notice for the operator, not a failure.
+                not_written.append(path)
+                hooks_notice = str(exc)
+                continue
             except SettingsError as exc:
                 # The hooks could not be written (e.g. Claude Code's own write protection
                 # on `.claude/`): reported, never fatal to the rest of the batch.
@@ -798,6 +809,7 @@ def backfill_missing(
         skills=dict(skills.states),
         skills_notice=skills.notice,
         hooks_notice=hooks_notice,
+        not_written=not_written,
     )
 
 

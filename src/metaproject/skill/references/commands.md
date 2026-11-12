@@ -100,8 +100,11 @@ Two modes:
   `.agents/skills`, no skill is written and a notice says why.
   `.claude/settings.json` counts as missing until the metaproject hooks are merged into
   it; backfilling it merges them and keeps every existing key. An invalid settings file
-  — or one Claude Code will not let the agent write — is listed under "Refused" with a
-  notice, and backfill exits 1.
+  is listed under "Refused — hooks not installed" with a notice, and backfill exits 1.
+  When Claude Code's sandbox denies the agent writes under `.claude/`, the hooks are
+  listed under "Not written" with a notice and backfill still exits 0 (everything else
+  landed); the operator runs `metaproject backfill` themselves to install them. Naming
+  `.claude/settings.json` explicitly and failing to write it exits 1.
 - **Named `FILE`s** — creates exactly those (never skills), including on-demand ones
   like `docs/HANDOFF.md`. If *any* named file already exists, nothing at all is written and every
   existing name is reported under "Refused — already exists, nothing written"; the

@@ -1154,10 +1154,26 @@ def backfill_cmd(
             table.add_row(path)
         console.print(table)
 
-    if result.refused:
+    from metaproject.hooks import SETTINGS_PATH
+
+    # The settings deliverable is refused for its content (or, when named, an unwritable
+    # `.claude/`), never because it "already exists", so it gets its own title.
+    existing = [path for path in result.refused if path != SETTINGS_PATH]
+    if existing:
         table = Table(title="Refused — already exists, nothing written", show_header=False)
         table.add_column(style="red")
-        for path in result.refused:
+        for path in existing:
+            table.add_row(path)
+        console.print(table)
+    if SETTINGS_PATH in result.refused:
+        table = Table(title="Refused — hooks not installed (see notice)", show_header=False)
+        table.add_column(style="red")
+        table.add_row(SETTINGS_PATH)
+        console.print(table)
+    if result.not_written:
+        table = Table(title="Not written — install yourself (see notice)", show_header=False)
+        table.add_column(style="yellow")
+        for path in result.not_written:
             table.add_row(path)
         console.print(table)
 
@@ -1179,6 +1195,7 @@ def backfill_cmd(
         result.created
         or result.skipped
         or result.refused
+        or result.not_written
         or result.missing_template
         or wrote_skills
     ):

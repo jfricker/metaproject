@@ -106,6 +106,40 @@ def test_project_hook_entries_match_the_issue() -> None:
         assert "$CLAUDE_PROJECT_DIR" in entry.command
 
 
+@pytest.mark.parametrize("entry", project_hook_entries(), ids=lambda e: e.event)
+def test_hook_command_is_a_no_op_when_the_script_is_absent(tmp_path: Path, entry) -> None:
+    """`python3 <missing file>` exits 2, which blocks a PreToolUse call; the guard must not."""
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(tmp_path)}
+    result = subprocess.run(
+        ["/bin/sh", "-c", entry.command],
+        input=json.dumps({"tool_input": {"command": "npx playwright test"}}),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=30,
+    )
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_hook_command_runs_the_script_when_present(tmp_path: Path) -> None:
+    proj = scaffolded(tmp_path)
+    (proj / IDENTITY_FILE).write_text(
+        json.dumps({"commands": {"lint": "echo lint-broke; exit 3"}}), encoding="utf-8"
+    )
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(proj)}
+    result = subprocess.run(
+        ["/bin/sh", "-c", POST_EDIT_HOOK.command],
+        input=json.dumps(EDIT_PAYLOAD),
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=proj,
+        timeout=60,
+    )
+    assert result.returncode == 2
+    assert "lint-broke" in result.stderr
+
+
 # ------------------------------------------------------------------------------ merging
 
 
@@ -365,8 +399,11 @@ def test_backfill_refuses_invalid_settings(runner: CliRunner, tmp_path: Path) ->
     assert result.hooks_notice and "not valid JSON" in result.hooks_notice
 
     cli = runner.invoke(app, ["backfill", "--dir", str(proj)])
+    output = " ".join(cli.output.split())
     assert cli.exit_code == 1
-    assert "not valid JSON" in " ".join(cli.output.split())
+    assert "not valid JSON" in output
+    assert "hooks not installed" in output
+    assert "already exists, nothing written" not in output
     assert (proj / SETTINGS_PATH).read_text(encoding="utf-8") == "{bad"
 
 
@@ -614,11 +651,27 @@ def test_unwritable_claude_dir_is_reported_not_raised(runner: CliRunner, tmp_pat
         assert report.notice is not None and "Could not write" in report.notice
 
         result = backfill_missing(proj)
-        assert result.refused == [SETTINGS_PATH]
+        assert result.refused == []
+        assert result.not_written == [SETTINGS_PATH]
         assert "Could not write" in (result.hooks_notice or "")
         assert "AGENTS.md" in result.skipped
 
+        # Default mode is the agent-safe path (wrapup's reset step): a sandbox-denied
+        # hooks install is a notice, exit 0, never "already exists".
+        cli = runner.invoke(app, ["backfill", "--dir", str(proj)])
+        output = " ".join(cli.output.split())
+        assert cli.exit_code == 0, cli.output
+        assert "Could not write" in output
+        assert "already exists, nothing written" not in output
+        assert "Not written" in output
+
+        # Naming the settings file explicitly is still a failure.
         named = backfill_missing(proj, files=[SETTINGS_PATH])
         assert named.refused == [SETTINGS_PATH] and named.created == []
+        cli = runner.invoke(app, ["backfill", "--dir", str(proj), SETTINGS_PATH])
+        output = " ".join(cli.output.split())
+        assert cli.exit_code == 1
+        assert "hooks not installed" in output
+        assert "already exists, nothing written" not in output
     finally:
         claude_dir.chmod(0o755)
