@@ -306,8 +306,8 @@ holds; a config without that key is a local machine whatever the environment say
 |---|---|
 | `init` | Minimal config (`"profile": "web"`), no prompt, no template-store seeding, no workspace scan |
 | `universe`, `learn` (every subcommand) | One-line "not available in web sessions" notice, exit 0. With `universe --format json` the notice goes to stderr and stdout carries `{"available": false, "profile": "web", ...}`; with `--format csv` stdout stays empty |
-| `doctor` | One-line notice that the store, config and catalog checks are skipped; the per-project checks (identity, docs, skills) still run against the current directory. `--dry-run` reports; a fix still needs an operator, as everywhere |
-| `review` | One-line notice, then the printed board (as `--no-tui`), exit 0 |
+| `doctor` | One-line notice that the store, config and catalog checks are skipped; the per-project checks (identity, docs, skills) still run against the current directory. `--dry-run` reports. Without `--dry-run`, an agent session (or a core install without `questionary`) gets the same report instead of a refusal; exit 0 when the project is healthy, 1 when there are findings. A fix still needs an operator to confirm it |
+| `review` | The interactive board is not available: one-line notice, then the printed board (as `--no-tui`), exit 0 |
 | `adopt`, `backfill`, `new`, `review --no-tui`, `--version` | Unchanged; render from the bundled templates when the store is absent |
 
 ## Optional `tui` extra

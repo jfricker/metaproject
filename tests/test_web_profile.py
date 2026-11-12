@@ -148,9 +148,14 @@ def test_web_profile_doctor_fix_still_needs_an_operator(
     proj.mkdir()
     monkeypatch.chdir(proj)
 
-    refused = runner.invoke(app, ["doctor"])
-    assert refused.exit_code == 1
-    assert "Doctor Refused" in refused.output
+    # In an agent session the web profile degrades to the --dry-run report instead of
+    # refusing: findings exit 1, and nothing is written.
+    reported = runner.invoke(app, ["doctor"])
+    assert reported.exit_code == 1, reported.output
+    assert "Doctor Refused" not in reported.output
+    assert "reporting findings only" in reported.output
+    assert "no .metaproject.json anchor" in reported.output
+    assert not (proj / ".metaproject.json").exists()
 
     # With the agent override cleared and the operator confirming, the project fix runs.
     monkeypatch.setenv("METAPROJECT_AGENT", "0")
@@ -158,6 +163,43 @@ def test_web_profile_doctor_fix_still_needs_an_operator(
     fixed = runner.invoke(app, ["doctor"])
     assert NOTICE in fixed.output
     assert (proj / ".metaproject.json").is_file()
+
+
+def test_web_profile_doctor_in_agent_session_exits_zero_for_a_healthy_project(
+    runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+    assert runner.invoke(app, ["adopt"]).exit_code == 0
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0, result.output
+    assert NOTICE in result.output
+    assert "reporting findings only" in result.output
+    assert "Doctor Refused" not in result.output
+
+
+def test_web_profile_doctor_without_questionary_reports_instead_of_failing(
+    runner: CliRunner, tmp_path: Path, web, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A core install (no `tui` extra) has nothing to confirm with: report, don't crash."""
+    import sys
+
+    monkeypatch.setenv("METAPROJECT_AGENT", "0")
+    monkeypatch.setitem(sys.modules, "questionary", None)
+    proj = tmp_path / "bare"
+    proj.mkdir()
+    monkeypatch.chdir(proj)
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 1, result.output
+    assert "Missing optional dependency" not in result.output
+    assert "questionary is not installed" in result.output
+    assert "no .metaproject.json anchor" in result.output
+    assert not (proj / ".metaproject.json").exists()
 
 
 def test_fallback_author_placeholder_is_never_persisted(
@@ -184,6 +226,7 @@ def test_web_profile_review_prints_board_with_notice(
 
     assert result.exit_code == 0, result.output
     assert NOTICE in result.output
+    assert "printing the board instead" in result.output
     assert "proj" in result.output
 
 

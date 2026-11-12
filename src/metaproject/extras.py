@@ -32,6 +32,15 @@ def require(module: str, feature: str) -> ModuleType:
         ) from exc
 
 
+def available(module: str) -> bool:
+    """Can `module` be imported? (Is the extra that provides it installed?)"""
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        return False
+    return True
+
+
 class LazyModule:
     """A module-shaped proxy that imports its module on first attribute access.
 

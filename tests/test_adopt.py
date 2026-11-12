@@ -227,3 +227,57 @@ def test_new_dot_is_still_refused_in_agent_session(
     result = runner.invoke(app, ["new", "."])
     assert result.exit_code == 1
     assert not (repo / IDENTITY_FILE).exists()
+
+
+def anchored_repo(tmp_path: Path, author: str) -> Path:
+    repo = tmp_path / "anchored"
+    repo.mkdir()
+    (repo / IDENTITY_FILE).write_text(
+        json.dumps(
+            {
+                "title": "Anchored",
+                "description": "",
+                "author": author,
+                "created": "2026-01-02",
+                "metaproject_version": "0.8.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return repo
+
+
+def test_backfill_author_comes_from_identity_before_config_and_git(
+    runner: CliRunner, tmp_path: Path, container_git_identity, agent_session
+) -> None:
+    """Author precedence for `backfill`: .metaproject.json -> config -> git."""
+    from metaproject.config import Config, save_config
+
+    save_config(Config(author="Config Author"))
+    repo = anchored_repo(tmp_path, "Identity Author")
+
+    result = runner.invoke(app, ["backfill", "--dir", str(repo)])
+
+    assert result.exit_code == 0, result.output
+    intent = (repo / "docs" / "INTENT.md").read_text(encoding="utf-8")
+    assert "Identity Author" in intent
+    assert "Config Author" not in intent
+    assert "Claude" not in intent
+
+
+def test_backfill_author_falls_back_to_config_not_container_git(
+    runner: CliRunner, tmp_path: Path, container_git_identity, agent_session
+) -> None:
+    """No identity file: config wins, and the container's `Claude` never appears."""
+    from metaproject.config import Config, save_config
+
+    save_config(Config(author="Config Author"))
+    repo = tmp_path / "plain"
+    repo.mkdir()
+
+    result = runner.invoke(app, ["backfill", "--dir", str(repo)])
+
+    assert result.exit_code == 0, result.output
+    intent = (repo / "docs" / "INTENT.md").read_text(encoding="utf-8")
+    assert "Config Author" in intent
+    assert "Claude" not in intent

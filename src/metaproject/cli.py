@@ -27,7 +27,7 @@ from metaproject.exceptions import (
     MetaProjectError,
     MissingExtraError,
 )
-from metaproject.extras import LazyModule, require
+from metaproject.extras import INSTALL_HINT, LazyModule, available, require
 from metaproject.git import ensure_template_repository, is_git_repository
 from metaproject.scaffold import (
     is_directory_empty,
@@ -179,7 +179,7 @@ app = typer.Typer(
 )
 
 
-def web_profile_notice(what: str, output_format: str = "table") -> bool:
+def web_profile_notice(what: str, output_format: str = "table", instead: str = "") -> bool:
     """Print the one-line web-profile notice for `what`. True when it was printed.
 
     The caller returns (exit 0) on True: in a Claude Code on the web container there is
@@ -209,8 +209,9 @@ def web_profile_notice(what: str, output_format: str = "table") -> bool:
             }
             typer.echo(json.dumps(envelope, indent=2))
         return True
+    tail = f"; {instead}" if instead else ""
     console.print(
-        f"[yellow]Notice:[/] {what} is not available in web sessions ({reason}).",
+        f"[yellow]Notice:[/] {what} is not available in web sessions ({reason}){tail}.",
         soft_wrap=True,
     )
     return True
@@ -1150,7 +1151,7 @@ def review_cmd(
     # The web profile never opens the board: it prints the same board `--no-tui` does,
     # after a one-line notice, and exits 0.
     web_board = not no_tui and web_profile_notice(
-        "The interactive review board (showing the printed board)"
+        "`metaproject review`'s interactive board", instead="printing the board instead"
     )
     if web_board or not tui_enabled(no_tui=no_tui):
         from metaproject.review_tui import review_table
@@ -1402,10 +1403,30 @@ def doctor_cmd(
     # project checks still run — against an explicit PROJECT, else the current
     # directory, the one project the session has.
     web = web_profile_notice(
-        "`metaproject doctor`'s store, config and catalog checks (project checks still run)"
+        "`metaproject doctor`'s store, config and catalog checks",
+        instead="running the project checks only",
     )
     if web and project is None:
         project = Path.cwd().resolve()
+
+    # The web profile has no operator to refuse on behalf of: an agent session (or a
+    # core install without questionary to confirm with) degrades to the report
+    # `--dry-run` prints rather than a refusal. Its exit code is the report's: 0 for a
+    # healthy project, 1 when there are findings.
+    if web and not dry_run:
+        marker = agent_marker()
+        if marker is not None or not available("questionary"):
+            why = (
+                f"{marker} is set"
+                if marker is not None
+                else f"questionary is not installed: {INSTALL_HINT}"
+            )
+            console.print(
+                "[yellow]Notice:[/] doctor's fixes need an operator to confirm them; "
+                f"reporting findings only, as --dry-run would ({why}).",
+                soft_wrap=True,
+            )
+            dry_run = True
 
     if not dry_run:
         marker = agent_marker()
