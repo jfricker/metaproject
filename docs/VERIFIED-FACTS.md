@@ -63,3 +63,17 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - hatchling's `WheelBuilder(root).build(directory=...)` builds the wheel in-process with
   no network, so wheel-content tests need neither `uv build` nor an unsandboxed run.
 
+
+## 2026-11-12 — issue #3 part 3a (web profile, `adopt`, optional `tui` extra)
+
+- `importlib` from-import of a submodule (`from metaproject.learn import tui`) still works
+  when the package defines a module-level `__getattr__` that raises `AttributeError` for
+  unknown names: the import system falls back to importing the submodule.
+- `uv pip install -e ".[dev]"` resolves a self-referential extra (`dev = ["metaproject[tui]", …]`).
+- `typer.Typer(cls=...)` accepts a `TyperGroup` subclass; overriding `invoke` there sees
+  exceptions from every subcommand, nested groups included.
+- Rich treats `[tui]` in a printed string as markup and drops it; messages that name the
+  extra are passed through `rich.markup.escape`.
+- `tests/test_skills.py::test_ac5_real_claude_skills_directory…` was sensitive to the
+  temporary-path length (Rich wrapped "real directory" across lines); it now compares
+  whitespace-normalized output.

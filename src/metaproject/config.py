@@ -32,8 +32,29 @@ DEFAULT_ACTIVITY_WEIGHTS = {
 }
 
 
+FALLBACK_AUTHOR = "Developer"
+
+# Identities a container or agent harness sets for itself. A Claude Code on the web
+# container reports `git config user.name` as "Claude"; adopting that as a project's
+# author would stamp every document with the harness rather than the person. These are
+# only ever *detected* names: an author given explicitly (`--author`, config.json,
+# `.metaproject.json`) is used as written, whatever it is.
+CONTAINER_DEFAULT_AUTHORS = frozenset(
+    {"claude", "claude code", "claude-code", "claude[bot]", "root"}
+)
+
+
+def is_container_default_author(name: str) -> bool:
+    """Is `name` an identity a container or harness gives itself, not a person's?"""
+    return name.strip().lower() in CONTAINER_DEFAULT_AUTHORS
+
+
 def detect_git_user_name() -> str:
-    """Attempt to detect user name from git global configuration."""
+    """Detect the author from `git config user.name`, then `$USER`, then a placeholder.
+
+    A detected name that is a container default (`CONTAINER_DEFAULT_AUTHORS`) is
+    skipped, so a web container's "Claude" never becomes an author by detection.
+    """
     try:
         res = subprocess.run(
             ["git", "config", "user.name"],
@@ -41,11 +62,15 @@ def detect_git_user_name() -> str:
             text=True,
             check=False,
         )
-        if res.returncode == 0 and res.stdout.strip():
-            return res.stdout.strip()
+        name = res.stdout.strip() if res.returncode == 0 else ""
+        if name and not is_container_default_author(name):
+            return name
     except Exception:
         pass
-    return os.environ.get("USER", "Developer")
+    user = os.environ.get("USER", "").strip()
+    if user and not is_container_default_author(user):
+        return user
+    return FALLBACK_AUTHOR
 
 
 @dataclass
@@ -84,6 +109,9 @@ class Config:
     auto_git_init: bool = True
     default_license: str = "MIT"
     learn: LearnConfig = field(default_factory=LearnConfig)
+    profile: str = "local"
+    """"local" for a long-lived machine, "web" for a Claude Code on the web container
+    (written by `init` in the web profile; see `session.web_profile_reason`)."""
 
     def __post_init__(self) -> None:
         if isinstance(self.learn, dict):

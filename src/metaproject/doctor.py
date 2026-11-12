@@ -24,10 +24,11 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-import questionary
-
 from metaproject import __version__, config, db, deliverables, git, identity, skills, templates
 from metaproject.config import Config
+from metaproject.extras import LazyModule
+
+questionary = LazyModule("questionary", "Doctor's confirmations")
 
 STORE_LAYOUT_COMMIT = "chore(templates): relocate cycle templates to docs.template/"
 

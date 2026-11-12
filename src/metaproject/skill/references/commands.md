@@ -7,11 +7,14 @@ Anything marked **interactive** prompts or opens a TUI and needs a human at the 
 - [init](#init)
 - [new](#new)
 - [backfill](#backfill)
+- [adopt](#adopt)
 - [review](#review)
 - [learn](#learn)
 - [universe](#universe)
 - [doctor](#doctor)
 - [Agent-session guards](#agent-session-guards)
+- [Web profile (Claude Code on the web)](#web-profile-claude-code-on-the-web)
+- [Optional `tui` extra](#optional-tui-extra)
 - [Non-interactive recipes](#non-interactive-recipes)
 - [Where state lives](#where-state-lives)
 
@@ -30,6 +33,12 @@ skills are copied into each project by `new` and `backfill`.
 | `--project-home <path>` | Root directory containing workspaces (default `~/Projects`) |
 | `--config-dir <path>` | Override `~/.metaproject` |
 | `--force`, `-f` | Overwrite existing configuration and templates |
+| `--non-interactive` | Accept defaults (and `--author`) without prompting |
+| `--author`, `-a <str>` | Default author (default: `git config user.name`, then `$USER`; a detected container identity such as `Claude` or `root` is skipped for `Developer`) |
+
+In the [web profile](#web-profile-claude-code-on-the-web) `init` writes a minimal
+`config.json` recording `"profile": "web"`, never prompts, and skips seeding the template
+store and the workspace scan.
 
 Run without `--force` when config already exists and it prints the current settings and
 catalog summary instead of changing anything — a safe way to inspect the environment.
@@ -111,6 +120,33 @@ metaproject backfill docs/HANDOFF.md       # on-demand deliverable, created by n
 metaproject backfill intent.md             # an old name: creates docs/INTENT.md
 metaproject backfill --dry-run             # preview only, writes nothing
 metaproject backfill docs/SPEC.md          # exits 1, writes nothing, if it exists
+```
+
+## adopt
+
+`metaproject adopt [--dir PATH] [--title T]` — adopt an existing repository (typically
+one that is already cloned). **Permitted in agent sessions**: create-only, runs no git
+command, needs no confirmation. This is the agent's way in; `new .` keeps its
+interactive, operator-confirmed semantics and is refused in an agent session.
+
+| Flag | Effect |
+|---|---|
+| `--dir`, `-d <path>` | Repository to adopt (default: current directory) |
+| `--title <str>` | Title (default: `README.md` heading, `pyproject.toml`/`package.json` name, then the directory name) |
+| `--description <str>` | One-line summary (default: the paragraph under the README heading) |
+| `--author`, `-a <str>` | Author (default: config, then `git config user.name`; never a container identity) |
+| `--templates <path>` | Template directory to create from |
+| `--dry-run` | Preview; writes nothing |
+
+It writes `.metaproject.json` (kept as written if one exists; an unreadable one stops
+the command with exit 1 rather than being replaced), the `.agents/skills` directory with
+its `.claude/skills` link, then everything `backfill` with no `FILE` would: every missing
+scaffolded deliverable and every missing project skill. Re-running it is a no-op.
+
+```bash
+metaproject adopt                          # this repository
+metaproject adopt --title "Game Workshop"  # explicit title
+metaproject adopt --dry-run                # preview only
 ```
 
 ## review
@@ -245,6 +281,7 @@ that need an operator. Detection reads environment markers no ordinary login she
 | `learn scan` / bare `learn [ROOT]` | Refused, exit 1, printing the command to hand over |
 | Scaffolding into an existing directory (`new .`'s two confirmations) | Refused, exit 1; `--dry-run` still previews |
 | `metaproject backfill` | **Allowed** — create-only, no confirmations needed, never runs git |
+| `metaproject adopt` | **Allowed** — create-only, no confirmations needed, never runs git |
 | `metaproject doctor` | Refused, exit 1; `doctor --dry-run` still reports |
 | Everything else | Unchanged |
 
@@ -255,6 +292,30 @@ agent mode (useful for testing, or a harness that sets no marker of its own).
 These guards are for the operator's benefit. Relaying a refusal — "this one needs you,
 here is the command" — is the intended response; setting `METAPROJECT_AGENT=0` to get
 around one is not.
+
+## Web profile (Claude Code on the web)
+
+A Claude Code on the web session runs in a fresh container: no `~/.metaproject`, no
+projects home, no operator. metaproject treats it as the **web profile** when
+`METAPROJECT_PROFILE=web`, or when `CLAUDE_CODE_REMOTE=true` and no `config.json`
+exists. Once `init` has written a config it records `"profile": "web"`, so the profile
+holds; a config without that key is a local machine whatever the environment says, and
+`METAPROJECT_PROFILE=local` forces the local profile.
+
+| Command | In the web profile |
+|---|---|
+| `init` | Minimal config (`"profile": "web"`), no prompt, no template-store seeding, no workspace scan |
+| `universe`, `learn` (every subcommand), `doctor` (including `--dry-run`) | One-line "not available in web sessions" notice, exit 0 |
+| `review` | One-line notice, then the printed board (as `--no-tui`), exit 0 |
+| `adopt`, `backfill`, `new`, `review --no-tui`, `--version` | Unchanged; render from the bundled templates when the store is absent |
+
+## Optional `tui` extra
+
+The core install (`typer`, `rich`, `jinja2`) runs `--version`, `new`, `backfill`,
+`adopt` and `review --no-tui`. `textual`, `questionary` and `sqlite-utils` ship in the
+`tui` extra (`pip install "metaproject[tui]"`) and back the TUIs, interactive prompts,
+`universe`, `learn` and `doctor`. Without it those exit 1 with one line naming the
+install command.
 
 ## Non-interactive recipes
 
@@ -270,6 +331,9 @@ metaproject backfill docs/SPEC.md docs/HANDOFF.md
 
 # Fill in every missing scaffolded deliverable in one call
 metaproject backfill
+
+# Adopt an already-cloned repository: identity, docs, skills (agent-safe)
+metaproject adopt
 
 # Audit this project (prints the board in an agent session)
 metaproject review
@@ -292,12 +356,12 @@ metaproject universe --list --all --format json
 
 | Path | Contents |
 |---|---|
-| `~/.metaproject/config.json` | Author, default branch, projects home, template path, db path |
+| `~/.metaproject/config.json` | Author, default branch, projects home, template path, db path, profile (`local`/`web`) |
 | `~/.metaproject/templates/` | The template store — a git repository |
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
 | `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`, committed with the project (`.claude/skills` links here) |
-| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`, read by `review`/`learn`/`backfill`/`universe` |
+| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe` |
 
 Template files carry a `.template` infix that is stripped on render:
 `AGENTS.template.md` → `AGENTS.md`, `.gitignore.template` → `.gitignore`,
