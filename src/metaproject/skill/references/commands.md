@@ -474,7 +474,7 @@ metaproject universe --list --all --format json
 | `<project>/.agents/skills/.metaproject-skills.json` | Skills install manifest: release and per-file sha256 for each installed skill; committed |
 | `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, and `templates.source` |
 | `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
-| `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`), copied create-only |
+| `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`; `pre-bash` also advises a worktree-local `PLAYWRIGHT_BROWSERS_PATH` when the Playwright install lock is held), copied create-only |
 | `<project>/scripts/metaproject-session.sh` | The web session-start bootstrap script, copied create-only |
 
 Template files carry a `.template` infix that is stripped on render:

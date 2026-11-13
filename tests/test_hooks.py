@@ -676,3 +676,102 @@ def test_unwritable_claude_dir_is_reported_not_raised(runner: CliRunner, tmp_pat
         assert "already exists, nothing written" not in output
     finally:
         claude_dir.chmod(0o755)
+
+
+# --------------------------------------------------------------------------- playwright lock
+
+
+def _fresh_env(monkeypatch, tmp_path: Path) -> Path:
+    shared = tmp_path / "shared-browsers"
+    shared.mkdir()
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(shared))
+    project = tmp_path / "proj"
+    project.mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(project))
+    return shared
+
+
+def test_pre_bash_advises_when_the_install_lock_is_held(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = load_script_module()
+    shared = _fresh_env(monkeypatch, tmp_path)
+    (shared / "__dirlock").mkdir()
+    monkeypatch.setattr(module, "install_process_running", lambda: False)
+    assert module.pre_bash({"tool_input": {"command": "npx playwright test"}}) == 0
+    out = json.loads(capsys.readouterr().out)
+    context = out["hookSpecificOutput"]["additionalContext"]
+    assert out["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+    assert ".playwright-browsers" in context and "Do not wait" in context
+    assert not (tmp_path / "proj" / ".playwright-browsers").exists()  # advice only
+    assert (shared / "__dirlock").exists()  # never removes the lock
+
+
+def test_pre_bash_advises_when_an_install_process_runs(tmp_path: Path, monkeypatch, capsys) -> None:
+    module = load_script_module()
+    _fresh_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(module, "install_process_running", lambda: True)
+    assert module.pre_bash({"tool_input": {"command": "npx playwright test"}}) == 0
+    assert "lock" in capsys.readouterr().out
+
+
+def test_pre_bash_is_silent_without_a_lock(tmp_path: Path, monkeypatch, capsys) -> None:
+    module = load_script_module()
+    _fresh_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(module, "install_process_running", lambda: False)
+    assert module.pre_bash({"tool_input": {"command": "npx playwright test"}}) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_pre_bash_skips_advice_when_already_worktree_local(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = load_script_module()
+    _fresh_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(module, "install_process_running", lambda: True)
+    command = "PLAYWRIGHT_BROWSERS_PATH=.playwright-browsers npx playwright test"
+    assert module.pre_bash({"tool_input": {"command": command}}) == 0
+    assert capsys.readouterr().out == ""
+    local = tmp_path / "proj" / ".playwright-browsers"
+    local.mkdir()
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(local))
+    assert module.pre_bash({"tool_input": {"command": "npx playwright test"}}) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_pre_bash_ignores_the_lock_for_non_playwright_commands(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = load_script_module()
+    shared = _fresh_env(monkeypatch, tmp_path)
+    (shared / "__dirlock").mkdir()
+    assert module.pre_bash({"tool_input": {"command": "make test"}}) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_pre_bash_survives_a_failing_lock_probe(tmp_path: Path, monkeypatch) -> None:
+    module = load_script_module()
+    _fresh_env(monkeypatch, tmp_path)
+
+    def boom():
+        raise RuntimeError("ps exploded")
+
+    monkeypatch.setattr(module, "install_process_running", boom)
+    monkeypatch.setattr(sys, "stdin", None)
+    assert module.main(["x", "pre-bash"]) == 0
+
+
+def test_browsers_path_defaults_and_override() -> None:
+    module = load_script_module()
+    assert module.browsers_path({"PLAYWRIGHT_BROWSERS_PATH": "/x"}) == "/x"
+    assert module.browsers_path({}).endswith("ms-playwright")
+
+
+def test_execute_tests_skill_and_ignore_template_cover_the_lock() -> None:
+    from metaproject.skills import get_bundled_sdlc_skills_dir
+
+    text = (get_bundled_sdlc_skills_dir() / "execute-tests" / "SKILL.md").read_text("utf-8")
+    for needle in ("__dirlock", "PLAYWRIGHT_BROWSERS_PATH", ".playwright-browsers", "--project"):
+        assert needle in text
+    template = get_bundled_templates_dir() / ".gitignore.template"
+    assert ".playwright-browsers/" in template.read_text("utf-8")

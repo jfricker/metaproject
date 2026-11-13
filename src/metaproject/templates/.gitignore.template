@@ -25,3 +25,6 @@ dist/
 
 # Worktrees
 .claude/worktrees/
+
+# Worktree-local Playwright browsers (execute-tests, when the shared install is locked)
+.playwright-browsers/

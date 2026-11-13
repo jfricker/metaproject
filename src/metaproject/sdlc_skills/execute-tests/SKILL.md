@@ -47,15 +47,27 @@ look — tests, build, and (for UI work) screenshots.
 
 1. Run `make help` if you haven't already this session, to confirm the actual available
    targets — don't assume target names.
-2. Run the test suite, build, and any lint/typecheck targets. Capture full output.
-3. For UI-facing changes, use the `run` skill (or project-specific launch skill) to
+2. **Before any e2e run**, clear the way (skip when the project has no Playwright e2e):
+   - Stop stale preview/dev servers on the e2e port (`e2e_port` in `.metaproject.json`;
+     `lsof -nP -iTCP:<port> -sTCP:LISTEN`). The bundled pre-Bash hook already does this
+     for commands that mention playwright.
+   - Check whether a Playwright install lock is held: a `__dirlock` directory under the
+     browsers path (`$PLAYWRIGHT_BROWSERS_PATH`, else `~/Library/Caches/ms-playwright` on
+     macOS or `~/.cache/ms-playwright` on Linux), or a running `playwright install`
+     process. **If it is held, do not wait.** Set `PLAYWRIGHT_BROWSERS_PATH` to a
+     worktree-local, git-ignored directory (`.playwright-browsers/`), install only the
+     engines this run needs (`npx playwright install <engine>`), and run only the
+     affected project(s) (`--project=<name>`) rather than the whole matrix. If a stale
+     lock is suspected, report it to the operator; never delete another session's lock.
+3. Run the test suite, build, and any lint/typecheck targets. Capture full output.
+4. For UI-facing changes, use the `run` skill (or project-specific launch skill) to
    actually run the app and take a screenshot confirming the change works, not just that
    tests pass.
-4. On failure: fix the code and re-run, don't just report the failure and stop, unless
+5. On failure: fix the code and re-run, don't just report the failure and stop, unless
    the fix requires a decision outside `docs/PLAN.md`'s scope — then stop and flag it.
-5. Check each item in `docs/SPEC.md`'s Acceptance criteria against what was actually
+6. Check each item in `docs/SPEC.md`'s Acceptance criteria against what was actually
    implemented; note any criteria not yet met.
-6. Report results plainly: what passed, what failed, what was fixed, and anything still
+7. Report results plainly: what passed, what failed, what was fixed, and anything still
    open — never claim tests pass without having run them.
 
 ## Output artifact
