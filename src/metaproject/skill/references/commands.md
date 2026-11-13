@@ -368,7 +368,8 @@ file exists **and** `CLAUDE_CODE_REMOTE=true`, and always exits 0. The script in
 the CLI at `.metaproject.json`'s `metaproject_version`
 (`uv tool install git+https://github.com/jfricker/metaproject@v<version>`, then pipx,
 then `pip --user`, then the default branch; skipped when that version is already
-installed), appends `~/.local/bin` to `PATH` via `$CLAUDE_ENV_FILE`, then runs
+installed; if the installed CLI has no `skills` command — a pin of 0.9.1 or earlier —
+it reinstalls from the default branch), appends `~/.local/bin` to `PATH` via `$CLAUDE_ENV_FILE`, then runs
 `metaproject skills sync` and `metaproject templates fetch`. Output goes to
 `$METAPROJECT_SESSION_LOG` (default `$TMPDIR/metaproject-session.log`); offline or
 without `uv` it still exits 0. `METAPROJECT_REPO_URL` overrides the repository.

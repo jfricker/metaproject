@@ -72,7 +72,9 @@ runs `scripts/metaproject-session.sh` (copied create-only) **only** when
 `.metaproject.json` (`metaproject_version`) with
 `uv tool install git+https://github.com/jfricker/metaproject@v<version>` (falling back to
 pipx, then `pip --user`, then the default branch), adds `~/.local/bin` to the session's
-`PATH`, runs `metaproject skills sync` and `metaproject templates fetch`. It is
+`PATH`, runs `metaproject skills sync` and `metaproject templates fetch`. If the
+installed CLI has no `skills` command (a pin of 0.9.1 or earlier, which predates it), it
+reinstalls from the default branch instead of silently skipping both steps. It is
 idempotent (a matching installed version is left alone), writes only to a log
 (`$TMPDIR/metaproject-session.log`), and always exits 0 — offline, no `uv`, or a missing
 script never blocks a session.

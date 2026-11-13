@@ -230,6 +230,7 @@ def test_script_installs_the_pinned_version_then_syncs(sandbox: dict) -> None:
     project = str(sandbox["project"])
     assert calls == [
         "uv tool install --force --quiet git+https://example.invalid/metaproject@v1.2.3",
+        "metaproject skills --help",
         f"metaproject skills sync --dir {project}",
         f"metaproject templates fetch --dir {project}",
     ]
@@ -277,7 +278,7 @@ def test_script_falls_back_to_the_default_branch_when_the_pin_fails(sandbox: dic
     set_pin(sandbox, "9.9.9")
     result, calls = run_script(sandbox)
     assert result.returncode == 0
-    assert calls[-3] == "uv tool install --force --quiet git+https://example.invalid/metaproject"
+    assert calls[-4] == "uv tool install --force --quiet git+https://example.invalid/metaproject"
     assert calls[-2].startswith("metaproject skills sync")
 
 
@@ -296,3 +297,74 @@ def test_script_exits_0_without_uv_or_metadata(sandbox: dict) -> None:
     result, calls = run_script(sandbox)
     assert result.returncode == 0
     assert calls and all(call.startswith(("pipx ", "python3 -m pip")) for call in calls)
+
+
+# A CLI from before `skills`/`templates` existed (<= 0.9.1): Typer's usage error, exit 2.
+OLD_METAPROJECT_STUB = """echo "metaproject $*" >> "$CALLS"
+if [ "$1" = "--version" ]; then echo "Package Manifest — metaproject v$STUB_VERSION"; exit 0; fi
+case "$1" in skills|templates) echo "Error: No such command '$1'." >&2; exit 2;; esac
+exit 0
+"""
+
+
+def add_skewed_uv(sandbox: dict, default_branch_ok: bool = True) -> None:
+    """uv whose pinned (@v) install yields a pre-`skills` CLI; the default branch a current one."""
+    current = METAPROJECT_STUB if default_branch_ok else OLD_METAPROJECT_STUB
+    write_stub(
+        sandbox["stubs"] / "uv",
+        'echo "uv $*" >> "$CALLS"\n'
+        'case "$*" in\n'
+        f"  *@v*) cat > \"$HOME/.local/bin/metaproject\" <<'EOF'\n#!/bin/bash\n"
+        f"{OLD_METAPROJECT_STUB}EOF\n;;\n"
+        f"  *) cat > \"$HOME/.local/bin/metaproject\" <<'EOF'\n#!/bin/bash\n{current}EOF\n;;\n"
+        "esac\n"
+        'chmod +x "$HOME/.local/bin/metaproject"\nexit 0\n',
+    )
+
+
+def test_script_takes_the_default_branch_when_the_pin_predates_skills(sandbox: dict) -> None:
+    add_skewed_uv(sandbox)
+    set_pin(sandbox, "0.9.1")
+    result, calls = run_script(sandbox, version="0.9.1")
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    project = str(sandbox["project"])
+    assert calls == [
+        "uv tool install --force --quiet git+https://example.invalid/metaproject@v0.9.1",
+        "metaproject skills --help",
+        "uv tool install --force --quiet git+https://example.invalid/metaproject",
+        "metaproject skills --help",
+        f"metaproject skills sync --dir {project}",
+        f"metaproject templates fetch --dir {project}",
+    ]
+    log = (sandbox["tmp"] / "session.log").read_text(encoding="utf-8")
+    assert "no 'skills' command" in log
+
+
+def test_script_repairs_an_installed_cli_that_matches_the_pin_but_lacks_skills(
+    sandbox: dict,
+) -> None:
+    """`--version` equal to the pin must not stop the script from noticing the skew."""
+    old = sandbox["home"] / ".local" / "bin" / "metaproject"
+    write_stub(old, OLD_METAPROJECT_STUB)
+    add_skewed_uv(sandbox)
+    set_pin(sandbox, "0.9.1")
+    result, calls = run_script(sandbox, version="0.9.1")
+    assert result.returncode == 0
+    assert calls[:3] == [
+        "metaproject --version",
+        "metaproject skills --help",
+        "uv tool install --force --quiet git+https://example.invalid/metaproject",
+    ]
+    assert calls[-2].startswith("metaproject skills sync")
+
+
+def test_script_exits_0_when_no_cli_has_skills(sandbox: dict) -> None:
+    add_skewed_uv(sandbox, default_branch_ok=False)
+    set_pin(sandbox, "0.9.1")
+    result, calls = run_script(sandbox, version="0.9.1")
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+    assert not any(
+        c.startswith(("metaproject skills sync", "metaproject templates")) for c in calls
+    )
+    log = (sandbox["tmp"] / "session.log").read_text(encoding="utf-8")
+    assert "still has no 'skills' command" in log

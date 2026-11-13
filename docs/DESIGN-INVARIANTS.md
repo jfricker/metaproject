@@ -117,6 +117,10 @@ invariant established in one cycle isn't accidentally violated in the next.
 - `scripts/metaproject-session.sh` always exits 0 and writes nothing to stdout/stderr
   (log file only); it re-checks `CLAUDE_CODE_REMOTE` itself, and only accepts a pinned
   `metaproject_version` matching `[0-9][0-9A-Za-z.+-]*`.
+- The session script never trusts the pin alone: on every run it probes
+  `metaproject skills --help` and, when the installed CLI lacks it (a pin <= 0.9.1, which
+  predates `skills`/`templates`), reinstalls from the default branch. A `--version` equal
+  to the pin must not mask that skew.
 - Both hook scripts are copied create-only; `hooks_installed` (and so review's settings
   deliverable) requires both present. A differing copy is a review note, never rewritten.
 - `template_source.resolve_templates` is the single store-resolution order:

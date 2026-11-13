@@ -8,6 +8,8 @@
 #      with `uv tool install git+<repo>@v<version>`, falling back to pipx, then pip --user
 #      (and to the default branch if the pinned tag cannot be installed); skipped when
 #      `metaproject --version` already reports that version;
+#      If the installed CLI has no `skills` command (a pin older than this feature), it
+#      reinstalls from the default branch so steps 2 and 3 can run;
 #   2. runs `metaproject skills sync` (installs missing skills, updates outdated,
 #      unmodified ones, never touches a locally edited skill);
 #   3. runs `metaproject templates fetch`, which refreshes the `templates.source` cache
@@ -89,6 +91,19 @@ print(v if re.fullmatch(r"[0-9][0-9A-Za-z.+-]*", v) else "")
   if ! command -v metaproject >/dev/null 2>&1; then
     echo "metaproject is not on PATH; skipping skills sync and template fetch"
     return 0
+  fi
+
+  # Version-pin skew: a project pinned to a release older than `skills`/`templates`
+  # (<= 0.9.1) gets a CLI where both commands are "No such command". Probe for them and,
+  # when the installed CLI lacks them, take the default branch instead. Probing on every
+  # run (not only after an install) is what lets an already-pinned container repair itself.
+  if ! metaproject skills --help >/dev/null 2>&1; then
+    echo "installed metaproject has no 'skills' command (pin predates it); trying the default branch"
+    install_cli "git+$repo"
+    if ! metaproject skills --help >/dev/null 2>&1; then
+      echo "metaproject still has no 'skills' command; skipping skills sync and template fetch"
+      return 0
+    fi
   fi
 
   # Persist PATH for the session's own Bash calls (Claude Code reads CLAUDE_ENV_FILE).
