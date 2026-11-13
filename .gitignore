@@ -39,3 +39,6 @@ dist/
 
 # Impeccable plugin local state
 .impeccable/
+
+# Worktree-local Playwright browsers
+.playwright-browsers/

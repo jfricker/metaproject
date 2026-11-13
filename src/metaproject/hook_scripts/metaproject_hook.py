@@ -11,7 +11,11 @@ agent; the edit itself has already happened and is not undone.
 
 pre-bash: when the Bash command mentions playwright and `e2e_port` is set, any process
 listening on that port is stopped (TERM, then KILL) so a stale preview server cannot
-break the e2e run. It never blocks the command: exit 0 always.
+break the e2e run. It also notices a held Playwright install lock (a `__dirlock` under the
+browsers path, or a running `playwright install`) and adds guidance for the agent to use a
+worktree-local `PLAYWRIGHT_BROWSERS_PATH` instead of waiting. It only reports: it never
+sets environment variables, installs, or deletes a lock, and it never blocks the command:
+exit 0 always. Notes reach the agent as PreToolUse `additionalContext`.
 
 Any problem in this script itself (unreadable config, no lsof, bad input) is silent and
 exits 0: a hook must never get in the way of the work it is checking.
@@ -189,20 +193,116 @@ def stop_pids(pids, grace=2.0):
                 pass
 
 
+LOCAL_BROWSERS_DIR = ".playwright-browsers"
+LOCK_NAME = "__dirlock"
+
+
+def browsers_path(env=None):
+    """Where Playwright keeps its browsers (and its install lock)."""
+    env = os.environ if env is None else env
+    explicit = env.get("PLAYWRIGHT_BROWSERS_PATH")
+    if explicit and explicit != "0":
+        return explicit
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Caches", "ms-playwright")
+    if sys.platform.startswith("win"):
+        return os.path.join(env.get("LOCALAPPDATA") or home, "ms-playwright")
+    return os.path.join(env.get("XDG_CACHE_HOME") or os.path.join(home, ".cache"), "ms-playwright")
+
+
+def install_process_running():
+    """True when a `playwright install` process (not this hook) is running."""
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except Exception:
+        return False
+    own = {os.getpid(), os.getppid()}
+    for line in result.stdout.decode("utf-8", errors="ignore").splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2 or not parts[0].isdigit() or int(parts[0]) in own:
+            continue
+        words = parts[1].lower().split()
+        if "metaproject_hook.py" in parts[1]:
+            continue
+        if any("playwright" in w for w in words) and "install" in words:
+            return True
+    return False
+
+
+def install_lock_held(path):
+    """True when `path` holds Playwright's install lock or an install is running."""
+    try:
+        if os.path.exists(os.path.join(path, LOCK_NAME)):
+            return True
+    except Exception:
+        pass
+    return install_process_running()
+
+
+def lock_guidance(root, command):
+    """Advice when the shared browsers install is locked, or None."""
+    path = browsers_path()
+    try:
+        inside = os.path.realpath(path).startswith(os.path.realpath(root) + os.sep)
+    except Exception:
+        inside = False
+    if inside or "PLAYWRIGHT_BROWSERS_PATH" in command:
+        return None  # already using a project-local browsers directory
+    if not install_lock_held(path):
+        return None
+    return (
+        "metaproject: a Playwright install lock looks held ({}). Do not wait for it. "
+        "Prefix the command with PLAYWRIGHT_BROWSERS_PATH={}/{} (git-ignored), run "
+        "`npx playwright install <engine>` for only the engines this run needs, and run "
+        "only the affected project, e.g. `--project=<name>`."
+    ).format(os.path.join(path, LOCK_NAME), root, LOCAL_BROWSERS_DIR)
+
+
+def emit(notes):
+    if not notes:
+        return
+    sys.stdout.write(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "additionalContext": "\n".join(notes),
+                }
+            }
+        )
+        + "\n"
+    )
+
+
 def pre_bash(payload):
     tool_input = payload.get("tool_input")
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if not isinstance(command, str) or "playwright" not in command.lower():
         return 0
-    port = e2e_port(load_config(project_dir(payload)))
-    if port is None:
-        return 0
-    pids = listening_pids(port)
-    if pids:
-        stop_pids(pids)
-        sys.stdout.write(
-            "metaproject: stopped {} stale listener(s) on port {}\n".format(len(pids), port)
-        )
+    root = project_dir(payload)
+    notes = []
+    port = e2e_port(load_config(root))
+    if port is not None:
+        pids = listening_pids(port)
+        if pids:
+            stop_pids(pids)
+            notes.append(
+                "metaproject: stopped {} stale listener(s) on port {}".format(len(pids), port)
+            )
+    try:
+        advice = lock_guidance(root, command)
+    except Exception:
+        advice = None
+    if advice:
+        notes.append(advice)
+    emit(notes)
     return 0
 
 

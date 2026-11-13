@@ -171,7 +171,7 @@ caught right after an edit and a stale preview server cannot break an e2e run:
 | Event | Matcher | What it does |
 |---|---|---|
 | `PostToolUse` | `Edit\|Write` | Runs `commands.lint`, then `commands.typecheck`, from `.metaproject.json`. Silent when neither is set or both pass; on failure the first 20 lines go back to the agent (exit 2). |
-| `PreToolUse` | `Bash` | When the command mentions playwright and `e2e_port` is set, stops whatever is listening on that port. Never blocks the command. |
+| `PreToolUse` | `Bash` | When the command mentions playwright and `e2e_port` is set, stops whatever is listening on that port. When a Playwright install lock looks held (a `__dirlock` under the browsers path, or a running `playwright install`), it tells the agent to use a worktree-local, ignored `PLAYWRIGHT_BROWSERS_PATH` (`.playwright-browsers/`) instead of waiting. It only advises: it never sets variables, installs, or removes a lock. Never blocks the command. |
 
 Both run `.claude/hooks/metaproject_hook.py`, a stdlib-only Python script copied into the
 project create-only (needs `python3` on `PATH`). It reads `.metaproject.json` each time, so
