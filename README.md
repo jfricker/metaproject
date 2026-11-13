@@ -109,14 +109,14 @@ The wizard will prompt for:
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
 #### Project Skills
-`init` installs no skill. Nine skills ship inside the package and are copied into each
+`init` installs no skill. Ten skills ship inside the package and are copied into each
 project by `metaproject new` and `metaproject backfill`, into `.agents/skills/<name>/`
 (reachable as `.claude/skills/<name>/` through the symlink `new` creates), and committed
 with the project like any other file:
 
-- the eight SDLC cycle skills — `/write-intent`, `/generate-spec`, `/generate-design`,
-  `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, and `/backlog-new` for
-  parking ideas — invoked by bare name;
+- the nine SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
+  `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, `/shipit` (merge, push, deploy and
+  clean up a finished branch), and `/backlog-new` for parking ideas — invoked by bare name;
 - the `metaproject` skill, which teaches an agent when to reach for each command, which
   forms are safe to run unattended (`review --no-tui`, `learn list`, `universe`) and which
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;
