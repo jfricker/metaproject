@@ -19,6 +19,10 @@
       {
         "digest": "bf73513626dce8e2683f920040d8e2b4bba64579be0b0764bcd00201eb5684c4",
         "release": "0.9.1"
+      },
+      {
+        "digest": "4d2b6b9e3c1057d26a46929a14b77898bfc644a9d37e826fbaecfcae629d3200",
+        "release": "0.9.1"
       }
     ],
     "generate-design": [
@@ -93,11 +97,19 @@
       {
         "digest": "d0f73fb02c0c67fb28c9f6208f14d183b2d49bf95f4a31a666d3a90f3c675aad",
         "release": "0.9.1"
+      },
+      {
+        "digest": "a66849973f3fed4937739ea7c7fd7b044b84cf9059fe8f53889ea81919f71a61",
+        "release": "0.9.1"
       }
     ],
     "shipit": [
       {
         "digest": "b93d580583e3e96a956b3f7093cb9584d6f50d3653ac701504943ead569ae51a",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "6be2b63868bbe2b6775ebb774573abe8a7ce0aa3e784f988099b71650c9a1f78",
         "release": "0.9.1"
       }
     ],
@@ -108,6 +120,10 @@
       },
       {
         "digest": "ea3fac8db18df395fc81ae74a20b7cfddffbbf9ff3575abfdcf5b92226048404",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "2fc381c48ec87abba6c0da1397a4b1f0ad11ce920d7236c67684857c4cd38ce4",
         "release": "0.9.1"
       }
     ],
