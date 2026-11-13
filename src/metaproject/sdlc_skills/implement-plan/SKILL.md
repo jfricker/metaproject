@@ -5,8 +5,8 @@ description: Implements strictly against an approved PLAN.md, following CLAUDE.m
 
 # implement-plan
 
-> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
-> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
 Stage 5 of 7: execute the approved plan, not a reinterpretation of it.

@@ -232,7 +232,13 @@ def main(
     pass
 
 
-def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: bool) -> None:
+def print_skills_report(
+    states: Dict[str, str],
+    notice: Optional[str],
+    dry_run: bool,
+    target: Optional[Path] = None,
+    project: Optional[Path] = None,
+) -> None:
     """Narrate one project-skills install pass (`new`, `backfill`, `adopt`).
 
     Outdated and modified skills are named because they are the states an operator may
@@ -244,6 +250,12 @@ def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: 
         return
     if not states:
         return
+    where = ".agents/skills/"
+    if target is not None and project is not None:
+        try:
+            where = target.relative_to(project).as_posix() + "/"
+        except ValueError:
+            where = f"{target}/"
     installed = [name for name, state in states.items() if state == INSTALLED]
     updated = [name for name, state in states.items() if state == UPDATED]
     current = [name for name, state in states.items() if state == CURRENT]
@@ -252,7 +264,7 @@ def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: 
     if installed:
         verb = "Would install" if dry_run else "Installed"
         console.print(
-            f"[cyan]✓ {verb} {len(installed)} project skill(s) in .agents/skills/:[/cyan] "
+            f"[cyan]✓ {verb} {len(installed)} project skill(s) in {escape(where)}:[/cyan] "
             + ", ".join(installed)
         )
     if updated:
@@ -317,6 +329,23 @@ def print_hook_config_hint(project_dir: Path) -> None:
             '[dim]The post-edit hook is idle until .metaproject.json sets "commands": '
             '{"lint": "..."} (optionally "typecheck", and "e2e_port" for playwright).[/dim]'
         )
+
+
+def resolve_project(project_dir: Optional[Path], output_format: str = "table") -> Path:
+    """The project a command acts on: `--dir`/PROJECT as given, else the nearest anchor.
+
+    Without an explicit path, the nearest `.metaproject.json` at or above the current
+    directory (stopping at the git root) is the project; with none, the current
+    directory, as before. When that differs from the current directory one dim
+    `project: <root>` line says so (on stderr under `--format json`).
+    """
+    from metaproject.identity import resolve_project_dir
+
+    target = resolve_project_dir(project_dir)
+    if project_dir is None and target != Path.cwd().resolve():
+        out = Console(stderr=True) if output_format == "json" else console
+        out.print(f"[dim]project: {escape(str(target))}[/dim]", soft_wrap=True)
+    return target
 
 
 def resolve_project_templates(project_dir: Path, templates_path: Optional[Path]) -> Optional[Path]:
@@ -1187,7 +1216,7 @@ def review_cmd(
     from metaproject.review_tui import run_board
     from metaproject.session import tui_enabled
 
-    target = (project_dir or Path.cwd()).resolve()
+    target = (project_dir or Path.cwd()).resolve() if all_projects else resolve_project(project_dir)
 
     if list_ignored:
         entries = load_ignored()
@@ -1320,7 +1349,9 @@ def print_backfill_result(result, dry_run: bool, target: Path) -> None:
             table.add_row(path)
         console.print(table)
 
-    print_skills_report(result.skills, result.skills_notice, dry_run)
+    if result.skills_link:
+        console.print(f"[dim].claude/skills {escape(result.skills_link)}[/dim]", soft_wrap=True)
+    print_skills_report(result.skills, result.skills_notice, dry_run, result.skills_target, target)
     if result.hooks_notice:
         console.print(f"[yellow]Notice:[/] {result.hooks_notice}")
     elif ".claude/settings.json" in result.created:
@@ -1371,7 +1402,7 @@ def backfill_cmd(
     """
     from metaproject.review import backfill_missing
 
-    target = (project_dir or Path.cwd()).resolve()
+    target = resolve_project(project_dir)
     templates_path = resolve_project_templates(target, templates_path)
     result = backfill_missing(
         target, files=files or None, templates_dir=templates_path, dry_run=dry_run
@@ -1426,7 +1457,7 @@ def adopt_cmd(
     """
     from metaproject.scaffold import adopt_project
 
-    target = (project_dir or Path.cwd()).resolve()
+    target = resolve_project(project_dir)
     templates_path = resolve_project_templates(target, templates_path)
     try:
         result = adopt_project(
@@ -1453,8 +1484,14 @@ def adopt_cmd(
     else:
         console.print("[dim].metaproject.json already present — kept as-is[/dim]")
     if result.skills_link is not None:
+        from metaproject.skills import link_target, skills_home
+
+        home = skills_home(result.target_dir) or result.target_dir
         action = "would create" if dry_run else "created"
-        console.print(f"[dim]{action} .claude/skills -> ../.agents/skills[/dim]")
+        if home != result.target_dir:
+            action = "would link" if dry_run else "linked"
+        pointer = link_target(result.target_dir, home)
+        console.print(f"[dim]{action} .claude/skills -> {escape(pointer)}[/dim]", soft_wrap=True)
 
     print_backfill_result(result.backfill, dry_run, target)
     if result.backfill.missing_template:
@@ -1516,7 +1553,7 @@ def doctor_cmd(
         instead="running the project checks only",
     )
     if web and project is None:
-        project = Path.cwd().resolve()
+        project = resolve_project(None)
 
     # The web profile has no operator to refuse on behalf of: an agent session (or a
     # core install without questionary to confirm with) degrades to the report
@@ -1649,7 +1686,7 @@ def _skills_project(project_dir: Optional[Path], output_format: str) -> Path:
     if output_format not in ("table", "json"):
         out.print(f"[bold red]Error:[/bold red] unknown --format {output_format!r}")
         raise typer.Exit(code=1)
-    target = (project_dir or Path.cwd()).resolve()
+    target = resolve_project(project_dir, output_format)
     if not target.is_dir():
         out.print(f"[bold red]Error:[/bold red] {target} is not a directory.", soft_wrap=True)
         raise typer.Exit(code=1)
@@ -1673,6 +1710,9 @@ def _skills_payload(project: Path, report, dry_run: bool, with_action: bool) -> 
     return {
         "project": str(project),
         "target": target,
+        "location": report.location,
+        "home": str(report.home) if report.home is not None else None,
+        "link": report.link,
         "release": running_release(),
         "manifest": report.manifest_state,
         "refusal": report.notice,
@@ -2015,9 +2055,11 @@ def skills_sync_cmd(
     except MetaProjectError as exc:
         out.print(f"[bold red]Skills Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=1)
+    if report.link and output_format != "json":
+        out.print(f"[dim].claude/skills {escape(report.link)}[/dim]", soft_wrap=True)
     _render_skills_report(project, report, output_format, dry_run=dry_run, with_action=True)
     claude_skills = project / ".claude" / "skills"
-    if not claude_skills.exists() and not claude_skills.is_symlink():
+    if report.location != "root" and not claude_skills.exists() and not claude_skills.is_symlink():
         out.print(
             "[yellow]Notice:[/] .claude/skills is absent, so Claude Code will not see these "
             "skills; run [bold cyan]metaproject adopt[/bold cyan] to create the link.",
@@ -2060,7 +2102,7 @@ def templates_fetch_cmd(
         store_usable,
     )
 
-    target = (project_dir or Path.cwd()).resolve()
+    target = resolve_project(project_dir)
     try:
         source = read_template_source(target)
     except TemplateSourceError as exc:

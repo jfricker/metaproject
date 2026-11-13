@@ -4,6 +4,10 @@
     python3 .claude/hooks/metaproject_hook.py post-edit   # PostToolUse, Edit|Write
     python3 .claude/hooks/metaproject_hook.py pre-bash    # PreToolUse, Bash
 
+The `.metaproject.json` used is the nearest one at or above the edited file (post-edit) or
+the session's working directory (pre-bash), stopping at a `.git` and never outside
+`CLAUDE_PROJECT_DIR`; in a monorepo, a sub-project's own commands run, from its directory.
+
 post-edit runs `commands.lint` then `commands.typecheck` from `.metaproject.json`. Silent,
 exit 0, when neither is set or every command passes. When one fails, its output
 (truncated) goes to stderr and the exit code is 2, which Claude Code feeds back to the
@@ -49,9 +53,51 @@ def read_payload():
     return data if isinstance(data, dict) else {}
 
 
-def project_dir(payload):
-    root = os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or os.getcwd()
-    return str(root)
+def _nearest_anchor(start):
+    """The nearest ancestor-or-self of `start` holding CONFIG_FILE, stopping at a `.git`."""
+    current = os.path.realpath(start)
+    while True:
+        if os.path.isfile(os.path.join(current, CONFIG_FILE)):
+            return current
+        if os.path.lexists(os.path.join(current, ".git")):
+            return None
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+
+
+def _within(path, root):
+    root = os.path.realpath(root)
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def project_dir(payload, edited=False):
+    """The project whose `.metaproject.json` applies: the nearest one to the edited file
+    (post-edit) or to the session's cwd, confined to CLAUDE_PROJECT_DIR when that is
+    set. Anything unusable falls back to CLAUDE_PROJECT_DIR, the payload cwd, or cwd."""
+    session = os.environ.get("CLAUDE_PROJECT_DIR")
+    fallback = str(session or payload.get("cwd") or os.getcwd())
+    starts = []
+    if edited:
+        tool_input = payload.get("tool_input")
+        path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+        if isinstance(path, str) and path:
+            if not os.path.isabs(path):
+                path = os.path.join(str(payload.get("cwd") or session or os.getcwd()), path)
+            starts.append(os.path.dirname(path))
+    for candidate in (payload.get("cwd"), session, os.getcwd()):
+        if isinstance(candidate, str) and candidate:
+            starts.append(candidate)
+    try:
+        anchor = _nearest_anchor(starts[0]) if starts else None
+    except Exception:
+        anchor = None
+    if anchor is None or (session and not _within(anchor, session)):
+        return fallback
+    if session and anchor == os.path.realpath(session):
+        return str(session)  # the single-project case: exactly the path it always was
+    return anchor
 
 
 def load_config(root):
@@ -120,7 +166,7 @@ def run_command(command, root):
 
 
 def post_edit(payload):
-    root = project_dir(payload)
+    root = project_dir(payload, edited=True)
     failures = []
     for name, command in configured_commands(load_config(root)):
         code, output = run_command(command, root)

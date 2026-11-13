@@ -84,6 +84,15 @@ With no `commands.lint`/`commands.typecheck` the post-edit hook does nothing; wi
 `e2e_port` the pre-Bash hook does nothing. To lint after edits, set `commands.lint` to the
 project's own lint command (the one AGENTS.md names).
 
+The hooks read the nearest `.metaproject.json` at or above the edited file (post-edit)
+or the session's directory (pre-Bash), never outside `CLAUDE_PROJECT_DIR`, and run the
+commands from that directory — in a monorepo, an edit in a sub-project runs that
+sub-project's lint. Nothing is inherited from an outer `.metaproject.json`.
+
+A sub-project may also set `"skills": {"location": "root"}` to keep its skills in the
+nearest ancestor project (or the git root) instead of its own `.agents/skills`; see
+`skills` in `commands.md`.
+
 ## The blank rule
 
 A cycle document (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`) is **blank** iff its

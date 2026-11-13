@@ -23,10 +23,10 @@ SDLC_SKILLS = (
 )
 
 PRECONDITION = (
-    "> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at "
-    "the\n> repository root and `metaproject` on `PATH`. If either is missing, stop and "
-    "tell the\n> operator to run `metaproject new .` (agents may run only `metaproject new "
-    ". --dry-run`)."
+    "> **Precondition.** This project must be metaproject-managed: the nearest "
+    "`.metaproject.json`\n> (this directory or an ancestor) and `metaproject` on `PATH`. "
+    "If either is missing, stop and tell the\n> operator to run `metaproject new .` "
+    "(agents may run only `metaproject new . --dry-run`)."
 )
 
 # Retired plugin plumbing (R-TXT-1/2).

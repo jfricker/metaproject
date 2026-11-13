@@ -672,6 +672,10 @@ class BackfillResult:
     skills: Dict[str, str] = field(default_factory=dict)
     # Why no skill was written, when `.claude/skills` would not see them (R-SKL-5).
     skills_notice: Optional[str] = None
+    # Where the skills went (the project's `.agents/skills`, or a delegating
+    # sub-project's home's) and what happened to a delegating sub-project's link.
+    skills_target: Optional[Path] = None
+    skills_link: Optional[str] = None
     # Why `.claude/settings.json` was refused or not written.
     hooks_notice: Optional[str] = None
     # Deliverables that could not be written for a reason outside the project (the hooks
@@ -817,6 +821,8 @@ def backfill_missing(
         missing_template=missing_template,
         skills=dict(skills.states),
         skills_notice=skills.notice,
+        skills_target=skills.target if skills.states else None,
+        skills_link=skills.link,
         hooks_notice=hooks_notice,
         not_written=not_written,
     )

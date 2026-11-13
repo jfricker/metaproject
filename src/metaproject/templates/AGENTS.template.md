@@ -77,8 +77,8 @@ archived or reset.
 
 ### .metaproject.json and `metaproject backfill`
 This project's governance and cycle documents are scaffolded and kept in sync by the
-`metaproject` CLI from its central template store, identified by `.metaproject.json`
-at the project root. If a document a skill needs is missing (a
+`metaproject` CLI from its central template store, identified by the nearest
+`.metaproject.json` (this directory or an ancestor). If a document a skill needs is missing (a
 fresh `docs/TECH-DESIGN.md`, a `docs/HANDOFF.md` on interruption), run
 `metaproject backfill docs/<file>`
 to create it from the template store rather than writing it from scratch — it never

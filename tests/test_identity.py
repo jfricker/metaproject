@@ -9,7 +9,11 @@ from metaproject.identity import (
     IDENTITY_FILE,
     Identity,
     fallback_identity,
+    find_project_root,
+    find_repo_root,
     read_identity,
+    read_settings,
+    resolve_project_dir,
     write_identity,
 )
 from metaproject.variables import project_variables, titlecase
@@ -257,3 +261,66 @@ def test_project_variables_without_identity_falls_back_and_uses_today(tmp_path: 
     today = datetime.datetime.now().date()
     assert variables["Date"] == today.strftime("%Y-%m-%d")
     assert variables["Year"] == str(today.year)
+
+
+# ------------------------------------------------------------------- project root (#18)
+
+
+def _anchor(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / IDENTITY_FILE).write_text("{}", encoding="utf-8")
+    return path.resolve()
+
+
+def test_find_project_root_at_self_and_from_a_deep_subdirectory(tmp_path: Path) -> None:
+    proj = _anchor(tmp_path / "p")
+    deep = proj / "a" / "b"
+    deep.mkdir(parents=True)
+    assert find_project_root(proj) == proj
+    assert find_project_root(deep) == proj
+
+
+def test_find_project_root_takes_the_nearest_of_two(tmp_path: Path) -> None:
+    outer = _anchor(tmp_path / "o")
+    inner = _anchor(outer / "packages" / "i")
+    (inner / "src").mkdir()
+    assert find_project_root(inner / "src") == inner
+    assert find_project_root(outer / "packages") == outer
+
+
+def test_find_project_root_stops_at_the_git_boundary(tmp_path: Path) -> None:
+    _anchor(tmp_path / "above")
+    repo = tmp_path / "above" / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "src").mkdir()
+    assert find_project_root(repo / "src") is None
+    worktree = tmp_path / "above" / "wt"
+    worktree.mkdir()
+    (worktree / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    assert find_project_root(worktree) is None
+    assert find_repo_root(repo / "src") == repo.resolve()
+    assert find_repo_root(worktree) == worktree.resolve()
+
+
+def test_find_project_root_none_found_and_corrupt_nearest_still_wins(tmp_path: Path) -> None:
+    (tmp_path / "x" / ".git").mkdir(parents=True)
+    assert find_project_root(tmp_path / "x") is None
+    outer = _anchor(tmp_path / "y")
+    (outer / ".git").mkdir()
+    inner = outer / "in"
+    inner.mkdir()
+    (inner / IDENTITY_FILE).write_text("{not json", encoding="utf-8")
+    assert find_project_root(inner) == inner.resolve()
+    assert read_settings(inner) == {}
+
+
+def test_resolve_project_dir_explicit_wins_and_falls_back_to_cwd(tmp_path: Path) -> None:
+    outer = _anchor(tmp_path / "o")
+    (outer / ".git").mkdir()
+    sub = outer / "sub"
+    sub.mkdir()
+    assert resolve_project_dir(sub) == sub.resolve()
+    assert resolve_project_dir(None, cwd=sub) == outer
+    bare = tmp_path / "bare"
+    (bare / ".git").mkdir(parents=True)
+    assert resolve_project_dir(None, cwd=bare) == bare.resolve()

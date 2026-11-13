@@ -13,6 +13,11 @@ files still hash to its recorded manifest (or to a known earlier release, from t
 `skill_history.json` ledger) is a pristine copy and may be replaced; anything else is the
 project's own edit and is never touched unless the operator names it with `--force`.
 
+A sub-project whose `.metaproject.json` declares `"skills": {"location": "root"}` keeps
+no copy of its own: its skills (and the manifest) live in its home — the nearest ancestor
+project that does not itself declare `"root"`, else the git root — and its
+`.claude/skills` is a relative symlink up to the home's `.agents/skills`.
+
 `new`, `backfill` and `adopt` stay create-only (`update=False`); `metaproject skills
 sync` and doctor's fix also replace outdated, unmodified skills. This module is the only
 one that writes under `.agents/skills/<name>/`, through one write path.
@@ -77,10 +82,20 @@ class BundledSkill:
 
 @dataclass(frozen=True)
 class SkillsTarget:
-    """Where a project's skills go, or why none may be written there (R-SKL-5)."""
+    """Where a project's skills go, or why none may be written there (R-SKL-5).
+
+    `home` is the project whose `.agents/skills` is `path`: the project itself, or —
+    for a sub-project declaring `"skills": {"location": "root"}` — the ancestor that
+    keeps the one shared copy (`delegated`). `link` describes the sub-project's
+    `.claude/skills` link when it still has to be created or re-pointed at the home.
+    """
 
     path: Path
     refusal: Optional[str] = None
+    home: Optional[Path] = None
+    delegated: bool = False
+    link: Optional[str] = None
+    warnings: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -111,6 +126,12 @@ class SkillsReport:
     statuses: Tuple[SkillStatus, ...] = ()
     manifest_state: Optional[str] = None
     warnings: Tuple[str, ...] = ()
+    # `project` (the default) or `root` (skills kept by an ancestor; see SkillsTarget).
+    location: str = "project"
+    home: Optional[Path] = None
+    # What happened (or, under dry_run, would happen) to a delegating sub-project's
+    # `.claude/skills` link; None when nothing needed doing.
+    link: Optional[str] = None
 
     def named(self, state: str) -> List[str]:
         """The skills that ended in `state`, in declaration order."""
@@ -373,31 +394,212 @@ def _write_manifest(
 # -------------------------------------------------------------------- target dir
 
 
-def project_skills_dir(project_dir: Path) -> SkillsTarget:
-    """The project's `.agents/skills`, or a refusal when Claude Code would not see it.
+LOCATION_PROJECT = "project"
+LOCATION_ROOT = "root"
 
-    `.claude/skills` must be absent or a symlink resolving to this project's own
-    `.agents/skills`. A real directory there, or a link elsewhere, means skills written
-    to `.agents/skills` would be invisible, so nothing is written (R-SKL-5).
+
+def skills_location(project_dir: Path) -> Tuple[str, Optional[str]]:
+    """`skills.location` from `.metaproject.json`, and a warning when it is invalid.
+
+    An enum, never a path: absent, `"project"` or anything invalid is `"project"`
+    (today's behaviour); an invalid value or shape also yields a warning, never raises.
     """
-    project_dir = Path(project_dir)
-    agents_skills = project_dir / ".agents" / "skills"
-    claude_skills = project_dir / ".claude" / "skills"
+    from metaproject.identity import IDENTITY_FILE, read_settings
 
+    settings = read_settings(project_dir).get("skills")
+    if settings is None:
+        return LOCATION_PROJECT, None
+    if not isinstance(settings, dict):
+        return LOCATION_PROJECT, f'{IDENTITY_FILE} "skills" is not an object; ignored.'
+    value = settings.get("location", LOCATION_PROJECT)
+    if value in (LOCATION_PROJECT, LOCATION_ROOT):
+        return value, None
+    return (
+        LOCATION_PROJECT,
+        f'{IDENTITY_FILE} skills.location {value!r} is not "project" or "root"; '
+        "skills stay in this project.",
+    )
+
+
+def skills_home(project_dir: Path) -> Optional[Path]:
+    """The directory whose `.agents/skills` holds this project's skills.
+
+    Without `skills.location: "root"`, the project itself. With it, the nearest strict
+    ancestor (up to and including the repository root) that has `.metaproject.json`
+    and does not itself declare `"root"`; failing that, the repository root (which may
+    be the project itself, making `"root"` at the top a no-op); failing that, None.
+    """
+    from metaproject.identity import IDENTITY_FILE, find_repo_root
+
+    project_dir = Path(project_dir).resolve()
+    if skills_location(project_dir)[0] != LOCATION_ROOT:
+        return project_dir
+    repo_root = find_repo_root(project_dir)
+    if repo_root is None:
+        return None
+    if repo_root != project_dir:
+        for ancestor in project_dir.parents:
+            if (ancestor / IDENTITY_FILE).is_file() and (
+                skills_location(ancestor)[0] != LOCATION_ROOT
+            ):
+                return ancestor
+            if ancestor == repo_root:
+                break
+    return repo_root
+
+
+def _link_refusal(owner_dir: Path, agents_skills: Path) -> Optional[str]:
+    """Why `owner_dir/.claude/skills` would hide `agents_skills` from Claude Code (R-SKL-5).
+
+    None when the link is absent or a symlink resolving to `agents_skills`.
+    """
+    claude_skills = Path(owner_dir) / ".claude" / "skills"
     if claude_skills.is_symlink():
         if claude_skills.resolve() != agents_skills.resolve():
-            return SkillsTarget(
-                agents_skills,
+            return (
                 f"{claude_skills} is a symlink to {claude_skills.resolve()}, not this "
-                "project's .agents/skills; project skills were not installed.",
+                "project's .agents/skills; project skills were not installed."
             )
     elif claude_skills.exists():
-        return SkillsTarget(
-            agents_skills,
+        return (
             f"{claude_skills} is a real directory, not a symlink to .agents/skills; "
-            "project skills were not installed.",
+            "project skills were not installed."
         )
-    return SkillsTarget(agents_skills)
+    return None
+
+
+def link_target(project_dir: Path, home: Path) -> str:
+    """The relative `.claude/skills` link text from `project_dir` to `home/.agents/skills`.
+
+    Both ends are resolved first, so a symlinked path component never skews it.
+    """
+    agents = (Path(home) / ".agents" / "skills").resolve()
+    return os.path.relpath(agents, start=(Path(project_dir) / ".claude").resolve())
+
+
+def _leftover_warning(project_dir: Path) -> Optional[str]:
+    own = Path(project_dir) / ".agents" / "skills"
+    names = [skill.name for skill in bundled_skills() if (own / skill.name).exists()]
+    if not names:
+        return None
+    return (
+        f"skills.location is root, but {own} still holds copies of: {', '.join(names)}; "
+        "they are no longer used or updated (remove them yourself)."
+    )
+
+
+def project_skills_dir(project_dir: Path) -> SkillsTarget:
+    """The project's skills directory, or a refusal when Claude Code would not see it.
+
+    Ordinarily the project's own `.agents/skills`, with `.claude/skills` absent or a
+    symlink resolving to it. A real directory there, or a link elsewhere, means skills
+    written to `.agents/skills` would be invisible, so nothing is written (R-SKL-5).
+
+    With `skills.location: "root"` the target is the home's `.agents/skills` (see
+    `skills_home`). The home's own link is checked exactly as above, and the
+    sub-project's `.claude/skills` must be absent (it will be created), a symlink to the
+    home's `.agents/skills`, or the default link to its own `.agents/skills` (it will be
+    re-pointed); anything else is a refusal.
+    """
+    project_dir = Path(project_dir)
+    own = project_dir / ".agents" / "skills"
+    location, invalid = skills_location(project_dir)
+    warnings: Tuple[str, ...] = (invalid,) if invalid else ()
+    if location != LOCATION_ROOT:
+        return SkillsTarget(own, _link_refusal(project_dir, own), project_dir, warnings=warnings)
+
+    home = skills_home(project_dir)
+    if home is None:
+        return SkillsTarget(
+            own,
+            'skills.location is "root" but there is no ancestor project or git root; '
+            "project skills were not installed.",
+            None,
+            True,
+        )
+    if home == project_dir.resolve():
+        return SkillsTarget(own, _link_refusal(project_dir, own), project_dir, warnings=warnings)
+
+    agents = home / ".agents" / "skills"
+    leftover = _leftover_warning(project_dir)
+    if leftover:
+        warnings += (leftover,)
+
+    def refuse(reason: str) -> SkillsTarget:
+        return SkillsTarget(agents, reason, home, True, None, warnings)
+
+    refusal = _link_refusal(home, agents)
+    if refusal is not None:
+        return refuse(refusal)
+
+    claude_skills = project_dir / ".claude" / "skills"
+    wanted = link_target(project_dir, home)
+    link: Optional[str] = None
+    if claude_skills.is_symlink():
+        resolved = claude_skills.resolve()
+        if resolved == own.resolve():
+            link = f"re-point {claude_skills} -> {wanted}"
+        elif resolved != agents.resolve():
+            return refuse(
+                f"{claude_skills} is a symlink to {resolved}, not {agents}; project "
+                "skills were not installed."
+            )
+    elif claude_skills.exists():
+        return refuse(
+            f"{claude_skills} is a real directory, not a symlink to {agents}; project "
+            "skills were not installed."
+        )
+    else:
+        link = f"create {claude_skills} -> {wanted}"
+    return SkillsTarget(agents, None, home, True, link, warnings)
+
+
+def ensure_skills_link(
+    project_dir: Path,
+    home: Path,
+    dry_run: bool = False,
+    tracker: "Optional[TransactionalTracker]" = None,
+) -> Optional[str]:
+    """Point a delegating sub-project's `.claude/skills` at `home/.agents/skills`.
+
+    Creates the link when absent, or re-points the default link to the sub-project's
+    own `.agents/skills`. Never touches a real directory or a link anywhere else.
+    Returns what was (or, under `dry_run`, would be) done, or None when nothing was.
+    """
+    project_dir = Path(project_dir)
+    claude_dir = project_dir / ".claude"
+    claude_skills = claude_dir / "skills"
+    own = project_dir / ".agents" / "skills"
+    wanted = link_target(project_dir, home)
+    if claude_skills.is_symlink():
+        if claude_skills.resolve() != own.resolve():
+            return None
+        verb = "re-pointed"
+    elif claude_skills.exists():
+        return None
+    else:
+        verb = "created"
+    if dry_run:
+        return f"would be {verb}: {claude_skills} -> {wanted}"
+    if not claude_dir.exists():
+        claude_dir.mkdir(parents=True, exist_ok=True)
+        if tracker is not None:
+            tracker.record_created_dir(claude_dir)
+    if verb == "re-pointed":
+        claude_skills.unlink()
+    claude_skills.symlink_to(wanted)
+    if tracker is not None and verb == "created":
+        tracker.record_created_file(claude_skills)
+    return f"{verb}: {claude_skills} -> {wanted}"
+
+
+def _target_report(target: SkillsTarget, **kwargs) -> SkillsReport:
+    return SkillsReport(
+        target=target.path,
+        location=LOCATION_ROOT if target.delegated else LOCATION_PROJECT,
+        home=target.home,
+        **kwargs,
+    )
 
 
 # ---------------------------------------------------------------- classification
@@ -488,7 +690,7 @@ def inspect_project_skills(project_dir: Path) -> SkillsReport:
     """Classify every bundled skill in a project. Read-only: writes nothing at all."""
     target = project_skills_dir(project_dir)
     if target.refusal is not None:
-        return SkillsReport(target=target.path, notice=target.refusal)
+        return _target_report(target, notice=target.refusal, warnings=target.warnings)
     manifest_state, entries = load_manifest(target.path)
     history = load_history()
     running = running_release()
@@ -503,12 +705,18 @@ def inspect_project_skills(project_dir: Path) -> SkillsReport:
         for skill in bundled_skills()
     )
     warning = _manifest_warning(manifest_state, writing=False)
-    return SkillsReport(
-        target=target.path,
+    warnings = target.warnings + ((warning,) if warning else ())
+    if target.link:
+        warnings += (
+            f".claude/skills link pending (`metaproject skills sync` will {target.link}).",
+        )
+    return _target_report(
+        target,
         states={status.name: status.state for status in statuses},
         statuses=statuses,
         manifest_state=manifest_state,
-        warnings=(warning,) if warning else (),
+        warnings=warnings,
+        link=target.link,
     )
 
 
@@ -628,7 +836,7 @@ def sync_project_skills(
     """
     target = project_skills_dir(project_dir)
     if target.refusal is not None:
-        return SkillsReport(target=target.path, notice=target.refusal)
+        return _target_report(target, notice=target.refusal, warnings=target.warnings)
 
     declared = bundled_skills()
     names = {skill.name for skill in declared}
@@ -648,7 +856,10 @@ def sync_project_skills(
         )
     history = load_history()
     running = running_release()
-    warnings: List[str] = []
+    warnings: List[str] = list(target.warnings)
+    link: Optional[str] = None
+    if target.link and target.home is not None:
+        link = ensure_skills_link(project_dir, target.home, dry_run=dry_run, tracker=tracker)
     warning = _manifest_warning(manifest_state, writing=not dry_run)
     if warning:
         warnings.append(warning)
@@ -719,12 +930,13 @@ def sync_project_skills(
                     if staging.exists():
                         warnings.append(f"could not remove {staging}")
 
-    return SkillsReport(
-        target=target.path,
+    return _target_report(
+        target,
         states=states,
         statuses=tuple(statuses),
         manifest_state=manifest_state,
         warnings=tuple(warnings),
+        link=link,
     )
 
 

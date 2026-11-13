@@ -5,8 +5,8 @@ description: Starts a new SDLC cycle by brainstorming a raw problem statement (a
 
 # write-intent
 
-> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
-> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
 Stage 1 of 7: capture intent once, in the originator's own words, as a
