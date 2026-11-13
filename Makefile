@@ -13,7 +13,7 @@ install: ## Install dev environment
 	uv pip install -e ".[dev]"
 
 install-global: ## Refresh the metaproject CLI on PATH
-	uv tool install --force .
+	uv tool install --force ".[tui]"
 
 lint: ## Run linter and code formatting checks
 	$(RUFF) check src tests

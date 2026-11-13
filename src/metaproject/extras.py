@@ -11,10 +11,17 @@ import importlib
 from types import ModuleType
 from typing import Any
 
+from metaproject import __version__
 from metaproject.exceptions import MissingExtraError
 
 TUI_EXTRA = "tui"
-INSTALL_HINT = 'pip install "metaproject[tui]"'
+# metaproject is installed from a git tag, never from PyPI: the PyPI name `metaproject`
+# belongs to an unrelated package. The hint pins the running release, so reinstalling
+# with the extra does not silently change versions.
+INSTALL_HINT = (
+    'uv tool install --force "metaproject[tui] @ '
+    f'git+https://github.com/jfricker/metaproject@v{__version__}"'
+)
 
 # The distribution name differs from the import name for sqlite-utils.
 _DISTRIBUTIONS = {"sqlite_utils": "sqlite-utils"}

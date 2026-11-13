@@ -217,7 +217,7 @@ def test_web_profile_doctor_without_questionary_reports_instead_of_failing(
     assert result.exit_code == 1, result.output
     assert "Missing optional dependency" not in result.output
     assert "questionary is not installed" in result.output
-    assert 'pip install "metaproject[tui]"' in " ".join(result.output.split())
+    assert "metaproject[tui] @ git+https" in " ".join(result.output.split())
     assert "no .metaproject.json anchor" in result.output
     assert not (proj / ".metaproject.json").exists()
 

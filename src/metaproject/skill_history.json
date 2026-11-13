@@ -89,6 +89,10 @@
       {
         "digest": "d0b2a109b353dca882700fe977298b878f6c7648d41e752d9c6bace057fb8c39",
         "release": "0.9.1"
+      },
+      {
+        "digest": "d0f73fb02c0c67fb28c9f6208f14d183b2d49bf95f4a31a666d3a90f3c675aad",
+        "release": "0.9.1"
       }
     ],
     "shipit": [

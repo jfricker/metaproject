@@ -24,7 +24,17 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
-from metaproject import __version__, config, db, deliverables, git, identity, skills, templates
+from metaproject import (
+    __version__,
+    catalog,
+    config,
+    db,
+    deliverables,
+    git,
+    identity,
+    skills,
+    templates,
+)
 from metaproject.config import Config
 from metaproject.extras import LazyModule
 
@@ -297,19 +307,9 @@ def fix_identity(cfg: Config, projects: List[Path]) -> None:
 # ------------------------------------------------------------------- projects
 
 
-def _is_managed(project_dir: Path) -> bool:
-    """`project_dir` exists and carries `.metaproject.json` (R-DRX-3/4 scope)."""
-    return project_dir.is_dir() and (project_dir / identity.IDENTITY_FILE).is_file()
-
-
-def _managed_projects(cfg: Config) -> List[Path]:
-    """Cataloged projects that exist and carry `.metaproject.json` (R-DRX-3/4)."""
-    database = db.get_db(cfg.universe_db)
-    return [
-        project_dir
-        for project_dir in (Path(row["path"]) for row in db.query_projects(database))
-        if _is_managed(project_dir)
-    ]
+# The managed set is declared once, in `catalog`, and shared with `skills sync --all`.
+_is_managed = catalog.is_managed
+_managed_projects = catalog.managed_projects
 
 
 def check_project_docs(project_dir: Path) -> tuple[List[str], List[str], str]:

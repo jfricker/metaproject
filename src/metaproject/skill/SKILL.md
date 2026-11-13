@@ -215,6 +215,10 @@ the operator names one with `--force NAME`, which discards its edits. Both are a
 and accept `--format json`. Every install records `.agents/skills/.metaproject-skills.json`
 (release and per-file sha256), which is how a pristine copy is told from an edit —
 commit it with the project. Never delete a skill directory to refresh it; run `sync`.
+`skills status --all` reports every cataloged, managed project; `skills sync --all`
+updates them all but is the operator's call — in an agent session without `--yes` it only
+reports, so hand the operator `metaproject skills sync --all --yes` rather than adding
+`--yes` yourself.
 
 ## Auditing a project against the templates
 
