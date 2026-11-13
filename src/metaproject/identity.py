@@ -26,6 +26,55 @@ class Identity:
     metaproject_version: str
 
 
+def find_repo_root(start: Path) -> Optional[Path]:
+    """The nearest ancestor-or-self holding a `.git` entry (a directory, or a file for a
+    worktree or submodule), or None outside any repository. Never runs git."""
+    current = Path(start).resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists() or (candidate / ".git").is_symlink():
+            return candidate
+    return None
+
+
+def find_project_root(start: Path) -> Optional[Path]:
+    """The nearest ancestor-or-self holding a regular-file `.metaproject.json`.
+
+    The walk stops at the git boundary, inclusive: the first directory holding `.git`
+    is the last one examined, so a stray `.metaproject.json` above a repository never
+    captures it. Outside any repository the walk runs to the filesystem root. Presence
+    is the test, not validity: a corrupt nearest file still anchors the root.
+    """
+    current = Path(start).resolve()
+    for candidate in (current, *current.parents):
+        if (candidate / IDENTITY_FILE).is_file():
+            return candidate
+        if (candidate / ".git").exists() or (candidate / ".git").is_symlink():
+            return None
+    return None
+
+
+def resolve_project_dir(explicit: Optional[Path], cwd: Optional[Path] = None) -> Path:
+    """The project a command acts on: an explicit path as given, else the nearest anchor.
+
+    An explicit `--dir`/`PROJECT` always wins and is never walked upward. Without one,
+    the nearest `.metaproject.json` above `cwd` (default: the current directory) is the
+    project; when there is none, `cwd` itself, exactly as before nested projects.
+    """
+    if explicit is not None:
+        return Path(explicit).expanduser().resolve()
+    here = Path(cwd if cwd is not None else Path.cwd()).resolve()
+    return find_project_root(here) or here
+
+
+def read_settings(project_dir: Path) -> dict:
+    """The raw `.metaproject.json` object, or {} when absent, unreadable or not an object."""
+    try:
+        data = json.loads((Path(project_dir) / IDENTITY_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _strip_placeholder(text: object) -> str:
     """Treat an unfilled `{Placeholder}` or `<Placeholder>` value as absent.
 

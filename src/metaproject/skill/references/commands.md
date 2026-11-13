@@ -3,6 +3,17 @@
 Every command accepts `--help`. Paths default to the current directory unless noted.
 Anything marked **interactive** prompts or opens a TUI and needs a human at the keyboard.
 
+**Nested projects.** The project a command acts on is the nearest directory at or above
+the current one that holds `.metaproject.json`, stopping at the git root — not the git
+root itself. Run from `packages/a/src` of a monorepo whose `packages/a` carries its own
+`.metaproject.json`, `backfill`, `adopt`, `review`, `skills status|sync`, `templates
+fetch` and web-profile `doctor` all act on `packages/a`, and print a dim
+`project: <root>` line when that differs from the current directory. An explicit
+`--dir`/`PROJECT` always wins; with no anchor at all the current directory is used, as
+before. `review --all`, `learn`, `universe` and `new` keep the current directory.
+Because `adopt` with no `--dir` now resolves upward, creating a new sub-project inside
+a managed one needs `metaproject adopt --dir .`.
+
 ## Contents
 - [init](#init)
 - [new](#new)
@@ -96,7 +107,7 @@ reports missing, without `new .`'s confirmations.
 | Flag | Effect |
 |---|---|
 | `FILE...` (positional, optional) | Specific deliverables to create, e.g. `docs/SPEC.md docs/HANDOFF.md`. Old names (`spec.md`, `design.md`) and bare new names (`SPEC.md`) resolve to their `docs/` path. Default: every deliverable `new` scaffolds that is currently missing, plus missing project skills. |
-| `--dir`, `-d <path>` | Project directory to backfill (default: current directory). |
+| `--dir`, `-d <path>` | Project directory to backfill (default: the nearest `.metaproject.json` at or above the current directory, else the current directory). |
 | `--templates <path>` | Template directory to create from (default `~/.metaproject/templates`). |
 | `--dry-run` | Preview what would be created; writes nothing. |
 
@@ -144,7 +155,7 @@ interactive, operator-confirmed semantics and is refused in an agent session.
 
 | Flag | Effect |
 |---|---|
-| `--dir`, `-d <path>` | Repository to adopt (default: current directory) |
+| `--dir`, `-d <path>` | Repository to adopt (default: the nearest `.metaproject.json` at or above the current directory, else the current directory; use `--dir .` to adopt a new sub-project inside a managed one) |
 | `--title <str>` | Title (default: `README.md` heading, `pyproject.toml`/`package.json` name, then the directory name) |
 | `--description <str>` | One-line summary (default: the paragraph under the README heading) |
 | `--author`, `-a <str>` | Author (default: config, then `git config user.name`, then `$USER`; never a container identity). When none yields a real name — a web container with no config — adopt refuses before writing anything and asks for `--author` |
@@ -312,10 +323,25 @@ is left untouched. A refusal (`.claude/skills` a real directory, or a symlink el
 writes nothing and exits 1. `sync` does not create the `.claude/skills` link; it points
 at `adopt` when the link is absent.
 
-`--format json` writes `{"project", "target", "release", "manifest", "refusal",
-"dry_run", "skills": [{"name", "state", "installed_release", "basis", "changed",
-"note", "action"}]}` to stdout (`state` is the state before the pass; `action` is null
-for `status`), with notices on stderr.
+**One copy per monorepo: `skills.location`.** A sub-project's `.metaproject.json` may
+declare `"skills": {"location": "root"}` (an enum, never a path; absent or `"project"`
+is the default, and an invalid value is a notice, not an error). Its skills then live
+in the nearest ancestor project that does not itself declare `"root"` — or, failing
+that, the git root — so `new`/`backfill`/`adopt`/`sync` install and update one copy
+(and one manifest) there and none in the sub-project. The sub-project's
+`.claude/skills` becomes a relative symlink up to that copy (e.g.
+`../../../.agents/skills` from `packages/a`): `sync` and `adopt` create it when absent
+and re-point the default link to the sub-project's own `.agents/skills`; a real
+directory or a link elsewhere is still a refusal. With no ancestor project and no git
+root, nothing is written and the command exits 1. Copies left in the sub-project's own
+`.agents/skills` after switching are reported, never deleted.
+
+`--format json` writes `{"project", "target", "location", "home", "link", "release",
+"manifest", "refusal", "dry_run", "skills": [{"name", "state", "installed_release",
+"basis", "changed", "note", "action"}]}` to stdout (`state` is the state before the
+pass; `action` is null for `status`; `location` is `project` or `root`, `home` the
+directory holding the skills, `link` the sub-project link created or pending), with
+notices on stderr.
 
 ### Every managed project: `--all`
 
@@ -390,7 +416,8 @@ the CLI at `.metaproject.json`'s `metaproject_version`
 then `pip --user`, then the default branch; skipped when that version is already
 installed; if the installed CLI has no `skills` command — a pin of 0.9.1 or earlier —
 it reinstalls from the default branch), appends `~/.local/bin` to `PATH` via `$CLAUDE_ENV_FILE`, then runs
-`metaproject skills sync` and `metaproject templates fetch`. Output goes to
+`metaproject skills sync` and `metaproject templates fetch` against the nearest
+`.metaproject.json` at or above `CLAUDE_PROJECT_DIR` (stopping at the git root). Output goes to
 `$METAPROJECT_SESSION_LOG` (default `$TMPDIR/metaproject-session.log`); offline or
 without `uv` it still exits 0. `METAPROJECT_REPO_URL` overrides the repository.
 
@@ -472,7 +499,7 @@ metaproject universe --list --all --format json
 | `~/.metaproject/cache/templates/` | Shallow checkouts of projects' git `templates.source` |
 | `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`/`adopt`, updated by `skills sync`, committed with the project (`.claude/skills` links here) |
 | `<project>/.agents/skills/.metaproject-skills.json` | Skills install manifest: release and per-file sha256 for each installed skill; committed |
-| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, and `templates.source` |
+| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. The nearest one at or above the current directory marks the project root. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, `templates.source`, and `skills.location` (`"root"` keeps a sub-project's skills in an ancestor) |
 | `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
 | `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`; `pre-bash` also advises a worktree-local `PLAYWRIGHT_BROWSERS_PATH` when the Playwright install lock is held), copied create-only |
 | `<project>/scripts/metaproject-session.sh` | The web session-start bootstrap script, copied create-only |

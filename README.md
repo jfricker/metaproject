@@ -115,6 +115,32 @@ directories.
 - A harness that wants its own directory can be given a symlink to `.agents/skills` by
   hand; metaproject creates only the Claude Code one.
 
+### Monorepos: nested sub-projects
+
+The project a command acts on is the nearest directory at or above the current one that
+holds `.metaproject.json`, stopping at the git root. Inside `packages/a/src` of a
+monorepo whose `packages/a` has its own `.metaproject.json`, `backfill`, `adopt`,
+`review`, `skills status|sync`, `templates fetch` and web-profile `doctor` act on
+`packages/a` (a dim `project: <path>` line says so); the hooks run that sub-project's
+`commands.lint` for edits inside it, and the web session script syncs it. `--dir` (or
+`doctor PROJECT`) always wins, and with no anchor at all the current directory is used
+as before. `review --all`, `learn`, `universe` and `new` keep the current directory.
+Inside a managed project, `adopt` alone re-adopts that project; use `adopt --dir .` to
+create a new sub-project.
+
+To keep one copy of the skills per monorepo, a sub-project declares
+
+```json
+{ "skills": { "location": "root" } }
+```
+
+in its `.metaproject.json`. Its skills then live in the nearest ancestor project that
+does not itself declare `"root"` (or the git root if none does), and its own
+`.claude/skills` becomes a relative symlink up to them (`../../../.agents/skills` from
+`packages/a`). `skills sync` and `adopt` create that link, or re-point the default one;
+a real directory or a foreign link is still refused. Copies left in the sub-project's
+own `.agents/skills` are reported, never deleted.
+
 ## Claude Code on the web
 
 In a Claude Code on the web session (`CLAUDE_CODE_REMOTE=true` with no
@@ -269,8 +295,8 @@ with the project like any other file:
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;
   scaffolding into an existing directory asks two confirmations).
 
-Each cycle skill checks its own precondition: the project must have `.metaproject.json`
-and `metaproject` must be on `PATH`, otherwise it stops and asks the operator to run
+Each cycle skill checks its own precondition: there must be a `.metaproject.json` in
+the project's directory or an ancestor, and `metaproject` must be on `PATH`, otherwise it stops and asks the operator to run
 `metaproject new .`.
 
 `new`, `backfill` (with no file arguments) and `adopt` are create-only: they add a skill
@@ -482,6 +508,7 @@ because `.metaproject.json` would otherwise pin a placeholder author for good.
 
 ```bash
 cd my-cloned-repo && metaproject adopt
+cd my-cloned-repo/packages/new-lib && metaproject adopt --dir .   # a new sub-project
 metaproject adopt --dir ~/Projects/game-workshop --title "Game Workshop"
 ```
 

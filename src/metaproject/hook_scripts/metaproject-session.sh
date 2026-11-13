@@ -15,6 +15,9 @@
 #   3. runs `metaproject templates fetch`, which refreshes the `templates.source` cache
 #      when .metaproject.json declares one and is a no-op otherwise.
 #
+# The project is the nearest .metaproject.json at or above CLAUDE_PROJECT_DIR, stopping
+# at the git root, so a session opened inside a monorepo sub-project acts on it.
+#
 # Idempotent and quiet: all output goes to a log file ($METAPROJECT_SESSION_LOG, default
 # ${TMPDIR:-/tmp}/metaproject-session.log). It ALWAYS exits 0 — offline, no uv, no
 # python3, a malformed .metaproject.json: none of these may block a session.
@@ -47,6 +50,19 @@ main() {
   set +e
   local project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
   cd "$project_dir" || return 0
+
+  # The project is the nearest .metaproject.json at or above this directory, stopping
+  # at the git root (a sub-project in a monorepo). None found: this directory, as before.
+  local probe="$PWD"
+  while :; do
+    if [ -f "$probe/.metaproject.json" ]; then
+      project_dir="$probe"
+      cd "$project_dir" || return 0
+      break
+    fi
+    { [ -e "$probe/.git" ] || [ -z "$probe" ] || [ "$probe" = "/" ]; } && break
+    probe="$(dirname "$probe")"
+  done
 
   local repo="${METAPROJECT_REPO_URL:-https://github.com/jfricker/metaproject}"
   local bin_dir="$HOME/.local/bin"

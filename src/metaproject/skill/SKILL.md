@@ -74,6 +74,14 @@ project up to date; `new` sets it, and `doctor` when it backfills a missing anch
 `.metaproject.json` is never itself reviewed or diffed — its absence is an informational
 note, not a defect.
 
+The nearest `.metaproject.json` at or above the current directory (stopping at the git
+root) is the project root, so in a monorepo every command run inside a sub-project acts
+on that sub-project; `--dir`/`PROJECT` overrides it. `adopt` with no `--dir` inside a
+managed project re-adopts that project — use `adopt --dir .` to create a sub-project.
+A sub-project declaring `"skills": {"location": "root"}` keeps no skills of its own: they
+live once in the nearest ancestor project (or the git root) and its `.claude/skills`
+links up to them.
+
 ## The blank rule
 
 A cycle document (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`,

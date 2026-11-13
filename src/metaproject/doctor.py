@@ -348,15 +348,25 @@ def check_project_skills(project_dir: Path) -> tuple[List[str], List[str], str]:
         + [f"outdated skill (unmodified copy of an earlier release): {name}" for name in outdated]
         + modified
     )
+    # A sub-project declaring `skills.location: "root"` whose `.claude/skills` link
+    # still has to be created or re-pointed at its home: fixable by the same sync.
+    if report.link:
+        findings.append(f".claude/skills link pending: {report.link}")
     report_only = list(modified)
     if report.manifest_state == skills.MANIFEST_NEWER and findings:
         newer = "skills manifest written by a newer metaproject; upgrade before syncing"
         findings.append(newer)
         report_only = list(findings)
+    try:
+        where = report.target.relative_to(project_dir).as_posix()
+    except ValueError:
+        where = str(report.target)
     summary = (
         f"install {len(missing)} missing, update {len(outdated)} outdated unmodified "
-        "skill(s) in .agents/skills/"
+        f"skill(s) in {where}/"
     )
+    if report.link:
+        summary += f", and {report.link}"
     return findings, report_only, summary
 
 

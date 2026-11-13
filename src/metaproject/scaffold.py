@@ -120,8 +120,9 @@ class TransactionalTracker:
             self.created_dirs.append(res)
 
     def record_created_file(self, path: Path) -> None:
-        """Record file created during scaffold."""
-        res = path.resolve()
+        """Record file created during scaffold. A symlink is recorded as itself, never
+        as the path it points to, so rollback removes the link and not its target."""
+        res = path.parent.resolve() / path.name if path.is_symlink() else path.resolve()
         if res not in self.existing_paths_before and res not in self.created_files:
             self.created_files.append(res)
 
@@ -166,8 +167,16 @@ def link_agent_skills(
     tracker: TransactionalTracker,
     dry_run: bool = False,
     skip_existing: bool = False,
+    home: Optional[Path] = None,
 ) -> Optional[Path]:
     """Create the agent-skills layout: .agents/skills/ plus a .claude/skills symlink to it.
+
+    `home` (from `skills.skills_home`) is where the skills live. When it is another
+    directory — a sub-project declaring `skills.location: "root"` — the sub-project
+    gets no `.agents/skills` of its own: its `.claude/skills` link (created when absent,
+    or re-pointed when it is the default link to its own `.agents/skills`) points
+    upward at `home/.agents/skills` by a relative path, and the home receives the usual
+    create-only layout.
 
     Equivalent to `mkdir -p .claude && mkdir -p .agents/skills &&
     ln -s ../.agents/skills .claude/skills`, but tracked for rollback and
@@ -180,6 +189,21 @@ def link_agent_skills(
     this project's own `.agents/skills` -- never when it is a real directory or a
     symlink pointing elsewhere. Existing files are never overwritten.
     """
+    if home is not None and Path(home).resolve() != Path(target_dir).resolve():
+        from metaproject.skills import ensure_skills_link
+
+        link = target_dir / ".claude" / "skills"
+        home_skills = Path(home) / ".agents" / "skills"
+        if link.is_symlink() and link.resolve() == home_skills.resolve():
+            done = None
+        else:
+            done = ensure_skills_link(target_dir, Path(home), dry_run=dry_run, tracker=tracker)
+            if done is None:
+                # A real directory or a foreign link: R-SKL-5, nothing is written anywhere.
+                return None
+        link_agent_skills(Path(home), tracker, dry_run=dry_run, skip_existing=True)
+        return link if done is not None else None
+
     agents_skills_dir = target_dir / ".agents" / "skills"
     claude_dir = target_dir / ".claude"
     skills_link = claude_dir / "skills"
@@ -474,9 +498,22 @@ def adopt_project(
 
     tracker = TransactionalTracker()
     tracker.record_existing(target_dir)
-    skills_link = link_agent_skills(
-        target_dir=target_dir, tracker=tracker, dry_run=dry_run, skip_existing=True
-    )
+    # A sub-project declaring `skills.location: "root"` links upward to its home; with no
+    # home (no ancestor project and no git root) no layout is written at all, and the
+    # skills install below reports the refusal.
+    from metaproject.skills import LOCATION_ROOT, skills_home, skills_location
+
+    home = skills_home(target_dir)
+    if home is None and skills_location(target_dir)[0] == LOCATION_ROOT:
+        skills_link = None
+    else:
+        skills_link = link_agent_skills(
+            target_dir=target_dir,
+            tracker=tracker,
+            dry_run=dry_run,
+            skip_existing=True,
+            home=home,
+        )
 
     backfill = backfill_missing(
         target_dir, templates_dir=templates_dir, dry_run=dry_run, config=cfg

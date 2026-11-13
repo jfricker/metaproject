@@ -81,9 +81,10 @@ def is_project_root(path: Path) -> bool:
     if (path / ".git").exists():
         return True
 
-    # 2. SDLC root indicators. Root `intent.md` stays a marker so an unmigrated project
+    # 2. SDLC root indicators. `.metaproject.json` anchors a nested sub-project that
+    # carries nothing else. Root `intent.md` stays a marker so an unmigrated project
     # is still recognised (R-DOC-6).
-    for marker in ("AGENTS.md", "docs/INTENT.md", "intent.md"):
+    for marker in (".metaproject.json", "AGENTS.md", "docs/INTENT.md", "intent.md"):
         if (path / marker).exists():
             return True
 
