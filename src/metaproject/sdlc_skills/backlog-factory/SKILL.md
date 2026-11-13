@@ -32,7 +32,9 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
 
 1. **Preflight.** `main` is clean and up to date with origin; `gh auth status` succeeds if
    GitHub is used; a subagent tool is available. Without subagents, stop: do not run the
-   items one by one under this skill's name.
+   items one by one under this skill's name. The subagent brief pushes branches and opens
+   PRs, so without a git remote and `gh` also stop and say so: this skill has no
+   local-merge path.
 2. **Collect candidates.** Backlog docs in `docs/backlog/` whose Status line is `backlog`
    (skip `promoted ...`), and/or open issues from `gh issue list` (or the project board)
    when a remote and `gh` are present. Without them, use local backlog docs only.
@@ -41,7 +43,9 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
    already-picked item; never run two overlapping items in parallel. Also defer items
    whose Open questions block a spec.
 4. **Confirm the batch** with the operator: the items, their predicted files, and the
-   deferred items with reasons. Stop until the operator approves.
+   deferred items with reasons. Say that approving the batch authorises each subagent to
+   push its branch and open a PR, and nothing more (no merge, no deploy). Stop until the
+   operator approves.
 5. **Fan out.** Per item: `git worktree add` at the project's existing worktree location
    (default a sibling directory outside the working tree; ask if unclear), on a new branch
    off `main` named by the project's own convention when one is evident (for example
@@ -54,13 +58,17 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
    diff, dependencies before dependents. Items that now overlap are merged one after the
    other, never together.
 8. **Merge, only with the operator's approval.** Show the order and the gate and CI state
-   of each PR, then ask. Only on an explicit OK in chat: merge the first green PR, rebase
+   of each PR, then ask. Only on an explicit OK in chat: merge the first green PR with
+   `gh pr merge` using the project's usual merge method (never `--admin` or any bypass of
+   branch protection), rebase
    each remaining branch on the new `main`, rerun its gate, `git push --force-with-lease`
    to that PR's own branch, wait for CI, and repeat. A non-mechanical rebase conflict stops
    that item and is reported; it does not block the others. A red PR is never merged.
-9. **Deploy to preview only.** Classify the target with `shipit`'s "Production or preview"
-   rules. If the only target is production, or the classification is ambiguous, skip the
-   deploy and report it. Never run a production deploy from this skill.
+9. **Deploy to preview only, with its own OK.** Classify the target with `shipit`'s
+   "Production or preview" rules. If the only target is production, or the classification
+   is ambiguous, skip the deploy and report it. Otherwise name the preview target and ask
+   before deploying; the merge approval in step 8 does not cover the deploy. Never run a
+   production deploy from this skill.
 10. **Smoke-test the preview**: `curl -fsS <url>/health`, or `curl -fsSI <url>` expecting a
     2xx/3xx, plus one page load per UI item.
 11. **Clean up via `/shipit`** for each merged branch (worktree, local and remote branch).

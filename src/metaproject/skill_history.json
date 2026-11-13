@@ -5,6 +5,10 @@
       {
         "digest": "51fbfde3398585567ee53ca0f280e6e10226ccb19dd51733d3553cd2710e2deb",
         "release": "0.9.1"
+      },
+      {
+        "digest": "22ccfc31edb8948676db9f9b18d6034eb16c1dd1753e1709246e7e8c65361764",
+        "release": "0.9.1"
       }
     ],
     "backlog-new": [

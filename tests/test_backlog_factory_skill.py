@@ -68,3 +68,11 @@ def test_backlog_status_and_issues_are_left_alone() -> None:
     text = _skill()
     assert "Do not change a backlog doc's Status" in text
     assert "do not close issues by hand" in text
+
+
+def test_backlog_factory_gates_push_merge_and_deploy_separately() -> None:
+    text = " ".join(_skill().split())
+    assert "authorises each subagent to push its branch and open a PR, and nothing more" in text
+    assert "never `--admin`" in text
+    assert "the merge approval in step 8 does not cover the deploy" in text
+    assert "no local-merge path" in text
