@@ -316,6 +316,26 @@ at `adopt` when the link is absent.
 "note", "action"}]}` to stdout (`state` is the state before the pass; `action` is null
 for `status`), with notices on stderr.
 
+### Every managed project: `--all`
+
+`metaproject skills status --all [--format table|json]` and
+`metaproject skills sync --all [--dry-run] [--yes] [--format table|json]` act on every
+cataloged project in `universe.db` that still exists and carries `.metaproject.json` —
+the same set `doctor` checks. Each project goes through the single-project code path;
+`sync --all` prints one line per project (`updated N  installed N  kept-modified N`, or
+`refused <reason>`) and a totals line. It never runs git and never commits.
+
+- `--all` with `--dir` or `--force` is a usage error (exit 2).
+- Needs the `tui` extra (the catalog is SQLite); without it, one line and exit 1.
+- Web profile: one-line notice, exit 0, nothing written. Empty catalog: a pointer to
+  `metaproject universe <root>`, exit 0.
+- `sync --all` asks once at a terminal ("Sync skills in N project(s)?"); `--yes` skips
+  it. In an agent session without `--yes` it reports as `--dry-run` would, prints
+  `metaproject skills sync --all --yes` for the operator, and exits 0 — leave running it
+  to the operator.
+- A project that fails or is refused does not stop the rest; the exit code is then 1.
+- `status --all` is read-only and allowed in agent sessions.
+
 ## Agent-session guards
 
 The CLI detects that an agent rather than a person is driving it, and refuses the things
@@ -362,8 +382,9 @@ holds; a config without that key is a local machine whatever the environment say
 
 The core install (`typer`, `rich`, `jinja2`) runs `--version`, `new`, `backfill`,
 `adopt` and `review --no-tui`. `textual`, `questionary` and `sqlite-utils` ship in the
-`tui` extra (`pip install "metaproject[tui]"`) and back the TUIs, interactive prompts,
-`universe`, `learn` and `doctor`. Without it those exit 1 with one line naming the
+`tui` extra and back the TUIs, interactive prompts, `universe`, `learn`, `doctor` and
+`skills status|sync --all`. metaproject is installed from a git tag (see the README's
+Install section); it is not on PyPI, where `metaproject` is an unrelated package. Without it those exit 1 with one line naming the
 install command.
 
 ## Non-interactive recipes

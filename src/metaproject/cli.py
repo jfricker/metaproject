@@ -1739,10 +1739,186 @@ def _render_skills_report(
         )
 
 
+def _skills_all_projects(
+    project_dir: Optional[Path], force: List[str], output_format: str, what: str
+) -> Optional[List[Path]]:
+    """The managed projects a `--all` pass acts on, or None when there is nothing to do.
+
+    Guards in order: a usage error (exit 2) when combined with a single-project
+    option; the web-profile notice (exit 0: there is no catalog); the tui extra (via
+    `MissingExtraError`, exit 1); an empty catalog (exit 0).
+    """
+    from metaproject.catalog import managed_projects
+
+    def usage_error(message: str) -> None:
+        Console(stderr=True).print(f"[red]Usage error:[/red] {escape(message)}", soft_wrap=True)
+        raise typer.Exit(code=2)
+
+    if project_dir is not None:
+        usage_error("--all cannot be combined with --dir.")
+    if force:
+        usage_error("--force cannot be combined with --all; force a skill one project at a time.")
+    if output_format not in ("table", "json"):
+        usage_error(f"unknown --format {output_format!r}")
+    if web_profile_notice(f"`metaproject {what}`", output_format):
+        return None
+    require("sqlite_utils", f"`metaproject {what}`")
+    projects = managed_projects(load_config())
+    if not projects:
+        message = "No cataloged projects; run `metaproject universe <root>`."
+        if output_format == "json":
+            import json
+
+            Console(stderr=True).print(message, soft_wrap=True, markup=False)
+            typer.echo(json.dumps({"projects": []}, indent=2))
+        else:
+            console.print(message, soft_wrap=True, markup=False)
+        return None
+    return projects
+
+
+def _sync_counts(report) -> Dict[str, int]:
+    """One `--all` line's counts: updated, installed, and modified skills kept."""
+    counts = {"updated": 0, "installed": 0, "kept-modified": 0}
+    for status in report.statuses:
+        if status.action == UPDATED:
+            counts["updated"] += 1
+        elif status.action == INSTALLED:
+            counts["installed"] += 1
+        elif status.state == MODIFIED:
+            counts["kept-modified"] += 1
+    return counts
+
+
+def _skills_sync_all(
+    dry_run: bool,
+    force: List[str],
+    yes: bool,
+    output_format: str,
+    project_dir: Optional[Path],
+) -> None:
+    """`skills sync --all`: the single-project sync, once per managed project."""
+    import json
+
+    from metaproject.skills import sync_project_skills
+
+    projects = _skills_all_projects(project_dir, force, output_format, "skills sync --all")
+    if projects is None:
+        return
+    out = _skills_console(output_format)
+
+    if not dry_run and not yes:
+        marker = agent_marker()
+        if marker is not None:
+            out.print(
+                f"[yellow]Notice:[/] syncing skills in {len(projects)} project(s) is the "
+                f"operator's call ({escape(marker)} is set); reporting what would change, "
+                "as --dry-run would. To apply, the operator runs: "
+                "[bold cyan]metaproject skills sync --all --yes[/bold cyan]",
+                soft_wrap=True,
+            )
+            dry_run = True
+        elif not typer.confirm(f"Sync skills in {len(projects)} project(s)?", default=False):
+            out.print("[yellow]Nothing synced.[/yellow]")
+            return
+
+    totals = {"updated": 0, "installed": 0, "kept-modified": 0}
+    failed = 0
+    payloads: List[Dict[str, Any]] = []
+    for project in projects:
+        try:
+            report = sync_project_skills(project, update=True, dry_run=dry_run)
+        except Exception as exc:  # one project's failure never stops the rest
+            failed += 1
+            payloads.append({"project": str(project), "error": str(exc)})
+            if output_format != "json":
+                console.print(
+                    f"{escape(str(project))}  [red]error[/red] {escape(str(exc))}",
+                    soft_wrap=True,
+                )
+            continue
+        if output_format == "json":
+            payloads.append(_skills_payload(project, report, dry_run, with_action=True))
+        if report.notice:
+            failed += 1
+            if output_format != "json":
+                console.print(
+                    f"{escape(str(project))}  [red]refused[/red] {escape(report.notice)}",
+                    soft_wrap=True,
+                )
+            continue
+        counts = _sync_counts(report)
+        for key, value in counts.items():
+            totals[key] += value
+        if output_format != "json":
+            cells = "  ".join(f"{key} {value}" for key, value in counts.items())
+            console.print(f"{escape(str(project))}  {cells}", soft_wrap=True)
+
+    if output_format == "json":
+        body = {"dry_run": dry_run, "projects": payloads, "totals": totals, "failed": failed}
+        typer.echo(json.dumps(body, indent=2))
+    else:
+        suffix = " (dry run)" if dry_run else ""
+        cells = "  ".join(f"{key} {value}" for key, value in totals.items())
+        console.print(
+            f"[bold]Total{suffix}:[/bold] {len(projects)} project(s)  {cells}  failed {failed}",
+            soft_wrap=True,
+        )
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _render_skills_status_all(reports, output_format: str) -> None:
+    """`skills status --all`: one row per managed project. Exit 1 on any refusal."""
+    import json
+
+    from metaproject.skills import MISSING
+
+    states = (CURRENT, OUTDATED, MODIFIED, MISSING)
+    failed = 0
+    if output_format == "json":
+        payloads = []
+        for project, report, error in reports:
+            if report is None:
+                payloads.append({"project": str(project), "error": error})
+                failed += 1
+                continue
+            payloads.append(_skills_payload(project, report, False, with_action=False))
+            failed += bool(report.notice)
+        typer.echo(json.dumps({"projects": payloads}, indent=2))
+    else:
+        table = Table(
+            title=f"Project skills — {len(reports)} managed project(s)",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Project", style="bold cyan")
+        for state in states:
+            table.add_column(state.capitalize(), justify="right")
+        for project, report, error in reports:
+            reason = error if report is None else report.notice
+            if reason:
+                failed += 1
+                table.add_row(
+                    escape(str(project)), f"[red]refused:[/red] {escape(reason)}", "", "", ""
+                )
+                continue
+            counts = [str(len(report.named(state))) for state in states]
+            table.add_row(escape(str(project)), *counts)
+        console.print(table)
+    if failed:
+        raise typer.Exit(code=1)
+
+
 @skills_app.command(name="status")
 def skills_status_cmd(
     project_dir: Optional[Path] = typer.Option(
         None, "--dir", "-d", help="Project to inspect (default: current directory)."
+    ),
+    all_projects: bool = typer.Option(
+        False,
+        "--all",
+        help="Every cataloged, managed project in universe.db (needs the tui extra).",
     ),
     output_format: str = typer.Option(
         "table", "--format", "-f", help="Output format: table or json."
@@ -1750,6 +1926,19 @@ def skills_status_cmd(
 ) -> None:
     """Report each bundled skill as current, outdated, modified or missing. Read-only."""
     from metaproject.skills import inspect_project_skills
+
+    if all_projects:
+        projects = _skills_all_projects(project_dir, [], output_format, "skills status --all")
+        if projects is None:
+            return
+        reports = []
+        for project in projects:
+            try:
+                reports.append((project, inspect_project_skills(project), None))
+            except Exception as exc:  # one project's failure never stops the rest
+                reports.append((project, None, str(exc)))
+        _render_skills_status_all(reports, output_format)
+        return
 
     project = _skills_project(project_dir, output_format)
     report = inspect_project_skills(project)
@@ -1769,6 +1958,14 @@ def skills_sync_cmd(
         "--force",
         help="Replace this skill even if modified (discards local edits). Repeatable.",
     ),
+    all_projects: bool = typer.Option(
+        False,
+        "--all",
+        help="Every cataloged, managed project in universe.db (needs the tui extra).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", "-y", help="With --all: skip the confirmation (required in agents)."
+    ),
     output_format: str = typer.Option(
         "table", "--format", "-f", help="Output format: table or json."
     ),
@@ -1778,8 +1975,17 @@ def skills_sync_cmd(
     A modified skill is kept and reported (exit 0) unless named with `--force NAME`.
     Each replacement is atomic per skill and recorded in
     .agents/skills/.metaproject-skills.json.
+
+    `--all` syncs every cataloged project that carries .metaproject.json, one line
+    per project. It asks once at a terminal (`--yes` skips it); in an agent session
+    without `--yes` it reports what it would do, as `--dry-run`. It never runs git
+    and never commits.
     """
     from metaproject.skills import sync_project_skills
+
+    if all_projects:
+        _skills_sync_all(dry_run, list(force or ()), yes, output_format, project_dir)
+        return
 
     project = _skills_project(project_dir, output_format)
     out = _skills_console(output_format)

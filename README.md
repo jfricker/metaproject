@@ -14,43 +14,108 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 - **Template Learning (`metaproject learn`)**: Observe drift across many projects, synthesize corroborated template proposals, and apply them only after review.
 - **Package Manifest (`metaproject -v` / `--version`)**: Inspect package metadata, runtime dependencies, license, and version.
 
-## Installation & Development
+## Install
 
-Install `metaproject` in editable mode using `uv` or `pip`:
+1. **Install the CLI** (needs [uv](https://docs.astral.sh/uv/); Python 3.11+):
+
+   ```bash
+   uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.9.1"
+   ```
+
+   pipx and pip work too ([other installers](#other-installers)). metaproject is **not
+   on PyPI**: the PyPI package named `metaproject` is unrelated, so always install from
+   the `git+https://github.com/jfricker/metaproject` source.
+
+2. **Set up once:** `metaproject init` — config, template store and project catalog
+   under `~/.metaproject/`.
+
+3. **Start or adopt a project:** `metaproject new my-app` for a new one, or
+   `cd existing-repo && metaproject adopt` for one you already have. Either copies the
+   project skills into `.agents/skills/` and links `.claude/skills` to them.
+
+4. **Verify:** `metaproject --version`, then `metaproject skills status` inside the
+   project.
+
+### Core vs `[tui]`
+
+| Install | Brings | Runs |
+|---|---|---|
+| core | `typer`, `rich`, `jinja2` | `--version`, `new`, `backfill`, `adopt`, `review --no-tui`, `skills status`, `skills sync` |
+| `[tui]` | adds `textual`, `questionary`, `sqlite-utils` | the TUIs and prompts, `universe`, `learn`, `doctor`, `skills status --all`, `skills sync --all` |
+
+Use `[tui]` on a workstation; core is enough for containers, CI and Claude Code on the
+web. A command that needs the extra without it says so in one line and exits 1.
+
+### Other installers
 
 ```bash
-# Clone the repository
-git clone https://github.com/jfricker/metaproject.git
-cd metaproject
+# Full, with pipx, or with pip inside a virtualenv
+pipx install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.9.1"
+python3 -m pip install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.9.1"
 
-# Install in editable mode (dev tools plus the `tui` extra)
-make install
+# Core only
+uv tool install "git+https://github.com/jfricker/metaproject@v0.9.1"
 
-# Check version and package manifest
-metaproject --version
+# Track main instead of a release tag (then `uv tool upgrade metaproject` updates it)
+uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject"
 
-# Verify installation and run test suite
-make test
-make lint
+# Uninstall
+uv tool uninstall metaproject    # or: pipx uninstall metaproject
 ```
 
-### Optional `tui` extra
+## Update
 
-The core install carries only `typer`, `rich` and `jinja2` — enough for `--version`,
-`new`, `backfill`, `adopt` and `review --no-tui`, which is all a fresh container needs.
-The interactive pieces and the SQLite catalog ship in the `tui` extra
-(`textual`, `questionary`, `sqlite-utils`), needed by the TUIs, interactive prompts,
-`universe`, `learn` and `doctor`:
+1. **Upgrade the CLI.** A tag-pinned install does not move with `uv tool upgrade`;
+   re-run the install command with the new tag:
 
-```bash
-uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject"   # full
-uv tool install "git+https://github.com/jfricker/metaproject"                     # core
-```
+   ```bash
+   uv tool install --force "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.9.1"
+   ```
 
-A command that needs the extra without it says so in one line (with the install command)
-and exits 1. `twine` is a `dev` dependency (release tooling), not a runtime one.
+   (pipx: `pipx install --force ...`; pip: `python3 -m pip install --upgrade ...`.) If
+   you installed from main, `uv tool upgrade metaproject` is enough.
 
-### Claude Code on the web (web profile)
+2. **Refresh each project's skills:** `metaproject skills sync` inside a project, or
+   `metaproject skills sync --all` for every cataloged project (asks once; `--dry-run`
+   previews).
+
+3. **Repair anything else:** `metaproject doctor --dry-run`, then `metaproject doctor`
+   (template store, config, anchors, cycle-document locations).
+
+`skills sync` installs missing skills and replaces outdated ones you have not edited. A
+skill you edited is kept and reported, never overwritten unless you name it with
+`--force NAME`. Sync never runs git: review the diff in each project and commit it
+yourself. Updates arrive only this way — a project's skills are its own committed copies,
+not a global install.
+
+## Where skills live and which agents see them
+
+Instructions and skills are separate. Every harness below reads `AGENTS.md` (Claude Code
+through the scaffolded `CLAUDE.md`, which contains `@AGENTS.md`). Skills are plain files
+in `.agents/skills/<name>/SKILL.md`, committed with the project, following the Agent
+Skills convention.
+
+| Harness | Sees the skills via | Invoke |
+|---|---|---|
+| Claude Code (CLI, desktop, web) | `.claude/skills` → `../.agents/skills` symlink, created by `new`/`adopt` | `/write-intent` |
+| OpenAI Codex CLI | `.agents/skills`, natively | `$write-intent` or implicitly |
+| Amp | `.agents/skills`, natively | implicitly |
+| OpenCode | `.agents/skills` (also `.claude/skills`) | implicitly |
+
+Reported to work, but check your harness's current docs: GitHub Copilot (CLI, VS Code
+agent, coding agent) and Goose read `.agents/skills`; Gemini CLI reads it as an alias of
+`.gemini/skills` but needs `context.fileName` set to include `AGENTS.md`; Cursor reads
+`.cursor/skills` and `.claude/skills`. Windsurf and Antigravity use their own
+directories.
+
+- A harness without skills support can still be told to read
+  `.agents/skills/write-intent/SKILL.md`.
+- Where symlinks are unavailable (some Windows setups) Claude Code will not see the
+  skills; metaproject refuses to write skills when `.claude/skills` is a real directory.
+- A harness that wants its own directory can be given a symlink to `.agents/skills` by
+  hand; metaproject creates only the Claude Code one.
+
+## Claude Code on the web
 
 In a Claude Code on the web session (`CLAUDE_CODE_REMOTE=true` with no
 `~/.metaproject/config.json`, or `METAPROJECT_PROFILE=web` anywhere) metaproject runs in
@@ -66,9 +131,9 @@ opening it, exit 0. `adopt`, `backfill`, `review --no-tui` and `--version` work
 as usual, rendering from the bundled templates. `METAPROJECT_PROFILE=local` forces the
 local profile.
 
-## Upgrading
+## Upgrading from older releases
 
-After upgrading the installed package (e.g. `uv tool install -U .` or from PyPI), what
+This is migration reference; the everyday path is [Update](#update). After upgrading the CLI, what
 metaproject put outside it can lag behind: the template store at
 `~/.metaproject/templates` (including its layout), `learn.targets` in `config.json`, an
 orphaned `~/.claude/skills/metaproject/` from releases that installed the skill globally,
@@ -113,13 +178,29 @@ Notes:
 The cycle skills used to ship as the separate `sdlc-skills` Claude Code plugin; they are
 absorbed into metaproject ≥ 0.9.0. In this order:
 
-1. Install the new release (`uv tool install -U .` or from PyPI).
+1. Install the new release ([Install](#install)).
 2. Uninstall the `sdlc-skills` plugin and remove its directory marketplace, so sessions
    stop loading the old plugin-namespaced copies of the skills.
 3. Run `metaproject doctor` (after `--dry-run`) to migrate the store, config and projects
    and install the project skills.
 4. Add a pointer to `~/Projects/SDLC-skills`'s README ("absorbed into metaproject ≥
    0.9.0") and leave that repository read-only on disk.
+
+## Development
+
+```bash
+git clone https://github.com/jfricker/metaproject.git
+cd metaproject
+make install          # editable install with dev tools and the `tui` extra
+make test && make lint
+make install-global   # put this checkout on PATH as `metaproject` (with `[tui]`)
+```
+
+Releases: `python3 scripts/bump_version.py --dry-run` previews the next version,
+`make bump-version` bumps, commits and tags it, and `make bump-major` forces a major
+release. The bump rewrites the install tag in this README. Push the tag
+(`git push origin vX.Y.Z`) — the install commands above resolve only tags that exist
+on GitHub. `twine` is a `dev` dependency (release tooling), not a runtime one.
 
 ---
 
@@ -175,9 +256,13 @@ metaproject skills sync --dry-run    # what sync would do
 metaproject skills sync              # install missing, replace outdated-and-unmodified
 metaproject skills sync --force wrapup   # also replace a modified skill (discards edits)
 metaproject skills status --format json
+metaproject skills status --all      # every cataloged project (needs `[tui]`)
+metaproject skills sync --all        # asks once; --yes skips; --dry-run previews
 ```
 
-`sync` exits 0 when it keeps modified skills; each replacement is atomic (staged, then
+`sync --all` runs the single-project sync in every project of `universe.db` that carries
+`.metaproject.json`, one line per project. In an agent session it only reports unless
+`--yes` is given. `sync` exits 0 when it keeps modified skills; each replacement is atomic (staged, then
 swapped in by rename, with the old copy restored if the swap fails).
 
 #### Claude Code Hooks
@@ -680,21 +765,3 @@ runtime dependency and no API key to manage. If `claude` is not found, `learn` e
 non-zero naming the binary and writes nothing — it never falls back to a heuristic.
 Malformed model output is retried once, then that target file is skipped and the run is
 recorded as `partial`. No projects and no drift is a clean exit zero.
-
-### Development cycle
-Automate semantic version incrementing based on git heuristics or launch milestones:
-```bash
-# Preview increment decision (dry run)
-python3 scripts/bump_version.py --dry-run
-
-# Increment version based on git heuristics and commit version files
-make bump-version
-
-# Force a major milestone release (zeroes minor and patch, and commits)
-make bump-major # or: python3 scripts/bump_version.py major
-```
-
-Install the latest version of the tool globally for running outside the repo:
-```bash
-python3 -m pip install --index-url https://test.pypi.org/simple/ --upgrade metaproject==0.9.1 --no-cache-dir --extra-index-url https://pypi.org/simple/
-```

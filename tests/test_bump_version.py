@@ -262,3 +262,25 @@ def test_create_git_tag_and_no_bump_when_matched(tmp_path: Path) -> None:
     assert res_sh.returncode == 0
     assert "matches current git tag" in res_sh.stdout
     assert "No bump is needed" in res_sh.stdout
+
+
+def test_readme_git_tag_refs_follow_the_bump(tmp_path: Path) -> None:
+    """The documented pinned install command names the new release; other `@v` refs stay."""
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        'uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.9.1"\n'
+        "pipx install git+https://github.com/jfricker/metaproject.git@v0.8.0\n"
+        "uses: actions/checkout@v4\n"
+        "uses: other/tool@v0.9.1\n",
+        encoding="utf-8",
+    )
+
+    assert bump_version.update_readme_versions(readme, "0.10.0") is True
+
+    text = readme.read_text(encoding="utf-8")
+    assert "jfricker/metaproject@v0.10.0" in text
+    assert "jfricker/metaproject.git@v0.10.0" in text
+    assert '@v0.9.1"' not in text.splitlines()[0]
+    assert "actions/checkout@v4" in text
+    assert "other/tool@v0.9.1" in text
+    assert bump_version.update_readme_versions(readme, "0.10.0") is False

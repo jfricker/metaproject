@@ -92,3 +92,14 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - `tests/test_skills.py::test_ac5_...` failed on `main` before this change: Rich wraps
   the long tmp path and splits "real directory" across lines; the assertion now compares
   whitespace-normalised output.
+
+## 2026-11-13 — issue #4 (install / update cycle)
+
+- `git ls-remote --tags origin` returns no tags: `v0.6.1`..`v0.9.1` exist only locally
+  and `bump_version.sh` never pushes, so `uv tool install ...@v0.9.1` cannot resolve
+  until the tag is pushed (2026-11-13).
+- pypi.org's `metaproject` is an unrelated 0.0.1 package ("Scaffod projects from
+  metaproject templates."); `pip install metaproject` installs it, not this CLI.
+- Typer 0.29 vendors click (`typer._click`): a `click.UsageError` raised inside a command
+  is not recognised and exits 1, not 2. `skills --all` usage errors print one line and
+  `raise typer.Exit(code=2)` instead.

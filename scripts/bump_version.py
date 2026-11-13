@@ -268,15 +268,30 @@ def apply_version_bump(repo_root: Path, old_version: str, new_version: str) -> D
         test_baseline.write_text(c, encoding="utf-8")
         results["tests/test_baseline.py"] = True
 
-    # 5. README.md
+    # 5. README.md: pinned `metaproject==X` specs and every git-tag install ref
+    # (`github.com/jfricker/metaproject@vX.Y.Z`), so the documented install command
+    # names the release being tagged. Unrelated `@v` refs (`actions/checkout@v4`) stay.
     readme = repo_root / "README.md"
-    results["README.md"] = update_version_in_file(
-        readme,
-        rf'metaproject=={re.escape(old_version)}',
-        f'metaproject=={new_version}',
-    )
+    results["README.md"] = update_readme_versions(readme, new_version)
 
     return results
+
+
+README_TAG_REF = re.compile(r"(github\.com/jfricker/metaproject(?:\.git)?@v)\d+\.\d+\.\d+")
+README_PIN = re.compile(r"(metaproject==)\d+\.\d+\.\d+")
+
+
+def update_readme_versions(readme: Path, new_version: str) -> bool:
+    """Rewrite README's pinned versions and metaproject git-tag refs to `new_version`."""
+    if not readme.exists():
+        return False
+    content = readme.read_text(encoding="utf-8")
+    updated = README_TAG_REF.sub(rf"\g<1>{new_version}", content)
+    updated = README_PIN.sub(rf"\g<1>{new_version}", updated)
+    if updated != content:
+        readme.write_text(updated, encoding="utf-8")
+        return True
+    return False
 
 
 def commit_version_files(
