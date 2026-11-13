@@ -149,7 +149,7 @@ with the project like any other file:
 
 - the nine SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
   `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, `/shipit` (merge, push, deploy and
-  clean up a finished branch), and `/backlog-new` for parking ideas — invoked by bare name;
+  clean up a finished branch; production deploys wait for a five-line zero-downtime plan and your OK), and `/backlog-new` for parking ideas — invoked by bare name;
 - the `metaproject` skill, which teaches an agent when to reach for each command, which
   forms are safe to run unattended (`review --no-tui`, `learn list`, `universe`) and which
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;

@@ -45,11 +45,27 @@ keep going.
    - a PM2 app (`ecosystem.config.*` or `pm2 list` naming the project) —
      `pm2 reload <app>`.
    If none is found, say "no deploy target detected" and skip to step 6. If more than one
-   matches, ask which to use.
+   matches, ask which to use. Then classify the target (see "Production or preview"). A
+   preview or staging deploy goes straight ahead; a PRODUCTION deploy must first pass
+   step 4a.
+   4a. **Zero-downtime plan (production only).** Write exactly five lines, then STOP:
+      1. how the new version starts alongside the old one (new Worker version / gradual
+         deployment, `pm2 start` under a new name, second release directory, ...);
+      2. the health check that will be run (URL and expected status);
+      3. the swap step (the exact command that moves traffic);
+      4. the exact rollback command, copy-pasteable;
+      5. how downtime will be measured (poll the health URL about once a second across the
+         swap and count failed probes).
+      Do not run any deploy command until the operator replies with an explicit OK in chat.
+      A silence, a thumbs-up on something else, or an OK to the merge is not an OK to
+      deploy. If the operator changes the plan, rewrite the five lines and ask again.
+      After the OK, execute the plan exactly as written while polling the health URL, and
+      carry the measured downtime (failed probes, longest gap, or "none observed") into
+      step 5 and the report. If the plan cannot be followed, stop and ask.
 5. **Verify live.** Probe the deployed service: `curl -fsS <url>/health` if it exposes
    one, otherwise `curl -fsSI <url>` and expect a 2xx/3xx. Report the URL and status. On
    failure, stop and report; do not clean up the branch until the operator decides on a
-   rollback.
+   rollback (for a production deploy, offer the rollback command from the plan).
 6. **Clean up.** Remove the worktree and delete the branch locally and on the remote:
    - `git worktree remove <path>` then `git worktree prune` (these write under
      `.git/worktrees`, so run them outside the sandbox);
@@ -58,10 +74,26 @@ keep going.
    was done on `main` directly. Leave other branches and worktrees alone.
 7. **Report.** One short summary: what merged (commit range), gate result, flagged items
    and how they were resolved, deploy target and live URL with the verification result,
-   what was cleaned up, and a list of manual-verification items (anything not checkable
+   the downtime observed (production deploys), what was cleaned up, and a list of manual-verification items (anything not checkable
    by command, such as visual or interactive behaviour).
 
+## Production or preview
+
+No new configuration is introduced; classify from what the project already declares, and
+when in doubt treat the target as production.
+
+- **Preview/staging:** a Makefile target named `deploy-preview`, `deploy-staging`,
+  `preview` or `staging`; a wrangler invocation with `--env` naming `preview`, `staging`,
+  `dev` or `test`, or a version upload that does not go live (`wrangler versions upload`);
+  a PM2 app whose name ends in `-staging`, `-preview` or `-dev`.
+- **Production:** `make deploy`, `deploy-prod`, `deploy-production`, `prod`; a wrangler
+  deploy with no `--env` or `--env production`; any other PM2 app.
+- If the classification is ambiguous, ask the operator rather than guessing preview.
+
 ## Stop conditions / human gate
+
+- A production deploy never starts without the five-line plan and the operator's explicit
+  OK; this gate applies even when the operator has already approved the merge.
 
 - Gate failure, unconfirmed unrelated changes, non-fast-forward merge, rejected push,
   failed live verification, or an unmerged-branch warning: stop and ask.
