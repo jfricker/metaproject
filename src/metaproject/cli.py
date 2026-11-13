@@ -1241,7 +1241,7 @@ def review_cmd(
         console.print(f"[red]{problem}[/red]")
 
 
-def print_backfill_result(result, dry_run: bool) -> None:
+def print_backfill_result(result, dry_run: bool, target: Path) -> None:
     """Narrate one `review.backfill_missing` pass (`backfill`, `adopt`)."""
     verb = "Would create" if dry_run else "Created"
     if result.created:
@@ -1344,7 +1344,7 @@ def backfill_cmd(
         target, files=files or None, templates_dir=templates_path, dry_run=dry_run
     )
 
-    print_backfill_result(result, dry_run)
+    print_backfill_result(result, dry_run, target)
     if result.refused or result.missing_template:
         raise typer.Exit(code=1)
 
@@ -1422,7 +1422,7 @@ def adopt_cmd(
         action = "would create" if dry_run else "created"
         console.print(f"[dim]{action} .claude/skills -> ../.agents/skills[/dim]")
 
-    print_backfill_result(result.backfill, dry_run)
+    print_backfill_result(result.backfill, dry_run, target)
     if result.backfill.missing_template:
         raise typer.Exit(code=1)
 
