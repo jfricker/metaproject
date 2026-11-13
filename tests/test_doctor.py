@@ -400,7 +400,7 @@ def test_ac9_dry_run_reports_every_finding_and_writes_nothing(tmp_path: Path, ho
     assert "move design.md → docs/TECH-DESIGN.md" in docs.findings
     skills_result = by_name[f"project skills: {skills_project}"]
     assert "missing skill: generate-spec" in skills_result.findings
-    assert any("stale skill" in f and "wrapup" in f for f in skills_result.findings)
+    assert any("modified skill" in f and "wrapup" in f for f in skills_result.findings)
     # docs_proj has no skills at all: every declared skill is missing.
     missing_all = by_name[f"project skills: {docs_project}"].findings
     assert len(missing_all) == len(bundled_skills())

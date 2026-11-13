@@ -7,7 +7,7 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 - **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
 - **Agent-Safe Adoption (`metaproject adopt`)**: Bring an already-cloned repository under metaproject — identity, every missing document and skill — create-only, no git, no confirmation.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
-- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new` and `backfill`.
+- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new`, `backfill` and `adopt`, and kept current by `metaproject skills sync`.
 - **Repair & Migration (`metaproject doctor`)**: Bring the template store, config and cataloged projects up to date after an upgrade, behind per-fix confirmation.
 - **Workspace Universe (`metaproject universe`)**: Catalog and classify all projects across subdirectories into a SQLite database.
 - **Drift Auditing (`metaproject review`)**: Detect drift between project files and central templates.
@@ -104,9 +104,9 @@ Notes:
   at its new path is reported and both copies are kept — and it never commits inside a
   project; review and commit the moves yourself. `review` shows an unmigrated project as
   `↻ OUTOFDATE` until then.
-- Project skills are installed only where missing. A skill that differs from the release
-  (older, or your edit) is reported and never overwritten; delete its directory and run
-  `metaproject backfill` to take the bundled copy.
+- Project skills from an earlier release are updated by `metaproject skills sync` (or
+  doctor's project-skills fix) — but only when unmodified. A skill you edited is reported
+  and never overwritten unless you name it: `metaproject skills sync --force NAME`.
 
 ### Retiring the sdlc-skills plugin
 
@@ -159,10 +159,26 @@ Each cycle skill checks its own precondition: the project must have `.metaprojec
 and `metaproject` must be on `PATH`, otherwise it stops and asks the operator to run
 `metaproject new .`.
 
-Installation is create-only. `backfill` (with no file arguments) adds a skill whose
-directory is missing and never writes into an existing one; a copy that differs from the
-release is reported as stale. If `.claude/skills` is a real directory, or a symlink to
-somewhere other than `.agents/skills`, no skill is written and a notice says why.
+`new`, `backfill` (with no file arguments) and `adopt` are create-only: they add a skill
+whose directory is missing and never write into an existing one. If `.claude/skills` is a
+real directory, or a symlink to somewhere other than `.agents/skills`, no skill is written
+and a notice says why.
+
+Every install records `.agents/skills/.metaproject-skills.json` — the release that wrote
+each skill and the sha256 of each file — so a later release can tell a pristine older
+copy from your own edit. Commit it with the project. To update skills (agent-safe, also
+in web sessions):
+
+```bash
+metaproject skills status            # each skill: current / outdated / modified / missing
+metaproject skills sync --dry-run    # what sync would do
+metaproject skills sync              # install missing, replace outdated-and-unmodified
+metaproject skills sync --force wrapup   # also replace a modified skill (discards edits)
+metaproject skills status --format json
+```
+
+`sync` exits 0 when it keeps modified skills; each replacement is atomic (staged, then
+swapped in by rename, with the old copy restored if the swap fails).
 
 #### Claude Code Hooks
 `new` and `backfill` also wire two Claude Code hooks into the project, so lint errors are

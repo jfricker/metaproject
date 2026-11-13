@@ -12,6 +12,7 @@ Anything marked **interactive** prompts or opens a TUI and needs a human at the 
 - [learn](#learn)
 - [universe](#universe)
 - [doctor](#doctor)
+- [skills](#skills)
 - [Agent-session guards](#agent-session-guards)
 - [Web profile (Claude Code on the web)](#web-profile-claude-code-on-the-web)
 - [Optional `tui` extra](#optional-tui-extra)
@@ -104,7 +105,8 @@ Two modes:
   scaffolded (on-demand deliverables excluded); existing files are listed under
   "Skipped (already exists)" rather than touched. Then copies each project skill whose
   `.agents/skills/<name>/` directory is absent; an existing skill directory is never
-  written into (a copy that differs from this release is reported stale). If
+  written into (a copy from an earlier release is reported outdated, a locally edited
+  one modified; `metaproject skills sync` updates the former). If
   `.claude/skills` is a real directory, or a symlink to somewhere other than
   `.agents/skills`, no skill is written and a notice says why.
   `.claude/settings.json` counts as missing until the metaproject hooks are merged into
@@ -263,12 +265,12 @@ left behind by an upgrade, and repairs each finding behind its own confirmation.
 | Orphaned global skill | Removes `~/.claude/skills/metaproject/` from older releases; nothing else under `~/.claude` |
 | Project identity | Backfills a missing `.metaproject.json` in cataloged projects |
 | Project docs (per project) | Moves cycle documents at the root or under old names into `docs/` (`git mv` when tracked); never overwrites (a clash is reported, both files kept) and never commits |
-| Project skills (per project) | Installs missing project skills; stale ones are reported, never overwritten |
+| Project skills (per project) | Installs missing project skills and updates outdated, unmodified ones (same classification as `skills status`); modified ones are reported, never overwritten |
 
 The project checks cover `universe`-cataloged projects that have `.metaproject.json`, one
 confirmation per project. Declining one fix never blocks the rest. A second run after a
-full migration is clean (a stale skill stays reported until its directory is deleted and
-`backfill` is re-run). In an agent session only `--dry-run` runs; it writes nothing.
+full migration is clean (a modified skill stays reported until
+`metaproject skills sync --force NAME` replaces it). In an agent session only `--dry-run` runs; it writes nothing.
 Exit code `1` while any finding remains.
 
 With a PROJECT path the run is scoped to that one project — `metaproject doctor .` for
@@ -277,6 +279,42 @@ run, in the full run's order: identity (the anchor is backfilled on confirmation
 the project is not cataloged — accepting is what puts it in scope), then docs, then
 skills. The store, config, and global-skill checks are skipped; a path that is not a
 directory is refused.
+
+## skills
+
+`metaproject skills status [--dir PATH] [--format table|json]` and
+`metaproject skills sync [--dir PATH] [--dry-run] [--force NAME]... [--format table|json]`
+— agent-safe: no prompt, no config or template store, permitted in agent sessions and in
+the web profile. Both need `.metaproject.json` in the project (else exit 1: run `adopt`).
+
+Each bundled skill is in one of four states:
+
+| State | Meaning | `sync` does |
+|---|---|---|
+| `✓ current` | Matches this release's copy | Keeps it (records the manifest if needed) |
+| `↻ outdated` | A pristine copy of an earlier release (matches its recorded manifest, or a released digest) | Replaces it |
+| `~ modified` | Local edits, extra or missing files, a symlink — or a legacy install matching no known release | Keeps it and names it, unless `--force NAME` |
+| `! missing` | Not installed | Installs it |
+
+`sync` exits 0 even when modified skills were kept. `--force NAME` (repeatable) replaces
+that skill and discards its local edits; an unknown name exits 1 before anything is
+written. `--dry-run` reports the same actions and writes nothing. Each replacement is
+atomic: the new copy is staged in `.agents/.metaproject-skills-tmp/` and swapped in by
+rename, and a failed swap restores the old copy (exit 1).
+
+Every install path (`new`, `backfill`, `adopt`, `skills sync`, doctor's fix) records
+`.agents/skills/.metaproject-skills.json` — per skill, the release that wrote it and the
+sha256 of each file. Commit it with the project; it is what lets `sync` tell a pristine
+older copy from a local edit. A skill installed by a newer metaproject is reported current
+and never downgraded; a manifest written by a newer metaproject makes `sync` exit 1 and
+is left untouched. A refusal (`.claude/skills` a real directory, or a symlink elsewhere)
+writes nothing and exits 1. `sync` does not create the `.claude/skills` link; it points
+at `adopt` when the link is absent.
+
+`--format json` writes `{"project", "target", "release", "manifest", "refusal",
+"dry_run", "skills": [{"name", "state", "installed_release", "basis", "changed",
+"note", "action"}]}` to stdout (`state` is the state before the pass; `action` is null
+for `status`), with notices on stderr.
 
 ## Agent-session guards
 
@@ -346,6 +384,10 @@ metaproject backfill
 # Adopt an already-cloned repository: identity, docs, skills (agent-safe)
 metaproject adopt
 
+# Which project skills are behind this release? Update the unmodified ones (agent-safe)
+metaproject skills status
+metaproject skills sync
+
 # Audit this project (prints the board in an agent session)
 metaproject review
 
@@ -371,7 +413,8 @@ metaproject universe --list --all --format json
 | `~/.metaproject/templates/` | The template store — a git repository |
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
-| `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`, committed with the project (`.claude/skills` links here) |
+| `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`/`adopt`, updated by `skills sync`, committed with the project (`.claude/skills` links here) |
+| `<project>/.agents/skills/.metaproject-skills.json` | Skills install manifest: release and per-file sha256 for each installed skill; committed |
 | `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks |
 | `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
 | `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`), copied create-only |

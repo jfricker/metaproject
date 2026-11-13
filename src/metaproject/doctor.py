@@ -22,7 +22,7 @@ import shutil
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from metaproject import __version__, config, db, deliverables, git, identity, skills, templates
 from metaproject.config import Config
@@ -325,30 +325,47 @@ def fix_project_docs(project_dir: Path) -> None:
 
 
 def check_project_skills(project_dir: Path) -> tuple[List[str], List[str], str]:
-    """Missing and stale declared skills in one project (R-DRX-4).
+    """Missing, outdated and modified declared skills in one project (R-DRX-4).
 
-    Only missing skills are fixable; a stale copy may be the project's own edit and is
-    reported, never overwritten (FC-4). An R-SKL-5 refusal is reported the same way.
+    The same classification as `metaproject skills status`. Missing and outdated
+    (pristine copies of an earlier release) are fixable; a modified skill is the
+    project's own edit and is reported, never overwritten (FC-4). An R-SKL-5 refusal, or
+    a manifest written by a newer metaproject, is reported the same way. A manifest
+    that only needs recording is not a finding.
     """
-    target = skills.project_skills_dir(project_dir)
-    if target.refusal is not None:
-        return [target.refusal], [target.refusal], ""
-    states: Dict[str, str] = {
-        skill.name: skills.skill_state(skill, target.path / skill.name)
-        for skill in skills.bundled_skills()
-    }
-    missing = [name for name, state in states.items() if state == skills.MISSING]
-    stale = [
-        f"stale skill (differs from this release; left untouched): {name}"
-        for name, state in states.items()
-        if state == skills.STALE
+    report = skills.inspect_project_skills(project_dir)
+    if report.notice is not None:
+        return [report.notice], [report.notice], ""
+    missing = skills_named(report, skills.MISSING)
+    outdated = skills_named(report, skills.OUTDATED)
+    modified = [
+        "modified skill (left untouched; `metaproject skills sync --force "
+        f"{name}` to replace): {name}"
+        for name in skills_named(report, skills.MODIFIED)
     ]
-    findings = [f"missing skill: {name}" for name in missing] + stale
-    return findings, stale, f"install {len(missing)} missing skill(s) into .agents/skills/"
+    findings = (
+        [f"missing skill: {name}" for name in missing]
+        + [f"outdated skill (unmodified copy of an earlier release): {name}" for name in outdated]
+        + modified
+    )
+    report_only = list(modified)
+    if report.manifest_state == skills.MANIFEST_NEWER and findings:
+        newer = "skills manifest written by a newer metaproject; upgrade before syncing"
+        findings.append(newer)
+        report_only = list(findings)
+    summary = (
+        f"install {len(missing)} missing, update {len(outdated)} outdated unmodified "
+        "skill(s) in .agents/skills/"
+    )
+    return findings, report_only, summary
+
+
+def skills_named(report: "skills.SkillsReport", state: str) -> List[str]:
+    return [status.name for status in report.statuses if status.state == state]
 
 
 def fix_project_skills(project_dir: Path) -> None:
-    skills.install_project_skills(project_dir)
+    skills.sync_project_skills(project_dir, update=True)
 
 
 # --------------------------------------------------------------------- running

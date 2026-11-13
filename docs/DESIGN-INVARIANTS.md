@@ -91,3 +91,20 @@ invariant established in one cycle isn't accidentally violated in the next.
 - `write_identity` keeps keys of `.metaproject.json` it does not own (`commands`,
   `e2e_port`).
 
+## 2026-11-12 — issue #3 part 3b (`metaproject skills status|sync`)
+
+- An installed skill is replaced only when it is pristine: its files hash to its recorded
+  manifest entry, or its digest is in the `skill_history.json` ledger of released skills.
+  Anything else (edits, extra or missing files, a symlink, a legacy install matching no
+  known release) is `modified` and is replaced only when named with `--force NAME`. A skill
+  recorded by a newer release is never downgraded.
+- `skills.sync_project_skills` is the single write path under `.agents/skills/<name>/`
+  (`new`, `backfill`, `adopt`, `skills sync`, doctor's fix): stage in
+  `.agents/.metaproject-skills-tmp/`, verify, rename aside, rename in, restore on failure.
+  Create-only callers pass `update=False`; a second pass writes nothing.
+- An R-SKL-5 refusal (`.claude/skills` a real directory or a symlink elsewhere) writes
+  nothing — no skill, no manifest, no staging directory — and `skills status|sync` exit 1.
+  `--dry-run` and `skills status` write nothing either.
+- `.agents/skills/.metaproject-skills.json` is rewritten only when its content changes
+  (atomic replace); entries for retired skills are preserved, and a manifest with a newer
+  format version is never rewritten (`sync` exits 1).
