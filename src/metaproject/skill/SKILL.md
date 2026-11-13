@@ -34,7 +34,7 @@ Every project's documents move through one cycle, each stage owned by a project 
 and ticked off in `docs/STATE.md`'s Process list. The skills ship in the metaproject
 wheel; `new` and `backfill` copy them into the project's `.agents/skills/` (reachable as
 `.claude/skills/`), where they are committed with the project and invoked by bare name
-(`/write-intent`, `/generate-spec`, …, plus `/backlog-new` for parking ideas):
+(`/write-intent`, `/generate-spec`, …, plus utility skills such as `/backlog-new` and `/verify-browser`):
 
 ```
 write-intent → generate-spec → generate-design → generate-plan →
