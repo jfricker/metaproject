@@ -1,13 +1,17 @@
 """Workspace scanner, boundary heuristics, activity classifier, and metadata extractor."""
 
+from __future__ import annotations
+
 import datetime
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-import questionary
-import sqlite_utils
+from metaproject.extras import LazyModule
+
+if TYPE_CHECKING:
+    import sqlite_utils
 
 from metaproject.db import get_db, reconcile_missing_projects, upsert_project
 from metaproject.git import (
@@ -17,6 +21,9 @@ from metaproject.git import (
     is_git_repository,
 )
 from metaproject.identity import fallback_identity, read_identity
+
+# Only the interactive Archive confirmation needs it, and it ships in the `tui` extra.
+questionary = LazyModule("questionary", "Interactive classification")
 
 IGNORED_DIRECTORIES = {
     ".git",

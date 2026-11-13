@@ -17,21 +17,29 @@ license-files = ["LICEN[CS]E*"]
 authors = [
     { name = "John Fricker" }
 ]
+# Core: what a fresh container needs for `--version`, `backfill`, `adopt` and
+# `review --no-tui`. Everything interactive or catalog-backed is in the `tui` extra.
 dependencies = [
     "typer>=0.12.0",
     "rich>=13.7.0",
-    "sqlite-utils>=3.36",
-    "questionary>=2.0.0",
     "jinja2>=3.1.0",
-    "textual==8.2.8",
-    "twine>=7.0.0",
 ]
 
 [project.scripts]
 metaproject = "metaproject.cli:app"
 
 [project.optional-dependencies]
+# The interactive TUIs and prompts (`textual`, `questionary`) and the SQLite catalog
+# behind `universe`, `learn` and `doctor` (`sqlite-utils`).
+tui = [
+    "textual==8.2.8",
+    "questionary>=2.0.0",
+    "sqlite-utils>=3.36",
+]
 dev = [
+    "metaproject[tui]",
+    # Release tooling (`make testpypi` / `make pypi`), not a runtime dependency.
+    "twine>=7.0.0",
     "pytest>=8.0.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.3.0",

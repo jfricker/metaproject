@@ -7,9 +7,11 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import questionary
-
 from metaproject.config import Config, detect_git_user_name
+from metaproject.extras import LazyModule
+
+# Prompts are only shown in interactive runs, and questionary ships in the `tui` extra.
+questionary = LazyModule("questionary", "Interactive prompts")
 
 
 def titlecase(name: str) -> str:

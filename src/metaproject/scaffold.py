@@ -2,12 +2,13 @@
 and project generation.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from metaproject import __version__
 from metaproject import variables as variables_module
-from metaproject.config import Config, load_config
+from metaproject.config import FALLBACK_AUTHOR, Config, load_config
 from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
@@ -16,6 +17,9 @@ from metaproject.identity import IDENTITY_FILE, Identity, write_identity
 from metaproject.skills import install_project_skills
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
 from metaproject.variables import collect_variables
+
+if TYPE_CHECKING:
+    from metaproject.review import BackfillResult
 
 # Argument forms that mean "scaffold into this directory" rather than naming a project.
 CWD_ALIASES = {".", "./", ".\\", "..", "../", "..\\"}
@@ -390,3 +394,97 @@ def scaffold_project(
         if not dry_run:
             tracker.rollback()
         raise MetaProjectError(f"Scaffolding failed: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class AdoptResult:
+    """What one `adopt_project` call did, or would do under `dry_run`."""
+
+    target_dir: Path
+    identity: Identity
+    # True when `.metaproject.json` was (or would be) written; False when one existed.
+    identity_written: bool
+    # The `.claude/skills` link created (or that would be), None when one existed.
+    skills_link: Optional[Path]
+    backfill: "BackfillResult"
+
+
+def adopt_project(
+    project_dir: Path,
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    author: Optional[str] = None,
+    templates_dir: Optional[Path] = None,
+    dry_run: bool = False,
+    config: Optional[Config] = None,
+) -> AdoptResult:
+    """Adopt an existing repository: identity, agent-skills layout, every missing deliverable.
+
+    The agent-safe counterpart to `new .` (no confirmation, permitted under CLAUDECODE).
+    Create-only end to end: an existing `.metaproject.json` is kept as written, an
+    existing `.claude/skills` entry is left alone, and deliverables and skills go through
+    `review.backfill_missing`, which never overwrites. It runs no git command.
+
+    Identity is resolved the way `variables.project_variables` would render a project
+    with no `.metaproject.json` (`--title` > README / manifest > directory name), so
+    recording it does not change how `review` renders the project. Author: `--author`
+    > config > `git config user.name` (never a container identity such as "Claude").
+    When none of those yields a real name, adopt refuses before writing anything rather
+    than record the `FALLBACK_AUTHOR` placeholder in `.metaproject.json`.
+    """
+    from metaproject.identity import fallback_identity, read_identity
+    from metaproject.review import backfill_missing
+
+    cfg = config or load_config()
+    target_dir = Path(project_dir).expanduser().resolve()
+    if not target_dir.is_dir():
+        raise MetaProjectError(f"Not a directory: {target_dir}")
+
+    existing = read_identity(target_dir)
+    identity_path = target_dir / IDENTITY_FILE
+    if existing is not None:
+        identity = existing
+        identity_written = False
+    elif identity_path.exists():
+        # Present but unreadable: never overwrite an operator's file, even a broken one.
+        raise MetaProjectError(
+            f"{identity_path} exists but is not a valid identity file; fix or remove it "
+            "and run adopt again."
+        )
+    else:
+        resolved_author = variables_module.resolve_author(author, cfg)
+        if resolved_author == FALLBACK_AUTHOR and not (author or "").strip():
+            # `.metaproject.json` is create-only and outranks config and git, so a
+            # placeholder recorded here would outlive every real author set later.
+            raise MetaProjectError(
+                "No author found (no config author; git user.name and $USER are unset "
+                'or a container identity). Pass --author "Your Name".'
+            )
+        fallback_title, fallback_description = fallback_identity(target_dir)
+        identity = Identity(
+            title=(title or "").strip() or fallback_title,
+            description=(description or "").strip() or fallback_description,
+            author=resolved_author,
+            created=variables_module._today(),
+            metaproject_version=__version__,
+        )
+        identity_written = True
+        if not dry_run:
+            write_identity(target_dir, identity)
+
+    tracker = TransactionalTracker()
+    tracker.record_existing(target_dir)
+    skills_link = link_agent_skills(
+        target_dir=target_dir, tracker=tracker, dry_run=dry_run, skip_existing=True
+    )
+
+    backfill = backfill_missing(
+        target_dir, templates_dir=templates_dir, dry_run=dry_run, config=cfg
+    )
+    return AdoptResult(
+        target_dir=target_dir,
+        identity=identity,
+        identity_written=identity_written,
+        skills_link=skills_link,
+        backfill=backfill,
+    )

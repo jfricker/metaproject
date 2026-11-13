@@ -57,3 +57,15 @@ class ApplyError(MetaProjectError):
     """
 
     pass
+
+
+class MissingExtraError(MetaProjectError):
+    """Raised when a command needs a dependency that ships only in an optional extra.
+
+    The `tui` extra (`textual`, `questionary`, `sqlite-utils`) is optional so a fresh
+    container can install the CLI small and fast. Core commands (`--version`,
+    `backfill`, `adopt`, `review --no-tui`) never need it; the ones that do raise this
+    with the install command, rather than an `ImportError` traceback.
+    """
+
+    pass

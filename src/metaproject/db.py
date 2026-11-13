@@ -1,9 +1,16 @@
-"""SQLite persistence, WAL configuration, project cataloging, and reconciliation queries."""
+"""SQLite persistence, WAL configuration, project cataloging, and reconciliation queries.
+
+`sqlite-utils` ships in the optional `tui` extra, so it is imported only when a database
+is actually opened (`get_db`); importing this module costs nothing in a core install.
+"""
+
+from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-import sqlite_utils
+if TYPE_CHECKING:
+    import sqlite_utils
 
 from metaproject.config import DEFAULT_UNIVERSE_DB, load_config
 from metaproject.exceptions import ScannerError
@@ -23,7 +30,10 @@ def get_db(db_path: Optional[str | Path] = None) -> sqlite_utils.Database:
     target_path = Path(db_path).expanduser().resolve() if db_path else get_default_db_path()
     target_path.parent.mkdir(parents=True, exist_ok=True)
 
-    db = sqlite_utils.Database(target_path)
+    from metaproject.extras import require
+
+    sqlite = require("sqlite_utils", "The project catalog (universe.db)")
+    db = sqlite.Database(target_path)
     # Configure WAL mode and busy timeout for high concurrency & reliability
     db.conn.execute("PRAGMA journal_mode=WAL;")
     db.conn.execute("PRAGMA busy_timeout=5000;")

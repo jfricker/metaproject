@@ -38,6 +38,37 @@ invariant established in one cycle isn't accidentally violated in the next.
   `deliverables.py`.
 
 
+
+## 2026-11-12 — issue #3 part 3a (web profile, `adopt`, optional `tui` extra)
+
+- Core paths (`--version`, `new`, `backfill`, `adopt`, `review --no-tui`) never import
+  `textual`, `questionary` or `sqlite-utils`; those go through `metaproject.extras`
+  (`require`/`LazyModule`). `tests/test_extras.py` runs each core command in an
+  interpreter that blocks the three and fails on any leak.
+- `metaproject.learn` resolves its public names lazily (PEP 562), so importing a
+  submodule (`review` uses `learn.collect`) never imports `store`/`api`.
+- `adopt` is create-only and runs no git: an existing `.metaproject.json` is kept as
+  written, an unreadable one stops the run rather than being replaced, and deliverables
+  and skills go through `backfill_missing`. `new .` keeps its operator-confirmed flow.
+- A *detected* author (git `user.name`, `$USER`) that is a container identity
+  (`config.CONTAINER_DEFAULT_AUTHORS`: Claude, root, …) is never used. An explicit author
+  (`--author`, config, `.metaproject.json`) is used as written.
+- Web profile precedence: `METAPROJECT_PROFILE` (both directions) > an existing config's
+  `profile` ("local" when absent) > `CLAUDE_CODE_REMOTE` truthy. A local machine's config
+  is never reclassified by the environment.
+- In the web profile `doctor` suppresses only its environment-wide checks (store layout,
+  store, config, orphaned global skill, catalog); the per-project checks run against an
+  explicit `doctor PROJECT`, else the current directory, via
+  `doctor.run_checks(..., project=...)`. Every fix still needs an operator to confirm it.
+- A machine-readable web-profile notice never corrupts stdout: it goes to stderr, and
+  `--format json` writes an `{"available": false, ...}` envelope.
+- The `FALLBACK_AUTHOR` placeholder is never written to `config.json` (`Config.to_dict`
+  writes ""), so an undetected identity cannot outrank a later real git `user.name`.
+- `adopt` never records `FALLBACK_AUTHOR` in `.metaproject.json`: that file is
+  create-only and tops the author precedence, so when no `--author`, config author or
+  non-container git/`$USER` name exists, adopt refuses (exit 1, "pass --author") before
+  writing anything.
+
 ## 2026-11-12 — issue #7 (Claude Code hooks)
 
 - `.claude/settings.json` is merged, never overwritten or rendered: `hooks.merge_hooks`
@@ -59,3 +90,4 @@ invariant established in one cycle isn't accidentally violated in the next.
   named `.claude/settings.json` that cannot be written, is refused with exit 1.
 - `write_identity` keeps keys of `.metaproject.json` it does not own (`commands`,
   `e2e_port`).
+

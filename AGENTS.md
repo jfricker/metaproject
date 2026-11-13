@@ -66,13 +66,17 @@
 ### Core Subsystems
 1. **CLI Routing & Manifest (`src/metaproject/cli.py`, `__main__.py`)**:
    - Built on `typer` with `rich` console formatting.
-   - Registers commands (`init`, `new`, `backfill`, `universe`, `review`, `doctor`) and the `learn`
+   - Registers commands (`init`, `new`, `backfill`, `adopt`, `universe`, `review`, `doctor`) and the `learn`
      command group (`scan`, `review`, `list`, `show`, `apply`, `edit`, `reject`), whose
      bare `learn [ROOT]` form is routed to a hidden default command by
      `LearnGroup.parse_args`. Any new `learn` subcommand must be registered on
      `learn_app` or it is read as a path. `backfill` is the non-interactive, create-only
      counterpart to `new .`'s interactive scaffold-into-existing flow — agent-safe, never overwrites, never
-     runs git.
+     runs git. `adopt` (`scaffold.adopt_project`) is the same for a whole existing repository:
+     `.metaproject.json`, the `.agents/skills` layout, then `backfill_missing` — create-only, no git.
+   - `MetaprojectGroup.invoke` turns a `MissingExtraError` (an optional `tui` dependency
+     reached without the extra) into one line plus exit 1; `LearnGroup.invoke` gates every
+     `learn` subcommand on the web profile and on `sqlite-utils`.
    - Handles eager manifest inspection via `-v` / `--version`.
 
 2. **Configuration & Template Seeding (`src/metaproject/config.py`)**:
@@ -122,6 +126,7 @@
 - `src/metaproject/learn/`: Corroborated-proposal pipeline (`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui`).
 - `src/metaproject/deliverables.py`: The single declaration of deliverable paths and classes, plus the legacy-name mapping (`LEGACY_NAMES`, `canonical_path`, `legacy_locations`, `exact_exists`) behind the `docs/` relocation.
 - `src/metaproject/skill/`: The bundled metaproject skill (`SKILL.md` plus `references/`), shipped as package data.
+- `src/metaproject/extras.py`: `require`/`LazyModule` — the only way core code reaches `textual`, `questionary` or `sqlite-utils` (the optional `tui` extra), so `--version`, `backfill`, `adopt` and `review --no-tui` import none of them.
 - `src/metaproject/hooks.py`: The `.claude/settings.json` deliverable (class `SETTINGS`): `merge_hooks(settings_path, entries)` adds hook entries keyed by command string and preserves every other key (merge, never overwrite; invalid JSON is refused with `SettingsError`); `install_hooks` also copies the bundled `hook_scripts/metaproject_hook.py` to `.claude/hooks/` create-only. New hooks (e.g. `SessionStart`) are one more `HookEntry` through the same function.
 - `src/metaproject/hook_scripts/metaproject_hook.py`: Stdlib-only hook script shipped as package data. `post-edit` runs `.metaproject.json` `commands.lint`/`commands.typecheck` (silent when unset or passing; truncated output and exit 2 on failure); `pre-bash` stops listeners on `e2e_port` before a playwright command (always exit 0).
 - `src/metaproject/sdlc_skills/`: The nine bundled SDLC skills (`write-intent` … `wrapup`, `backlog-new`, `shipit`), imported with history from the retired sdlc-skills repository.
@@ -137,6 +142,10 @@
 - Jinja2 for templating.
 - Questionary for interactive prompts.
 - SQLite for persistent workspace catalog.
+- Core dependencies are `typer`, `rich`, `jinja2` only. `textual`, `questionary` and
+  `sqlite-utils` are the optional `tui` extra: import them lazily through
+  `metaproject.extras`, never at module top level of a core path (`tests/test_extras.py`
+  enforces this). `metaproject.learn` resolves its public names lazily for the same reason.
 - Built-in templates packaged via `importlib.resources`.
 
 ## Learnings

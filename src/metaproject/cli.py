@@ -4,9 +4,9 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import questionary
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
@@ -21,7 +21,13 @@ from metaproject.config import (
     save_config,
 )
 from metaproject.db import get_db, get_universe_summary, query_projects
-from metaproject.exceptions import CollisionError, GitError, MetaProjectError
+from metaproject.exceptions import (
+    CollisionError,
+    GitError,
+    MetaProjectError,
+    MissingExtraError,
+)
+from metaproject.extras import INSTALL_HINT, LazyModule, available, require
 from metaproject.git import ensure_template_repository, is_git_repository
 from metaproject.scaffold import (
     is_directory_empty,
@@ -29,11 +35,14 @@ from metaproject.scaffold import (
     resolve_output,
     scaffold_project,
 )
-from metaproject.session import agent_marker, override_hint
+from metaproject.session import agent_marker, override_hint, web_profile_reason
 from metaproject.skills import CURRENT, INSTALLED, STALE
 from metaproject.templates import seed_templates
 
 console = Console()
+
+# Interactive prompts only; questionary ships in the optional `tui` extra.
+questionary = LazyModule("questionary", "Interactive prompts")
 
 
 def render_config_table(cfg: Config, config_file: Path) -> Table:
@@ -105,8 +114,6 @@ def get_manifest_info() -> Dict[str, Any]:
             "dependencies": [
                 "typer>=0.12.0",
                 "rich>=13.7.0",
-                "sqlite-utils>=3.36",
-                "questionary>=2.0.0",
                 "jinja2>=3.1.0",
             ],
             "entrypoint": "metaproject = metaproject.cli:app",
@@ -144,11 +151,70 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+class MetaprojectGroup(TyperGroup):
+    """The root command group: turns a missing optional extra into one clear line.
+
+    `textual`, `questionary` and `sqlite-utils` ship in `metaproject[tui]`. A command
+    that reaches for one without it raises `MissingExtraError` (see `extras.require`);
+    catching it here, once, means every command (and every `learn` subcommand) reports
+    the install command instead of an `ImportError` traceback, and exits 1.
+    """
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except MissingExtraError as exc:
+            console.print(
+                f"[bold red]Missing optional dependency:[/bold red] {escape(str(exc))}",
+                soft_wrap=True,
+            )
+            raise typer.Exit(code=1) from exc
+
+
 app = typer.Typer(
     name="metaproject",
     help="A CLI tool for scaffolding and managing agentic projects and templates.",
     no_args_is_help=True,
+    cls=MetaprojectGroup,
 )
+
+
+def web_profile_notice(what: str, output_format: str = "table", instead: str = "") -> bool:
+    """Print the one-line web-profile notice for `what`. True when it was printed.
+
+    The caller returns (exit 0) on True: in a Claude Code on the web container there is
+    no catalog, no persistent template store and no operator, so these commands have
+    nothing to act on. Saying so in one line is the whole answer, not an error.
+
+    A machine-readable `output_format` keeps stdout parseable: the notice goes to
+    stderr, and `json` writes an `{"available": false, ...}` envelope to stdout so a
+    JSON consumer still receives JSON (`csv` writes nothing to stdout).
+    """
+    reason = web_profile_reason()
+    if reason is None:
+        return False
+    if output_format in ("json", "csv"):
+        Console(stderr=True).print(
+            f"[yellow]Notice:[/] {what} is not available in web sessions ({reason}).",
+            soft_wrap=True,
+        )
+        if output_format == "json":
+            import json
+
+            envelope = {
+                "available": False,
+                "profile": "web",
+                "reason": reason,
+                "notice": f"{what} is not available in web sessions.",
+            }
+            typer.echo(json.dumps(envelope, indent=2))
+        return True
+    tail = f"; {instead}" if instead else ""
+    console.print(
+        f"[yellow]Notice:[/] {what} is not available in web sessions ({reason}){tail}.",
+        soft_wrap=True,
+    )
+    return True
 
 
 @app.callback()
@@ -280,10 +346,32 @@ def init_cmd(
         "-f",
         help="Overwrite existing configuration and templates.",
     ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Accept defaults (and --author) without prompting.",
+    ),
+    author: Optional[str] = typer.Option(
+        None,
+        "--author",
+        "-a",
+        help="Default author name (default: git config user.name, never a container "
+        "identity such as 'Claude').",
+    ),
 ) -> None:
-    """Initialize or repair the user environment for metaproject."""
+    """Initialize or repair the user environment for metaproject.
+
+    In the web profile (`CLAUDE_CODE_REMOTE=true` with no config, or
+    `METAPROJECT_PROFILE=web`) it writes a minimal config recording `profile: web`,
+    never prompts, and skips seeding the template store and the workspace scan.
+    """
     target_config_dir = get_config_dir(config_dir)
     config_file = get_config_file_path(target_config_dir)
+    web_reason = web_profile_reason(config_file=config_file)
+
+    if web_reason is not None and not (config_file.exists() and not force):
+        init_web_profile(target_config_dir, config_file, author, web_reason)
+        return
 
     # If configuration already exists and not forced, display contents and status summary
     if config_file.exists() and not force:
@@ -292,18 +380,21 @@ def init_cmd(
         console.print(render_config_table(existing_cfg, config_file))
 
         db_path = Path(existing_cfg.universe_db)
-        if db_path.exists():
-            db = get_db(db_path)
-            summary = get_universe_summary(db)
-        else:
-            summary = {
-                "total_projects": 0,
-                "active_now": 0,
-                "last_run": "Never",
-                "missing_projects": 0,
-            }
-        console.print()
-        console.print(render_universe_summary_table(summary, db_path))
+        summary = {
+            "total_projects": 0,
+            "active_now": 0,
+            "last_run": "Never",
+            "missing_projects": 0,
+        }
+        show_summary = web_reason is None
+        if show_summary and db_path.exists():
+            try:
+                summary = get_universe_summary(get_db(db_path))
+            except MissingExtraError:
+                show_summary = False
+        if show_summary:
+            console.print()
+            console.print(render_universe_summary_table(summary, db_path))
 
         console.print(
             "\n[dim]Metaproject is already initialized. To re-initialize and overwrite, use:[/dim] "
@@ -347,20 +438,20 @@ def init_cmd(
     # 2. Configure defaults
     existing_cfg = load_config(config_file) if config_file.exists() and not force else Config()
 
-    default_author = existing_cfg.author or detect_git_user_name()
+    default_author = (author or "").strip() or existing_cfg.author or detect_git_user_name()
     default_home = (
         str(effective_home.expanduser().resolve()) if effective_home else existing_cfg.project_home
     )
 
-    author = default_author
     resolved_home = default_home
     branch = existing_cfg.default_branch
 
     # If running interactively, prompt for confirmation
-    if not force:
-        prompt_author = questionary.text("Default Author Name:", default=default_author).ask()
-        if prompt_author:
-            author = prompt_author.strip()
+    if not force and not non_interactive:
+        if not (author or "").strip():
+            prompt_author = questionary.text("Default Author Name:", default=default_author).ask()
+            if prompt_author:
+                default_author = prompt_author.strip()
 
         prompt_branch = questionary.text("Default Git Branch:", default=branch).ask()
         if prompt_branch:
@@ -373,7 +464,7 @@ def init_cmd(
     universe_db_path = str(target_config_dir / "universe.db")
 
     new_cfg = Config(
-        author=author,
+        author=default_author,
         default_branch=branch,
         project_home=resolved_home,
         templates_dir=str(templates_dest),
@@ -413,6 +504,29 @@ def init_cmd(
     )
 
 
+def init_web_profile(
+    target_config_dir: Path, config_file: Path, author: Optional[str], reason: str
+) -> None:
+    """`init` in the web profile: a minimal config, no store seeding, no scan, no prompt.
+
+    A web container is thrown away after the session, so a catalog of `project_home`
+    would describe nothing that outlives it, and `backfill`/`adopt`/`review` already
+    fall back to the bundled templates when the store is absent. The config records
+    `profile: web` so the profile survives once config exists.
+    """
+    target_config_dir.mkdir(parents=True, exist_ok=True)
+    # Empty lets `Config` detect it; an undetected identity is never persisted.
+    cfg = Config(author=(author or "").strip(), profile="web")
+    save_config(cfg, config_file)
+    console.print(f"[cyan]✓ Saved minimal web-profile configuration to {config_file}[/cyan]")
+    console.print(
+        f"[dim]Web profile ({reason}): skipped template-store seeding and the workspace "
+        "scan; bundled templates are used.[/dim]",
+        soft_wrap=True,
+    )
+    console.print(f"[bold]Author:[/bold] {cfg.author}")
+
+
 # Alias: metaproject install -> metaproject init
 @app.command(name="install", hidden=False)
 def install_cmd(
@@ -435,13 +549,27 @@ def install_cmd(
         "-f",
         help="Overwrite existing configuration and templates.",
     ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Accept defaults (and --author) without prompting.",
+    ),
+    author: Optional[str] = typer.Option(
+        None,
+        "--author",
+        "-a",
+        help="Default author name.",
+    ),
 ) -> None:
     """Alias for 'metaproject init'."""
     init_cmd(
         source_templates=source_templates,
         project_home=project_home,
+        project_home_opt=None,
         config_dir=config_dir,
         force=force,
+        non_interactive=non_interactive,
+        author=author,
     )
 
 
@@ -805,6 +933,11 @@ def universe_cmd(
     import io
     import json
 
+    if web_profile_notice("`metaproject universe`", output_format):
+        return
+    # Every universe path reads or writes the SQLite catalog (the `tui` extra).
+    require("sqlite_utils", "`metaproject universe`")
+
     from metaproject.db import get_db, get_universe_summary
     from metaproject.learn.tui import tui_enabled
     from metaproject.universe import UniverseScopeError, resolve_scan_root, scan_universe
@@ -873,6 +1006,7 @@ def universe_cmd(
         and output_format == "table"
         and tui_enabled(no_tui=no_tui)
     ):
+        require("textual", "The interactive universe browser")
         from metaproject.universe_tui import run_tui
 
         run_tui(
@@ -1013,7 +1147,6 @@ def review_cmd(
     ),
 ) -> None:
     """Analyze projects against central templates to detect missing files and drift."""
-    from metaproject.learn.tui import tui_enabled
     from metaproject.review import (
         load_ignored,
         review_project,
@@ -1021,6 +1154,7 @@ def review_cmd(
         unignore_project,
     )
     from metaproject.review_tui import run_board
+    from metaproject.session import tui_enabled
 
     target = (project_dir or Path.cwd()).resolve()
 
@@ -1067,11 +1201,17 @@ def review_cmd(
     # Degrades exactly like the `learn` reviewer: --no-tui, an agent session, TERM=dumb,
     # or a non-TTY stdout prints the board and stops, so scripted, CI, and agent use
     # needs no special flag.
-    if not tui_enabled(no_tui=no_tui):
+    # The web profile never opens the board: it prints the same board `--no-tui` does,
+    # after a one-line notice, and exits 0.
+    web_board = not no_tui and web_profile_notice(
+        "`metaproject review`'s interactive board", instead="printing the board instead"
+    )
+    if web_board or not tui_enabled(no_tui=no_tui):
         from metaproject.review_tui import review_table
 
         console.print(review_table(results, target, templates_path, ignored_count))
-        print_agent_degradation_notice("the interactive board", "remediate drift")
+        if not web_board:
+            print_agent_degradation_notice("the interactive board", "remediate drift")
         return
 
     outcome = run_board(
@@ -1101,44 +1241,8 @@ def review_cmd(
         console.print(f"[red]{problem}[/red]")
 
 
-@app.command(name="backfill")
-def backfill_cmd(
-    files: Optional[List[str]] = typer.Argument(
-        None,
-        help="Specific deliverables to create (e.g. docs/HANDOFF.md; old names such as "
-        "intent.md resolve to their docs/ path). Default: every "
-        "missing deliverable `new` scaffolds.",
-    ),
-    project_dir: Optional[Path] = typer.Option(
-        None,
-        "--dir",
-        "-d",
-        help="Project directory to backfill (default: current directory).",
-    ),
-    templates_path: Optional[Path] = typer.Option(
-        None,
-        "--templates",
-        help="Template directory to create from (default: ~/.metaproject/templates).",
-    ),
-    dry_run: bool = typer.Option(
-        False,
-        "--dry-run",
-        help="Preview what would be created without writing to disk.",
-    ),
-) -> None:
-    """Create missing deliverables from the template store. Never overwrites, never runs git.
-
-    Unlike `new .`, this is a non-interactive, create-only write and is permitted in
-    agent sessions (R-TPL-8): it is how a skill or hook fills in a document that review
-    reports missing, without the confirmations `new .` requires.
-    """
-    from metaproject.review import backfill_missing
-
-    target = (project_dir or Path.cwd()).resolve()
-    result = backfill_missing(
-        target, files=files or None, templates_dir=templates_path, dry_run=dry_run
-    )
-
+def print_backfill_result(result, dry_run: bool) -> None:
+    """Narrate one `review.backfill_missing` pass (`backfill`, `adopt`)."""
     verb = "Would create" if dry_run else "Created"
     if result.created:
         table = Table(title=verb, show_header=False)
@@ -1201,7 +1305,125 @@ def backfill_cmd(
     ):
         console.print("[dim]Nothing to do.[/dim]")
 
+
+@app.command(name="backfill")
+def backfill_cmd(
+    files: Optional[List[str]] = typer.Argument(
+        None,
+        help="Specific deliverables to create (e.g. docs/HANDOFF.md; old names such as "
+        "intent.md resolve to their docs/ path). Default: every "
+        "missing deliverable `new` scaffolds.",
+    ),
+    project_dir: Optional[Path] = typer.Option(
+        None,
+        "--dir",
+        "-d",
+        help="Project directory to backfill (default: current directory).",
+    ),
+    templates_path: Optional[Path] = typer.Option(
+        None,
+        "--templates",
+        help="Template directory to create from (default: ~/.metaproject/templates).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would be created without writing to disk.",
+    ),
+) -> None:
+    """Create missing deliverables from the template store. Never overwrites, never runs git.
+
+    Unlike `new .`, this is a non-interactive, create-only write and is permitted in
+    agent sessions (R-TPL-8): it is how a skill or hook fills in a document that review
+    reports missing, without the confirmations `new .` requires.
+    """
+    from metaproject.review import backfill_missing
+
+    target = (project_dir or Path.cwd()).resolve()
+    result = backfill_missing(
+        target, files=files or None, templates_dir=templates_path, dry_run=dry_run
+    )
+
+    print_backfill_result(result, dry_run)
     if result.refused or result.missing_template:
+        raise typer.Exit(code=1)
+
+
+@app.command(name="adopt")
+def adopt_cmd(
+    project_dir: Optional[Path] = typer.Option(
+        None,
+        "--dir",
+        "-d",
+        help="Repository to adopt (default: current directory).",
+    ),
+    title: Optional[str] = typer.Option(
+        None,
+        "--title",
+        help="Project title (default: README heading, manifest name, or directory name).",
+    ),
+    description: Optional[str] = typer.Option(
+        None,
+        "--description",
+        help="One-line summary (default: the paragraph under the README heading).",
+    ),
+    author: Optional[str] = typer.Option(
+        None,
+        "--author",
+        "-a",
+        help="Author (default: config, then git config user.name; never 'Claude').",
+    ),
+    templates_path: Optional[Path] = typer.Option(
+        None,
+        "--templates",
+        help="Template directory to create from (default: ~/.metaproject/templates).",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview what would be created without writing to disk.",
+    ),
+) -> None:
+    """Adopt an existing repository. Create-only, runs no git, needs no confirmation.
+
+    Writes `.metaproject.json`, the `.agents/skills` layout, every missing deliverable
+    and every missing project skill. Nothing that exists is overwritten, so it is the
+    agent-safe way to bring an already-cloned repository under metaproject (permitted
+    in agent sessions). `new .` keeps its interactive, operator-confirmed semantics.
+    """
+    from metaproject.scaffold import adopt_project
+
+    target = (project_dir or Path.cwd()).resolve()
+    try:
+        result = adopt_project(
+            target,
+            title=title,
+            description=description,
+            author=author,
+            templates_dir=templates_path,
+            dry_run=dry_run,
+        )
+    except MetaProjectError as exc:
+        console.print(f"[bold red]Adopt Error:[/bold red] {exc}", soft_wrap=True)
+        raise typer.Exit(code=1)
+
+    verb = "Would adopt" if dry_run else "Adopted"
+    console.print(f"[bold green]{verb}:[/bold green] [bold]{result.target_dir}[/bold]")
+    if result.identity_written:
+        action = "would write" if dry_run else "wrote"
+        console.print(
+            f"[dim]{action} .metaproject.json[/dim] "
+            f"(title: {result.identity.title}, author: {result.identity.author})",
+            soft_wrap=True,
+        )
+    else:
+        console.print("[dim].metaproject.json already present — kept as-is[/dim]")
+    if result.skills_link is not None:
+        action = "would create" if dry_run else "created"
+        console.print(f"[dim]{action} .claude/skills -> ../.agents/skills[/dim]")
+
+    print_backfill_result(result.backfill, dry_run)
+    if result.backfill.missing_template:
         raise typer.Exit(code=1)
 
 
@@ -1231,6 +1453,12 @@ def doctor_cmd(
     documents, its skills — and the environment-wide checks are skipped. Each fix
     needs an operator's confirmation (per project for the project checks);
     `--dry-run` writes nothing and is the only form permitted inside an agent session.
+
+    In the web profile the environment-wide checks (store layout, store, config,
+    orphaned global skill, the catalog) are skipped with a one-line notice — none of
+    them outlives a web container — and the per-project checks (identity, docs,
+    skills) run against PROJECT when given, else the current directory — the one
+    project the session has.
     """
     from metaproject import doctor
 
@@ -1245,6 +1473,35 @@ def doctor_cmd(
                 )
             )
             raise typer.Exit(code=1)
+
+    # In the web profile the environment-wide checks have nothing to act on; the
+    # project checks still run — against an explicit PROJECT, else the current
+    # directory, the one project the session has.
+    web = web_profile_notice(
+        "Running `metaproject doctor`'s store, config and catalog checks",
+        instead="running the project checks only",
+    )
+    if web and project is None:
+        project = Path.cwd().resolve()
+
+    # The web profile has no operator to refuse on behalf of: an agent session (or a
+    # core install without questionary to confirm with) degrades to the report
+    # `--dry-run` prints rather than a refusal. Its exit code is the report's: 0 for a
+    # healthy project, 1 when there are findings.
+    if web and not dry_run:
+        marker = agent_marker()
+        if marker is not None or not available("questionary"):
+            why = (
+                f"{marker} is set"
+                if marker is not None
+                else f"questionary is not installed: {escape(INSTALL_HINT)}"
+            )
+            console.print(
+                "[yellow]Notice:[/] doctor's fixes need an operator to confirm them; "
+                f"reporting findings only, as --dry-run would ({why}).",
+                soft_wrap=True,
+            )
+            dry_run = True
 
     if not dry_run:
         marker = agent_marker()
@@ -1264,7 +1521,10 @@ def doctor_cmd(
             raise typer.Exit(code=1)
 
     config_file = get_config_file_path()
-    if not config_file.exists():
+    if web:
+        # A web container may never have run `init`; the project checks need no config.
+        cfg = load_config(config_file) if config_file.exists() else Config(profile="web")
+    elif not config_file.exists():
         console.print(
             Panel.fit(
                 f"No configuration found at [cyan]{config_file}[/cyan].\n\n"
@@ -1274,8 +1534,8 @@ def doctor_cmd(
             )
         )
         raise typer.Exit(code=1)
-
-    cfg = load_config(config_file)
+    else:
+        cfg = load_config(config_file)
     results = doctor.run_checks(cfg, config_file, dry_run=dry_run, project=project)
 
     title = f"Doctor — {project}" if project is not None else "Doctor — Environment Health"
@@ -1334,6 +1594,14 @@ class LearnGroup(TyperGroup):
         if not args or (args[0] not in self.commands and args[0] not in ("--help", "-h")):
             args = [LEARN_DEFAULT_COMMAND, *args]
         return super().parse_args(ctx, args)
+
+    def invoke(self, ctx):
+        # One gate for every `learn` subcommand: the web profile has no catalog or
+        # store to learn from, and the ledger lives in SQLite (the `tui` extra).
+        if web_profile_notice("`metaproject learn`"):
+            return None
+        require("sqlite_utils", "`metaproject learn`")
+        return super().invoke(ctx)
 
 
 learn_app = typer.Typer(

@@ -15,6 +15,10 @@ def isolate_test_environment(
     # agent guards would otherwise make identical tests behave differently depending on
     # who invoked pytest. Tests that exercise the guards set this themselves.
     monkeypatch.setenv("METAPROJECT_AGENT", "0")
+    # Pin the profile too: a suite run inside a Claude Code on the web container would
+    # otherwise put every command in the web profile.
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    monkeypatch.delenv("METAPROJECT_PROFILE", raising=False)
 
 
 @pytest.fixture

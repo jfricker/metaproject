@@ -19,6 +19,7 @@ project→templates?"
 |---|---|---|
 | templates → new project | `new` | Scaffold a project (or scaffold into an existing directory) |
 | templates → existing project | `backfill` | Create specific missing documents, agent-safe |
+| templates → existing repo | `adopt` | Adopt a repo: identity, every missing document and skill, agent-safe |
 | templates ↔ project | `review` | Report what is missing or has drifted; remediate |
 | projects → templates | `learn` | Turn recurring drift into reviewed template proposals |
 | survey | `universe` | Catalog and classify projects across a workspace tree |
@@ -113,8 +114,9 @@ useful you can do.
 **Scaffolding into an existing directory (`new .` on a non-empty directory) is
 refused** for the same reason: its two confirmations need a person. `--dry-run` still
 previews it, which is how you show the operator what would happen. `metaproject
-backfill` is the agent-safe alternative for filling in specific missing documents — see
-below.
+backfill` is the agent-safe alternative for filling in specific missing documents, and
+`metaproject adopt` the agent-safe way to bring a whole existing repository under
+metaproject — see below.
 
 When a guard fires, relay it — "this needs you to run it, here is the command" —
 instead of reaching for `--force` or `METAPROJECT_AGENT=0`. Those exist for the
@@ -125,8 +127,15 @@ incident.
 them or pass `--yes`. Give it what it needs and it runs unattended.
 
 Read-only or safe to run whenever they would help — none of these write anything except
-`backfill`, and `backfill` only ever *creates* a file that did not exist: `review`,
-`universe`, `learn list`, `learn show`, `backfill` (and any `--dry-run`).
+`backfill`/`adopt`, which only ever *create* files that did not exist: `review`,
+`universe`, `learn list`, `learn show`, `backfill`, `adopt` (and any `--dry-run`).
+
+In a Claude Code on the web session (the *web profile*: `CLAUDE_CODE_REMOTE=true` with
+no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a
+"not available in web sessions" notice and exit 0; `doctor` skips its store, config and
+catalog checks with that notice but still checks the current project (identity, docs,
+skills); `adopt`, `backfill` and `review --no-tui` work as usual. See
+`references/commands.md`.
 
 ## Scaffolding a new project
 
@@ -182,6 +191,15 @@ still work: `backfill intent.md` or `backfill INTENT.md` creates `docs/INTENT.md
 `backfill design.md` creates `docs/TECH-DESIGN.md` — never a root-level file. An
 existing named file is refused — nothing is written and the command exits non-zero — so
 it never clobbers real content. `--dry-run` previews without writing.
+
+## `metaproject adopt`: adopting a repository that already exists
+
+For a repository that is already cloned but has never been under metaproject — always
+the case in a web session — run `metaproject adopt` (optionally `--title`). It writes
+`.metaproject.json`, the `.agents/skills` layout, and every missing deliverable and
+project skill; it never overwrites, runs no git, needs no confirmation, and is permitted
+in agent sessions. Re-running it is a no-op. Use it instead of `new .`, which needs an
+operator.
 
 ## Auditing a project against the templates
 

@@ -25,113 +25,104 @@ The public API is `scan()`, `review()`, `apply_proposal()`, and `reject_proposal
 mistake.
 """
 
-from metaproject.learn.api import (
-    ScanResult,
-    parse_since,
-    reject_proposal,
-    review,
-    scan,
-)
-from metaproject.learn.apply import (
-    ApplyPlan,
-    ApplyResult,
-    Section,
-    apply_plan,
-    apply_proposal,
-    body_is_present,
-    commit_message,
-    ensure_clean_repository,
-    iter_sections,
-    normalize_heading,
-    plan_apply,
-    proposal_body,
-    resolve_section,
-    splice,
-    template_destination,
-)
-from metaproject.learn.collect import (
-    EvidenceRecord,
-    collect_project,
-    collect_workspace,
-    iter_project_dirs,
-    iter_target_files,
-    normalize_text,
-    project_variables,
-    resolve_template,
-)
-from metaproject.learn.drift import (
-    EMPTY_DRIFT,
-    DriftSignal,
-    added_lines,
-    collect_drift,
-)
-from metaproject.learn.guard import (
-    GitignoreMatcher,
-    GuardResult,
-    SendManifest,
-    build_manifest,
-    confirm_send,
-    contains_secret,
-    exclusion_reason,
-    filter_paths,
-    guard_evidence,
-    is_denylisted,
-    redact,
-)
-from metaproject.learn.score import (
-    Candidate,
-    ProjectWeight,
-    activity_weight,
-    candidate_key,
-    drift_factor,
-    group_candidates,
-    order_queue,
-    rank_candidates,
-    recency_factor,
-    weigh_project,
-)
-from metaproject.learn.store import (
-    EvidenceDraft,
-    ProposalDraft,
-    content_hash,
-    evidence_hash,
-    finish_run,
-    get_evidence,
-    get_proposal,
-    get_proposal_by_hash,
-    is_suppressed,
-    list_proposals,
-    mark_applied,
-    should_resurface,
-    start_run,
-    upsert_proposal,
-)
-from metaproject.learn.synth import (
-    Bundle,
-    Proposal,
-    SynthResult,
-    build_prompt,
-    build_reduce_prompt,
-    bundle_evidence,
-    chunk_bundle,
-    claude_command,
-    parse_response,
-    render_block,
-    resolve_claude,
-    run_claude,
-    split_record,
-    synthesize,
-    validate_proposal,
-)
-from metaproject.learn.tui import (
-    SessionResult,
-    effective_view,
-    open_in_editor,
-    order_for_review,
-    run_review,
-    should_open_tui,
-    tui_enabled,
-)
+import importlib
+from typing import Any
+
+# Public name -> the submodule that defines it. Resolved on first access (PEP 562)
+# rather than at import, so importing one submodule (`review` uses
+# `metaproject.learn.collect`) never drags in `store`/`api`, and with them
+# `sqlite-utils`, which ships only in the optional `tui` extra.
+_EXPORTS = {
+    "ScanResult": "api",
+    "parse_since": "api",
+    "reject_proposal": "api",
+    "review": "api",
+    "scan": "api",
+    "ApplyPlan": "apply",
+    "ApplyResult": "apply",
+    "Section": "apply",
+    "apply_plan": "apply",
+    "apply_proposal": "apply",
+    "body_is_present": "apply",
+    "commit_message": "apply",
+    "ensure_clean_repository": "apply",
+    "iter_sections": "apply",
+    "normalize_heading": "apply",
+    "plan_apply": "apply",
+    "proposal_body": "apply",
+    "resolve_section": "apply",
+    "splice": "apply",
+    "template_destination": "apply",
+    "EvidenceRecord": "collect",
+    "collect_project": "collect",
+    "collect_workspace": "collect",
+    "iter_project_dirs": "collect",
+    "iter_target_files": "collect",
+    "normalize_text": "collect",
+    "project_variables": "collect",
+    "resolve_template": "collect",
+    "EMPTY_DRIFT": "drift",
+    "DriftSignal": "drift",
+    "added_lines": "drift",
+    "collect_drift": "drift",
+    "GitignoreMatcher": "guard",
+    "GuardResult": "guard",
+    "SendManifest": "guard",
+    "build_manifest": "guard",
+    "confirm_send": "guard",
+    "contains_secret": "guard",
+    "exclusion_reason": "guard",
+    "filter_paths": "guard",
+    "guard_evidence": "guard",
+    "is_denylisted": "guard",
+    "redact": "guard",
+    "Candidate": "score",
+    "ProjectWeight": "score",
+    "activity_weight": "score",
+    "candidate_key": "score",
+    "drift_factor": "score",
+    "group_candidates": "score",
+    "order_queue": "score",
+    "rank_candidates": "score",
+    "recency_factor": "score",
+    "weigh_project": "score",
+    "EvidenceDraft": "store",
+    "ProposalDraft": "store",
+    "content_hash": "store",
+    "evidence_hash": "store",
+    "finish_run": "store",
+    "get_evidence": "store",
+    "get_proposal": "store",
+    "get_proposal_by_hash": "store",
+    "is_suppressed": "store",
+    "list_proposals": "store",
+    "mark_applied": "store",
+    "should_resurface": "store",
+    "start_run": "store",
+    "upsert_proposal": "store",
+    "Bundle": "synth",
+    "Proposal": "synth",
+    "SynthResult": "synth",
+    "build_prompt": "synth",
+    "build_reduce_prompt": "synth",
+    "bundle_evidence": "synth",
+    "chunk_bundle": "synth",
+    "claude_command": "synth",
+    "parse_response": "synth",
+    "render_block": "synth",
+    "resolve_claude": "synth",
+    "run_claude": "synth",
+    "split_record": "synth",
+    "synthesize": "synth",
+    "validate_proposal": "synth",
+    "SessionResult": "tui",
+    "effective_view": "tui",
+    "open_in_editor": "tui",
+    "order_for_review": "tui",
+    "run_review": "tui",
+    "should_open_tui": "tui",
+    "tui_enabled": "tui",
+}
 
 __all__ = [
     "ApplyPlan",
@@ -224,3 +215,16 @@ __all__ = [
     "redact",
     "resolve_template",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(importlib.import_module(f"{__name__}.{module}"), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list:
+    return sorted(set(globals()) | set(_EXPORTS))

@@ -55,7 +55,7 @@ from metaproject.learn.store import (
     reject_proposal,
     set_edited_body,
 )
-from metaproject.session import agent_marker
+from metaproject.session import tui_enabled as _session_tui_enabled
 
 VIEW_SIDE_BY_SIDE = "side-by-side"
 VIEW_UNIFIED = "unified"
@@ -130,23 +130,12 @@ def tui_enabled(
 ) -> bool:
     """Should the interactive loop be opened at all? (spec.md §5.4.5 "Degradation")
 
-    Four triggers, all of them non-errors: `--no-tui`, an agent session, `TERM=dumb`,
-    and stdout not being a TTY. Scripted, CI, and agent use therefore needs no special
-    flag. The agent check matters even when stdout *is* a TTY, because a harness that
-    allocates a pty would otherwise open a full-screen loop into a tool call and block
-    on keystrokes that never arrive.
+    Delegates to `session.tui_enabled` (the single implementation, shared with `review`)
+    and passes this module's `stdout_is_a_terminal` so it stays a patchable seam.
     """
-    if no_tui:
-        return False
-
-    env = os.environ if env is None else env
-    if agent_marker(env) is not None:
-        return False
-
-    if str(env.get("TERM", "") or "").strip().lower() == "dumb":
-        return False
-
-    return stdout_is_a_terminal(stream)
+    return _session_tui_enabled(
+        no_tui=no_tui, stream=stream, env=env, is_terminal=stdout_is_a_terminal
+    )
 
 
 def should_open_tui(

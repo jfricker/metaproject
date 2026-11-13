@@ -5,6 +5,7 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 ## Features
 - **Instant Scaffolding (`metaproject new`)**: Scaffold projects with full SDLC documentation and automatic git initialization.
 - **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
+- **Agent-Safe Adoption (`metaproject adopt`)**: Bring an already-cloned repository under metaproject — identity, every missing document and skill — create-only, no git, no confirmation.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
 - **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new` and `backfill`.
 - **Repair & Migration (`metaproject doctor`)**: Bring the template store, config and cataloged projects up to date after an upgrade, behind per-fix confirmation.
@@ -19,10 +20,10 @@ Install `metaproject` in editable mode using `uv` or `pip`:
 
 ```bash
 # Clone the repository
-git clone https://github.com/johnfricker/metaproject.git
+git clone https://github.com/jfricker/metaproject.git
 cd metaproject
 
-# Install in editable mode
+# Install in editable mode (dev tools plus the `tui` extra)
 make install
 
 # Check version and package manifest
@@ -32,6 +33,38 @@ metaproject --version
 make test
 make lint
 ```
+
+### Optional `tui` extra
+
+The core install carries only `typer`, `rich` and `jinja2` — enough for `--version`,
+`new`, `backfill`, `adopt` and `review --no-tui`, which is all a fresh container needs.
+The interactive pieces and the SQLite catalog ship in the `tui` extra
+(`textual`, `questionary`, `sqlite-utils`), needed by the TUIs, interactive prompts,
+`universe`, `learn` and `doctor`:
+
+```bash
+uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject"   # full
+uv tool install "git+https://github.com/jfricker/metaproject"                     # core
+```
+
+A command that needs the extra without it says so in one line (with the install command)
+and exits 1. `twine` is a `dev` dependency (release tooling), not a runtime one.
+
+### Claude Code on the web (web profile)
+
+In a Claude Code on the web session (`CLAUDE_CODE_REMOTE=true` with no
+`~/.metaproject/config.json`, or `METAPROJECT_PROFILE=web` anywhere) metaproject runs in
+the **web profile**: `init` writes a minimal config (`"profile": "web"`), never prompts,
+and skips template-store seeding and the workspace scan; `universe` and `learn` print a
+one-line "not available in web sessions" notice and exit 0 (`universe --format json`
+keeps stdout JSON); `doctor` skips its store, config and catalog checks with that notice
+and runs only one project's identity, docs and skills checks — `[PROJECT]` if given, else
+the current directory (in an agent session,
+or without `questionary`, it reports them as `--dry-run` would instead of refusing: exit 0
+when healthy, 1 with findings); `review` prints the notice and then the board instead of
+opening it, exit 0. `adopt`, `backfill`, `review --no-tui` and `--version` work
+as usual, rendering from the bundled templates. `METAPROJECT_PROFILE=local` forces the
+local profile.
 
 ## Upgrading
 
@@ -191,8 +224,14 @@ metaproject init --force
 To seed templates and configure non-interactively in scripts or CI:
 
 ```bash
+metaproject init --non-interactive --author "Jane Doe" --project-home ~/Projects
 metaproject init --config-dir ~/.metaproject --project-home ~/Projects --force
 ```
+
+The author defaults to `git config user.name`, then `$USER`, but a detected identity a
+container gives itself (`Claude`, `root`, …) is never used: it falls through to
+`Developer`. An author you configure explicitly is always used as written. Documents
+take their author from the project's `.metaproject.json` first, then config, then git.
 
 ---
 
@@ -289,6 +328,25 @@ With no file argument, every missing scaffolded deliverable is created in one ca
 (already exists)". Naming files creates exactly those — including on-demand ones — but if
 *any* named file already exists, nothing at all is written and the command exits non-zero,
 listing the file(s) under "Refused — already exists, nothing written".
+
+### 2b. Adopting an Existing Repository (`metaproject adopt`)
+
+`metaproject adopt [--dir PATH] [--title T]` brings a repository that already exists —
+typically one that was just cloned — under metaproject. It writes `.metaproject.json`
+(title from `--title`, else the README heading, `pyproject.toml`/`package.json` name, or
+the directory name), the `.agents/skills` layout with its `.claude/skills` link, and
+every missing deliverable and project skill. It never overwrites a file (an existing
+`.metaproject.json` is kept as written), runs no git command, needs no confirmation, and
+is permitted in agent sessions. `--dry-run` previews; re-running it is a no-op. The
+author comes from `--author`, config, then git/`$USER` (never a container identity such
+as "Claude"); when none yields a real name, adopt writes nothing and asks for `--author`,
+because `.metaproject.json` would otherwise pin a placeholder author for good.
+`metaproject new .` keeps its interactive, operator-confirmed semantics.
+
+```bash
+cd my-cloned-repo && metaproject adopt
+metaproject adopt --dir ~/Projects/game-workshop --title "Game Workshop"
+```
 
 ---
 
