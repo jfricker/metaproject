@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into docs/archive/, removes the cycle's worktrees, and recreates blank cycle documents with `metaproject backfill`. Never touches source code or tests. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into docs/archive/, flags unrelated changes that would ship, hands branch and worktree cleanup to `/shipit` (with a manual fallback), and recreates blank cycle documents with `metaproject backfill`. Besides documents it changes only git worktrees and the cycle's local and remote branches; never source code or tests. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # wrapup
@@ -70,7 +70,7 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    - Ask the operator, per item, to choose one:
      - **Discard** — no longer relevant; drop it.
      - **Carry forward** — it's real but out of scope for this cycle; it gets seeded
-       into the next `docs/INTENT.md`'s Open questions section (step 9), linked back to this
+       into the next `docs/INTENT.md`'s Open questions section (step 8), linked back to this
        cycle's archive, so `write-intent` starts the next cycle with it already in view.
      - **Return to implement-plan** — the cycle isn't actually finished; this item needs
        real work, not a note. If the operator picks this for *any* item, **stop the
@@ -109,18 +109,35 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    archive directory, preserving history. If INTENT.md has an `**Origin**` field pointing
    at a `docs/backlog/` doc, `git mv` that doc into the archive directory too. STATE.md is
    archived whole, only after step 6 has already copied its invariants/facts elsewhere.
-8. Remove worktrees created for this cycle: for each one listed by `git worktree list`
-   under `.claude/worktrees/` that belongs to this cycle, run
-   `git worktree remove <path>` (add `--force` only after confirming with the user
-   there's nothing uncommitted worth keeping in it).
-9. Recreate the working documents in `docs/` in one call:
+8. Recreate the working documents in `docs/` in one call:
    `metaproject backfill` (no file arguments) — this recreates blank `docs/INTENT.md`,
    `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, and `docs/STATE.md` since step 7 moved all of them out.
    Then, if step 2 produced any "carry forward" items, seed the new `docs/INTENT.md`'s
    **Open questions** section with them, each one linked back to the cycle it came from
    (`docs/archive/YYYY-MM-DD-<slug>/`).
-10. Commit the archive + long-lived doc updates + reset as one commit (e.g.
+9. Commit the archive + long-lived doc updates + reset as one commit on the cycle branch (before the `/shipit` handoff, so the gate and merge carry it to `main`) (e.g.
     `chore: archive <slug> cycle, reset SDLC docs`).
+10. **Wrap up the cycle's branch and worktrees** (only after step 9's commit, so the archive and reset ship with the merge). A branch is *wrapped up* when its work
+   has passed the gate, been fast-forward merged to `main`, pushed, deployed and
+   verified (where the project deploys), and its worktree and local and remote branch
+   are gone. Wrapup owns the documents; `/shipit` owns that sequence.
+   - **Flag unrelated changes first.** Compare what would land on `main` with this
+     cycle's scope: `git log --oneline main..<branch>`, `git diff --stat main...<branch>`,
+     and `git status --short` on `main`. List anything that is not part of the cycle
+     (held-back dependency upgrades, lockfile churn, stray local commits, other
+     people's unpushed work) and ask the operator whether it ships with the push, is
+     split out, or is left behind. Never push it silently.
+   - **Hand off to `/shipit`** (gate, fast-forward merge to `main`, push, deploy and
+     verify, remove the worktree and the local and remote branch) for each worktree
+     under `.claude/worktrees/` that belongs to this cycle. Do not duplicate those
+     steps here.
+   - **Fallback if `/shipit` is not installed** (`.agents/skills/shipit/` is absent):
+     for each such worktree, confirm the work is merged (`git branch --merged main` lists the branch); if it is not merged, stop and report to the operator instead of removing anything. Otherwise run `git worktree remove <path>`
+     (add `--force` only after confirming with the user there is nothing uncommitted
+     worth keeping), then delete the merged branch with `git branch -d <branch>` (and
+     `git push origin --delete <branch>` if it exists on the remote). `-d` refuses an
+     unmerged branch; never use `-D` without the operator's say-so. Tell the operator
+     that merge, push and deploy were not done by this skill.
 
 ## Output artifact
 
@@ -133,7 +150,7 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
   - `docs/INTENT.md` (Open questions possibly seeded with carried-forward items),
     `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md` recreated via
     `metaproject backfill`.
-  - No worktrees left over from the closed cycle.
+  - No worktrees or merged branches left over from the closed cycle.
 - Or: an early exit back to `implement-plan` — nothing archived, nothing reset,
   triggered by the operator choosing "return to implement-plan" on an open item in
   step 2.
@@ -147,6 +164,7 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
   here); proceed only once they confirm the cycle's work is actually complete.
 - Never delete a worktree with uncommitted or unmerged work without explicit
   confirmation.
+- Never push unrelated changes (step 10) without the operator's explicit say-so.
 - Never archive STATE.md without first preserving any non-empty Design
   invariants/Verified facts content into the long-lived docs — that knowledge doesn't
   get a second chance once STATE.md is moved out.

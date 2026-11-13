@@ -142,14 +142,14 @@ The wizard will prompt for:
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
 #### Project Skills
-`init` installs no skill. Nine skills ship inside the package and are copied into each
+`init` installs no skill. Ten skills ship inside the package and are copied into each
 project by `metaproject new` and `metaproject backfill`, into `.agents/skills/<name>/`
 (reachable as `.claude/skills/<name>/` through the symlink `new` creates), and committed
 with the project like any other file:
 
-- the eight SDLC cycle skills — `/write-intent`, `/generate-spec`, `/generate-design`,
-  `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, and `/backlog-new` for
-  parking ideas — invoked by bare name;
+- the nine SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
+  `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, `/shipit` (merge, push, deploy and
+  clean up a finished branch), and `/backlog-new` for parking ideas — invoked by bare name;
 - the `metaproject` skill, which teaches an agent when to reach for each command, which
   forms are safe to run unattended (`review --no-tui`, `learn list`, `universe`) and which
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;
@@ -163,6 +163,36 @@ Installation is create-only. `backfill` (with no file arguments) adds a skill wh
 directory is missing and never writes into an existing one; a copy that differs from the
 release is reported as stale. If `.claude/skills` is a real directory, or a symlink to
 somewhere other than `.agents/skills`, no skill is written and a notice says why.
+
+#### Claude Code Hooks
+`new` and `backfill` also wire two Claude Code hooks into the project, so lint errors are
+caught right after an edit and a stale preview server cannot break an e2e run:
+
+| Event | Matcher | What it does |
+|---|---|---|
+| `PostToolUse` | `Edit\|Write` | Runs `commands.lint`, then `commands.typecheck`, from `.metaproject.json`. Silent when neither is set or both pass; on failure the first 20 lines go back to the agent (exit 2). |
+| `PreToolUse` | `Bash` | When the command mentions playwright and `e2e_port` is set, stops whatever is listening on that port. Never blocks the command. |
+
+Both run `.claude/hooks/metaproject_hook.py`, a stdlib-only Python script copied into the
+project create-only (needs `python3` on `PATH`). It reads `.metaproject.json` each time, so
+configuring a project is one edit:
+
+```json
+{
+  "commands": { "lint": "make lint", "typecheck": "npx tsc --noEmit -p ." },
+  "e2e_port": 4173
+}
+```
+
+`.claude/settings.json` is **merged, never overwritten**: every key already there is kept,
+and metaproject only adds its own entries under `hooks`, keyed by their command string so
+a re-run adds nothing. A settings file that is not valid JSON is left untouched and
+reported. `review` reports `.claude/settings.json` missing until both hooks are merged.
+Claude Code's sandbox can deny an agent writes to `.claude/settings.json` and
+`.claude/hooks/`; a default-mode `backfill` then lists the hooks as "Not written" with a
+notice and still exits 0 — run it yourself to install them. The hook commands are guarded
+(`[ -f "$f" ] || exit 0`), so a settings file whose script is missing never blocks a tool
+call.
 
 #### Agent-Session Guards
 The skill tells an agent what to do; the CLI enforces it either way. When `metaproject`
@@ -257,7 +287,9 @@ metaproject new .
 Every scaffold — fresh or into an existing directory — also writes `.metaproject.json` at
 the project root (`title`, `description`, `author`, `created`, `metaproject_version`),
 tracked in the initial commit. `review`, `learn`, `backfill`, and `universe` all read it
-first when resolving a project's variables.
+first when resolving a project's variables. It may also carry optional `commands.lint`,
+`commands.typecheck` and `e2e_port` for the Claude Code hooks (above); metaproject never
+removes keys it did not write.
 
 #### Previewing with Dry Run
 To inspect the files and paths that would be generated without writing anything to disk:

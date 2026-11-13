@@ -4,7 +4,7 @@ and project generation.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from metaproject import __version__
 from metaproject import variables as variables_module
@@ -12,6 +12,7 @@ from metaproject.config import FALLBACK_AUTHOR, Config, load_config
 from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
+from metaproject.hooks import install_hooks
 from metaproject.identity import IDENTITY_FILE, Identity, write_identity
 from metaproject.skills import install_project_skills
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
@@ -106,6 +107,7 @@ class TransactionalTracker:
         self.created_files: List[Path] = []
         self.created_dirs: List[Path] = []
         self.existing_paths_before: Set[Path] = set()
+        self.modified_files: List[Tuple[Path, bytes]] = []
 
     def record_existing(self, path: Path) -> None:
         """Snapshot an existing path so rollback never touches it."""
@@ -123,8 +125,25 @@ class TransactionalTracker:
         if res not in self.existing_paths_before and res not in self.created_files:
             self.created_files.append(res)
 
+    def record_modified_file(self, path: Path) -> None:
+        """Snapshot a pre-existing file about to be merged into, so rollback restores it."""
+        res = path.resolve()
+        if any(existing == res for existing, _ in self.modified_files):
+            return
+        self.modified_files.append((res, res.read_bytes()))
+
     def rollback(self) -> None:
-        """Undo only items created during this operation; never touch pre-existing paths."""
+        """Undo only items created during this operation; never touch pre-existing paths.
+
+        A pre-existing file merged into (`record_modified_file`) is restored to the bytes
+        it had before, never deleted.
+        """
+        for file_path, original in reversed(self.modified_files):
+            try:
+                file_path.write_bytes(original)
+            except Exception:
+                pass
+
         for file_path in reversed(self.created_files):
             try:
                 if file_path.is_file() or file_path.is_symlink():
@@ -328,6 +347,11 @@ def scaffold_project(
         # commit includes them (R-SKL-2, R-SKL-6). Create-only, rollback-tracked.
         skills_report = install_project_skills(target_dir, dry_run=dry_run, tracker=tracker)
 
+        # 5b. Claude Code hooks: the hook script (create-only) and its entries merged into
+        # .claude/settings.json (merge, never overwrite). An unmergeable settings file is
+        # reported, not fatal: nothing is written for hooks and the scaffold goes on.
+        hooks_report = install_hooks(target_dir, dry_run=dry_run, tracker=tracker)
+
         # 6. Git initialisation. A backfill never touches an existing repository: staging
         # and committing there would sweep the operator's own working tree into a commit
         # they did not ask for.
@@ -358,6 +382,7 @@ def scaffold_project(
             "backfilled": is_backfill,
             "skills_link": skills_link,
             "skills": skills_report,
+            "hooks": hooks_report,
             "git_initialized": git_initialized,
             "git_status": git_status,
             "dry_run": dry_run,

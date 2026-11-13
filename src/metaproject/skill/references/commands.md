@@ -60,9 +60,12 @@ catalog summary instead of changing anything — a safe way to inspect the envir
 | `--no-git` | Skip `git init` and the initial commit |
 
 Also writes `.metaproject.json` (`title`, `description`, `author`, `created`,
-`metaproject_version`) and copies the project skills (this one plus the eight SDLC cycle
+`metaproject_version`) and copies the project skills (this one plus the nine SDLC
 skills) into `.agents/skills/<name>/`, reachable as `.claude/skills/<name>/`; both are
-tracked in the initial commit. Cycle documents land in `docs/` (`docs/INTENT.md`,
+tracked in the initial commit. Also installs the Claude Code hooks: the script
+`.claude/hooks/metaproject_hook.py` (create-only) and two entries merged into
+`.claude/settings.json` (merge, never overwrite; invalid JSON there is reported and left
+alone). Cycle documents land in `docs/` (`docs/INTENT.md`,
 `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,
 `docs/ARCHITECTURE.md`).
 
@@ -104,6 +107,13 @@ Two modes:
   written into (a copy that differs from this release is reported stale). If
   `.claude/skills` is a real directory, or a symlink to somewhere other than
   `.agents/skills`, no skill is written and a notice says why.
+  `.claude/settings.json` counts as missing until the metaproject hooks are merged into
+  it; backfilling it merges them and keeps every existing key. An invalid settings file
+  is listed under "Refused — hooks not installed" with a notice, and backfill exits 1.
+  When Claude Code's sandbox denies the agent writes under `.claude/`, the hooks are
+  listed under "Not written" with a notice and backfill still exits 0 (everything else
+  landed); the operator runs `metaproject backfill` themselves to install them. Naming
+  `.claude/settings.json` explicitly and failing to write it exits 1.
 - **Named `FILE`s** — creates exactly those (never skills), including on-demand ones
   like `docs/HANDOFF.md`. If *any* named file already exists, nothing at all is written and every
   existing name is reported under "Refused — already exists, nothing written"; the
@@ -362,7 +372,9 @@ metaproject universe --list --all --format json
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
 | `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`, committed with the project (`.claude/skills` links here) |
-| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe` |
+| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks |
+| `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
+| `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`), copied create-only |
 
 Template files carry a `.template` infix that is stripped on render:
 `AGENTS.template.md` → `AGENTS.md`, `.gitignore.template` → `.gitignore`,
