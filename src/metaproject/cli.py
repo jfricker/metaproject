@@ -280,7 +280,7 @@ def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: 
 def print_hooks_report(
     project_dir: Path,
     added: List[str],
-    script_installed: bool,
+    scripts_installed: List[str],
     notice: Optional[str],
     dry_run: bool,
 ) -> None:
@@ -290,21 +290,21 @@ def print_hooks_report(
     hook was just wired up but `.metaproject.json` names no command, say so: the hook is
     silent until `commands.lint` (or `commands.typecheck`) is set.
     """
-    from metaproject.hooks import HOOK_SCRIPT_PATH, SETTINGS_PATH
+    from metaproject.hooks import SETTINGS_PATH
 
     if notice:
         console.print(f"[yellow]Notice:[/] {notice}")
         return
-    if not added and not script_installed:
+    if not added and not scripts_installed:
         return
     verb = "Would add" if dry_run else "Added"
     if added:
         console.print(
             f"[cyan]✓ {verb} metaproject hook(s) to {SETTINGS_PATH}:[/cyan] " + ", ".join(added)
         )
-    if script_installed:
+    if scripts_installed:
         script_verb = "would install" if dry_run else "installed"
-        console.print(f"[dim]{script_verb} {HOOK_SCRIPT_PATH}[/dim]")
+        console.print(f"[dim]{script_verb} {', '.join(scripts_installed)}[/dim]")
     print_hook_config_hint(project_dir)
 
 
@@ -317,6 +317,24 @@ def print_hook_config_hint(project_dir: Path) -> None:
             '[dim]The post-edit hook is idle until .metaproject.json sets "commands": '
             '{"lint": "..."} (optionally "typecheck", and "e2e_port" for playwright).[/dim]'
         )
+
+
+def resolve_project_templates(project_dir: Path, templates_path: Optional[Path]) -> Optional[Path]:
+    """Resolve the store once for `backfill`/`adopt`/`review` and say where it came from.
+
+    Resolved once per command and handed on as an explicit path, so a git
+    `templates.source` is fetched at most once and every write in the batch renders from
+    the same store. The line is printed only when the project declares
+    `templates.source`, so output is unchanged for every project that does not.
+    """
+    from metaproject.template_source import ORIGIN_BUNDLED, resolve_templates
+
+    resolution = resolve_templates(project_dir, templates_path)
+    if not resolution.source_declared:
+        return templates_path
+    style = "yellow" if resolution.origin == ORIGIN_BUNDLED else "dim"
+    console.print(f"[{style}]{escape(resolution.describe())}[/{style}]", soft_wrap=True)
+    return resolution.path
 
 
 def print_agent_degradation_notice(what: str, action: str) -> None:
@@ -825,12 +843,10 @@ def new_cmd(
         print_skills_report(skills_report.states, skills_report.notice, dry_run)
     hooks_report = result.get("hooks")
     if hooks_report is not None:
-        from metaproject.hooks import INSTALLED as HOOK_SCRIPT_INSTALLED
-
         print_hooks_report(
             target_dir,
             [entry.event for entry in hooks_report.added],
-            hooks_report.script == HOOK_SCRIPT_INSTALLED,
+            hooks_report.installed_scripts,
             hooks_report.notice,
             dry_run,
         )
@@ -1196,6 +1212,7 @@ def review_cmd(
             include_ignored=show_ignored,
         )
     else:
+        templates_path = resolve_project_templates(target, templates_path)
         results = [review_project(target, templates_path)]
 
     if not results:
@@ -1355,6 +1372,7 @@ def backfill_cmd(
     from metaproject.review import backfill_missing
 
     target = (project_dir or Path.cwd()).resolve()
+    templates_path = resolve_project_templates(target, templates_path)
     result = backfill_missing(
         target, files=files or None, templates_dir=templates_path, dry_run=dry_run
     )
@@ -1409,6 +1427,7 @@ def adopt_cmd(
     from metaproject.scaffold import adopt_project
 
     target = (project_dir or Path.cwd()).resolve()
+    templates_path = resolve_project_templates(target, templates_path)
     try:
         result = adopt_project(
             target,
@@ -1798,6 +1817,72 @@ def skills_sync_cmd(
             "skills; run [bold cyan]metaproject adopt[/bold cyan] to create the link.",
             soft_wrap=True,
         )
+
+
+# ----------------------------------------------------------------------- templates
+
+templates_app = typer.Typer(
+    name="templates",
+    help=(
+        "Work with a project's declared template store (agent-safe).\n\n"
+        'A project may declare `"templates": {"source": ...}` in .metaproject.json — a '
+        "git URL (optionally with ref and subdir) or a path in the repository. When "
+        "~/.metaproject/templates is missing, backfill, adopt and review render from it."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(templates_app, name="templates")
+
+
+@templates_app.command(name="fetch")
+def templates_fetch_cmd(
+    project_dir: Optional[Path] = typer.Option(
+        None, "--dir", "-d", help="Project whose templates.source to fetch (default: cwd)."
+    ),
+) -> None:
+    """Shallow-fetch (or refresh) the project's git `templates.source` into the cache.
+
+    A no-op that exits 0 when the project declares no source. A path source is checked,
+    not copied. Exits 1 when the source is malformed or cannot be fetched; a cache from
+    an earlier fetch is kept and still used.
+    """
+    from metaproject.template_source import (
+        TemplateSourceError,
+        fetch_template_source,
+        read_template_source,
+        store_usable,
+    )
+
+    target = (project_dir or Path.cwd()).resolve()
+    try:
+        source = read_template_source(target)
+    except TemplateSourceError as exc:
+        console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
+        raise typer.Exit(code=1)
+    if source is None:
+        console.print("[dim]No templates.source in .metaproject.json; nothing to fetch.[/dim]")
+        return
+    if source.kind == "path":
+        path = (target / Path(source.location).expanduser()).resolve()
+        if store_usable(path):
+            console.print(f"[green]✓[/green] templates.source is a path: {path}", soft_wrap=True)
+            return
+        console.print(
+            f"[bold red]Error:[/bold red] templates.source path {path} is missing or empty.",
+            soft_wrap=True,
+        )
+        raise typer.Exit(code=1)
+
+    result = fetch_template_source(source)
+    if result.ok:
+        console.print(f"[green]✓[/green] {escape(result.message)} → {result.path}", soft_wrap=True)
+        return
+    color = "yellow" if result.path is not None else "bold red"
+    console.print(
+        f"[{color}]Could not fetch {escape(source.label)}:[/{color}] {escape(result.message)}",
+        soft_wrap=True,
+    )
+    raise typer.Exit(code=1)
 
 
 # --------------------------------------------------------------------------- learn

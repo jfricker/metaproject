@@ -63,8 +63,9 @@ catalog summary instead of changing anything — a safe way to inspect the envir
 Also writes `.metaproject.json` (`title`, `description`, `author`, `created`,
 `metaproject_version`) and copies the project skills (this one plus the nine SDLC
 skills) into `.agents/skills/<name>/`, reachable as `.claude/skills/<name>/`; both are
-tracked in the initial commit. Also installs the Claude Code hooks: the script
-`.claude/hooks/metaproject_hook.py` (create-only) and two entries merged into
+tracked in the initial commit. Also installs the Claude Code hooks: the scripts
+`.claude/hooks/metaproject_hook.py` and `scripts/metaproject-session.sh` (create-only)
+and three entries (`PostToolUse`, `PreToolUse`, web-only session-start) merged into
 `.claude/settings.json` (merge, never overwrite; invalid JSON there is reported and left
 alone). Cycle documents land in `docs/` (`docs/INTENT.md`,
 `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,
@@ -356,7 +357,37 @@ holds; a config without that key is a local machine whatever the environment say
 | `universe`, `learn` (every subcommand) | One-line "not available in web sessions" notice, exit 0. With `universe --format json` the notice goes to stderr and stdout carries `{"available": false, "profile": "web", ...}`; with `--format csv` stdout stays empty |
 | `doctor` | One-line notice that the store, config and catalog checks are skipped; the per-project checks (identity, docs, skills) still run against `PROJECT` when given, else the current directory. `--dry-run` reports. Without `--dry-run`, an agent session (or a core install without `questionary`) gets the same report instead of a refusal; exit 0 when the project is healthy, 1 when there are findings. A fix still needs an operator to confirm it |
 | `review` | The interactive board is not available: one-line notice, then the printed board (as `--no-tui`), exit 0 |
-| `adopt`, `backfill`, `new`, `review --no-tui`, `--version` | Unchanged; render from the bundled templates when the store is absent |
+| `adopt`, `backfill`, `new`, `review --no-tui`, `--version` | Unchanged; when the store is absent, `adopt`/`backfill`/`review` render from the project's `templates.source`, else the bundled templates |
+| `skills`, `templates fetch` | Unchanged (agent-safe) |
+
+### Session-start bootstrap
+
+`new` and `backfill` merge a session-start hook entry into `.claude/settings.json` and copy
+`scripts/metaproject-session.sh` create-only. The entry runs the script only when the
+file exists **and** `CLAUDE_CODE_REMOTE=true`, and always exits 0. The script installs
+the CLI at `.metaproject.json`'s `metaproject_version`
+(`uv tool install git+https://github.com/jfricker/metaproject@v<version>`, then pipx,
+then `pip --user`, then the default branch; skipped when that version is already
+installed), appends `~/.local/bin` to `PATH` via `$CLAUDE_ENV_FILE`, then runs
+`metaproject skills sync` and `metaproject templates fetch`. Output goes to
+`$METAPROJECT_SESSION_LOG` (default `$TMPDIR/metaproject-session.log`); offline or
+without `uv` it still exits 0. `METAPROJECT_REPO_URL` overrides the repository.
+
+### `templates.source`
+
+Optional, in `.metaproject.json`: `"templates": {"source": ...}` — a git URL, an object
+`{"url", "ref", "subdir"}`, or a repository path (`"tools/templates"` /
+`{"path": ...}`). Only consulted when `~/.metaproject/templates` is missing or empty
+(`--templates` and a local store always win). A git source is shallow-fetched
+(`--depth 1`, non-interactive, 120 s timeout) into
+`~/.metaproject/cache/templates/<name>-<hash>/` on first use and reused offline after
+that. `backfill`, `adopt` and `review` print `Templates: ...` naming the store used; a
+malformed, missing or unreachable source falls back to the bundled templates and the
+line says why (in `review --all`, the line is a per-project note instead).
+
+`metaproject templates fetch [--dir PATH]` — fetch or refresh the cache. Exit 0 with no
+source declared, or after a successful fetch (a path source is only checked); exit 1 on
+a malformed source or a failed fetch (a cache from an earlier fetch is kept and used).
 
 ## Optional `tui` extra
 
@@ -388,6 +419,9 @@ metaproject adopt
 metaproject skills status
 metaproject skills sync
 
+# Fetch or refresh the project's declared templates.source (agent-safe)
+metaproject templates fetch
+
 # Audit this project (prints the board in an agent session)
 metaproject review
 
@@ -413,11 +447,13 @@ metaproject universe --list --all --format json
 | `~/.metaproject/templates/` | The template store — a git repository |
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
+| `~/.metaproject/cache/templates/` | Shallow checkouts of projects' git `templates.source` |
 | `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`/`adopt`, updated by `skills sync`, committed with the project (`.claude/skills` links here) |
 | `<project>/.agents/skills/.metaproject-skills.json` | Skills install manifest: release and per-file sha256 for each installed skill; committed |
-| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks |
+| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, and `templates.source` |
 | `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
 | `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`), copied create-only |
+| `<project>/scripts/metaproject-session.sh` | The web session-start bootstrap script, copied create-only |
 
 Template files carry a `.template` infix that is stripped on render:
 `AGENTS.template.md` → `AGENTS.md`, `.gitignore.template` → `.gitignore`,

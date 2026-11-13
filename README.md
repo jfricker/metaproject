@@ -63,8 +63,39 @@ the current directory (in an agent session,
 or without `questionary`, it reports them as `--dry-run` would instead of refusing: exit 0
 when healthy, 1 with findings); `review` prints the notice and then the board instead of
 opening it, exit 0. `adopt`, `backfill`, `review --no-tui` and `--version` work
-as usual, rendering from the bundled templates. `METAPROJECT_PROFILE=local` forces the
-local profile.
+as usual, rendering from the project's `templates.source` when it declares one (below),
+else the bundled templates. `METAPROJECT_PROFILE=local` forces the local profile.
+
+`new` and `backfill` install a `SessionStart` hook that bootstraps each web session. It
+runs `scripts/metaproject-session.sh` (copied create-only) **only** when
+`CLAUDE_CODE_REMOTE=true`; the script installs the CLI at the version pinned in
+`.metaproject.json` (`metaproject_version`) with
+`uv tool install git+https://github.com/jfricker/metaproject@v<version>` (falling back to
+pipx, then `pip --user`, then the default branch), adds `~/.local/bin` to the session's
+`PATH`, runs `metaproject skills sync` and `metaproject templates fetch`. It is
+idempotent (a matching installed version is left alone), writes only to a log
+(`$TMPDIR/metaproject-session.log`), and always exits 0 — offline, no `uv`, or a missing
+script never blocks a session.
+
+### Template store in a fresh container (`templates.source`)
+
+A web container has no `~/.metaproject/templates`, so documents would render from the
+bundled defaults and `review` would report drift against your own store that is not real.
+Declare where the store lives in `.metaproject.json`:
+
+```json
+{ "templates": { "source": { "url": "https://github.com/you/templates.git", "ref": "main" } } }
+```
+
+`source` may also be a bare git URL, `{"url": ..., "ref": ..., "subdir": ...}` for a store
+inside a larger repository, or a repository path (`"tools/templates"` or
+`{"path": "tools/templates"}`). When `~/.metaproject/templates` is missing or empty,
+`backfill`, `adopt` and `review` use it — a git source is shallow-fetched once into
+`~/.metaproject/cache/templates/` and reused from there — and print which store they used
+(`Templates: ...`). A source that is malformed, missing or unreachable falls back to the
+bundled templates, and the line says why. A local store always wins over a declared
+source. `metaproject templates fetch` refreshes the cache (the session script runs it);
+it is a no-op without a source.
 
 ## Upgrading
 
@@ -181,8 +212,10 @@ metaproject skills status --format json
 swapped in by rename, with the old copy restored if the swap fails).
 
 #### Claude Code Hooks
-`new` and `backfill` also wire two Claude Code hooks into the project, so lint errors are
-caught right after an edit and a stale preview server cannot break an e2e run:
+`new` and `backfill` also wire Claude Code hooks into the project, so lint errors are
+caught right after an edit and a stale preview server cannot break an e2e run (plus the
+web-only `SessionStart` bootstrap described under
+[Claude Code on the web](#claude-code-on-the-web-web-profile)):
 
 | Event | Matcher | What it does |
 |---|---|---|
@@ -203,7 +236,8 @@ configuring a project is one edit:
 `.claude/settings.json` is **merged, never overwritten**: every key already there is kept,
 and metaproject only adds its own entries under `hooks`, keyed by their command string so
 a re-run adds nothing. A settings file that is not valid JSON is left untouched and
-reported. `review` reports `.claude/settings.json` missing until both hooks are merged.
+reported. `review` reports `.claude/settings.json` missing until every hook is merged and
+both scripts are present.
 Claude Code's sandbox can deny an agent writes to `.claude/settings.json` and
 `.claude/hooks/`; a default-mode `backfill` then lists the hooks as "Not written" with a
 notice and still exits 0 — run it yourself to install them. The hook commands are guarded

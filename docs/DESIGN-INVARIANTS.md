@@ -108,3 +108,26 @@ invariant established in one cycle isn't accidentally violated in the next.
 - `.agents/skills/.metaproject-skills.json` is rewritten only when its content changes
   (atomic replace); entries for retired skills are preserved, and a manifest with a newer
   format version is never rewritten (`sync` exits 1).
+
+## 2026-11-13 — issue #3 part 3c (SessionStart hook, `templates.source`)
+
+- The `SessionStart` entry is one more `HookEntry` through `hooks.merge_hooks`; its
+  command string is its identity. It exits 0 when `scripts/metaproject-session.sh` is
+  absent and never spawns the script unless `CLAUDE_CODE_REMOTE=true`.
+- `scripts/metaproject-session.sh` always exits 0 and writes nothing to stdout/stderr
+  (log file only); it re-checks `CLAUDE_CODE_REMOTE` itself, and only accepts a pinned
+  `metaproject_version` matching `[0-9][0-9A-Za-z.+-]*`.
+- Both hook scripts are copied create-only; `hooks_installed` (and so review's settings
+  deliverable) requires both present. A differing copy is a review note, never rewritten.
+- `template_source.resolve_templates` is the single store-resolution order:
+  `--templates` > non-empty local store > `templates.source` > bundled. A declared source
+  never shadows a local store, and every failure (malformed, missing, offline, no git)
+  falls back to bundled with the reason — never an error.
+- A git source is fetched only into `<config dir>/cache/templates/`, via a staging
+  sibling renamed into place on success, so a failed fetch leaves no cache; a cached copy
+  is reused without the network, and a failed refresh keeps it. Git runs with
+  `GIT_TERMINAL_PROMPT=0`, a timeout, `--` before the URL, git-location env vars removed,
+  and only https/http/ssh/git/file or scp-style URLs (no `ext::`).
+- `backfill`/`adopt`/`review` resolve the store once per command and pass it on as an
+  explicit path; the `Templates: ...` line is printed only when the project declares a
+  source, so output for every other project is unchanged.

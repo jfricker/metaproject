@@ -92,3 +92,13 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - `tests/test_skills.py::test_ac5_...` failed on `main` before this change: Rich wraps
   the long tmp path and splits "real directory" across lines; the assertion now compares
   whitespace-normalised output.
+
+## 2026-11-13 — issue #3 part 3c
+
+- `git init` + `git fetch --depth 1 --no-tags -- <url> <ref>` + `git checkout --detach
+  FETCH_HEAD` shallow-fetches a named branch from a `file://` remote; verified by
+  `tests/test_template_source.py` with a real local repository (no network). Tags and
+  `HEAD` take the same path but are only exercised against a fake git runner.
+- `metaproject --version` prints "Package Manifest — metaproject v<version>" first, so
+  the session script's `grep -oE '[0-9]+\.[0-9]+\.[0-9]+…' | head -n 1` reads the
+  installed version (run with `COLUMNS=200` so Rich does not wrap the title).
