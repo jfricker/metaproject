@@ -1057,6 +1057,7 @@ def test_board_deploy_action_writes_missing_files(tmp_path: Path, quiet_console:
         ".gitignore",
         "docs",
         "docs/archive",
+        ".claude/settings.json",
     }
     assert not (proj / "docs/HANDOFF.md").exists()
     assert set(review_project(proj).missing_files) == set()

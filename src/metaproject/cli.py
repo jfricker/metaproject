@@ -196,6 +196,48 @@ def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: 
         )
 
 
+def print_hooks_report(
+    project_dir: Path,
+    added: List[str],
+    script_installed: bool,
+    notice: Optional[str],
+    dry_run: bool,
+) -> None:
+    """Narrate one Claude Code hooks install pass (`new`).
+
+    `added` names the hook events merged into `.claude/settings.json`. When the post-edit
+    hook was just wired up but `.metaproject.json` names no command, say so: the hook is
+    silent until `commands.lint` (or `commands.typecheck`) is set.
+    """
+    from metaproject.hooks import HOOK_SCRIPT_PATH, SETTINGS_PATH
+
+    if notice:
+        console.print(f"[yellow]Notice:[/] {notice}")
+        return
+    if not added and not script_installed:
+        return
+    verb = "Would add" if dry_run else "Added"
+    if added:
+        console.print(
+            f"[cyan]✓ {verb} metaproject hook(s) to {SETTINGS_PATH}:[/cyan] " + ", ".join(added)
+        )
+    if script_installed:
+        script_verb = "would install" if dry_run else "installed"
+        console.print(f"[dim]{script_verb} {HOOK_SCRIPT_PATH}[/dim]")
+    print_hook_config_hint(project_dir)
+
+
+def print_hook_config_hint(project_dir: Path) -> None:
+    """Say the post-edit hook is idle when `.metaproject.json` names no command."""
+    from metaproject.hooks import read_hook_config
+
+    if not read_hook_config(project_dir).has_commands:
+        console.print(
+            '[dim]The post-edit hook is idle until .metaproject.json sets "commands": '
+            '{"lint": "..."} (optionally "typecheck", and "e2e_port" for playwright).[/dim]'
+        )
+
+
 def print_agent_degradation_notice(what: str, action: str) -> None:
     """Explain a TUI that did not open because an agent is driving.
 
@@ -638,6 +680,17 @@ def new_cmd(
     skills_report = result.get("skills")
     if skills_report is not None:
         print_skills_report(skills_report.states, skills_report.notice, dry_run)
+    hooks_report = result.get("hooks")
+    if hooks_report is not None:
+        from metaproject.hooks import INSTALLED as HOOK_SCRIPT_INSTALLED
+
+        print_hooks_report(
+            target_dir,
+            [entry.event for entry in hooks_report.added],
+            hooks_report.script == HOOK_SCRIPT_INSTALLED,
+            hooks_report.notice,
+            dry_run,
+        )
 
     table = Table(title="Generated Project Files", show_header=True, header_style="bold magenta")
     table.add_column("Relative Path", style="cyan")
@@ -1101,10 +1154,26 @@ def backfill_cmd(
             table.add_row(path)
         console.print(table)
 
-    if result.refused:
+    from metaproject.hooks import SETTINGS_PATH
+
+    # The settings deliverable is refused for its content (or, when named, an unwritable
+    # `.claude/`), never because it "already exists", so it gets its own title.
+    existing = [path for path in result.refused if path != SETTINGS_PATH]
+    if existing:
         table = Table(title="Refused — already exists, nothing written", show_header=False)
         table.add_column(style="red")
-        for path in result.refused:
+        for path in existing:
+            table.add_row(path)
+        console.print(table)
+    if SETTINGS_PATH in result.refused:
+        table = Table(title="Refused — hooks not installed (see notice)", show_header=False)
+        table.add_column(style="red")
+        table.add_row(SETTINGS_PATH)
+        console.print(table)
+    if result.not_written:
+        table = Table(title="Not written — install yourself (see notice)", show_header=False)
+        table.add_column(style="yellow")
+        for path in result.not_written:
             table.add_row(path)
         console.print(table)
 
@@ -1116,12 +1185,17 @@ def backfill_cmd(
         console.print(table)
 
     print_skills_report(result.skills, result.skills_notice, dry_run)
+    if result.hooks_notice:
+        console.print(f"[yellow]Notice:[/] {result.hooks_notice}")
+    elif ".claude/settings.json" in result.created:
+        print_hook_config_hint(target)
 
     wrote_skills = any(state == INSTALLED for state in result.skills.values())
     if not (
         result.created
         or result.skipped
         or result.refused
+        or result.not_written
         or result.missing_template
         or wrote_skills
     ):

@@ -77,9 +77,18 @@ def read_identity(project_dir: Path) -> Optional[Identity]:
 
 
 def write_identity(project_dir: Path, identity: Identity) -> Path:
-    """Write `.metaproject.json` as pretty, sorted-key JSON with a trailing newline."""
+    """Write `.metaproject.json` as pretty, sorted-key JSON with a trailing newline.
+
+    Keys the identity does not own (`commands`, `e2e_port`, anything an operator added)
+    are kept from an existing, parseable file; only the identity fields are replaced.
+    """
     path = Path(project_dir) / IDENTITY_FILE
-    data = {
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        existing = {}
+    data = existing if isinstance(existing, dict) else {}
+    data |= {
         "title": identity.title,
         "description": identity.description,
         "author": identity.author,

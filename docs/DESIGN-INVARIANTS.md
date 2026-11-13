@@ -37,3 +37,25 @@ invariant established in one cycle isn't accidentally violated in the next.
   (test_learn_guard's phase-one gate); shared constants like `SKILL_ROOTS` live in
   `deliverables.py`.
 
+
+## 2026-11-12 — issue #7 (Claude Code hooks)
+
+- `.claude/settings.json` is merged, never overwritten or rendered: `hooks.merge_hooks`
+  is the only write path, it preserves every existing key and hook in order, and it
+  writes nothing when every entry is already present (idempotent, byte-for-byte).
+- A hook entry's identity is its `command` string under its event; an operator's own
+  edits to our entry's matcher or timeout are kept, never "corrected".
+- An existing settings file that is not a JSON object (or whose `hooks` is not an
+  object of lists) is refused and reported — nothing, not even the hook script, is
+  written — and never fails a scaffold or the rest of a backfill batch.
+- The hook script is installed create-only, like the project skills; a differing copy
+  is only reported (review note), never rewritten.
+- The hook script never blocks the operator's work: every internal problem exits 0;
+  only a configured lint/typecheck command that fails exits 2. The merged command string
+  itself exits 0 when the script file is absent (deleted, gitignored, not checked out),
+  since `python3 <missing file>` exits 2 and would block every Bash call.
+- A hooks install the sandbox denies is a notice, not a failure, in default-mode
+  `backfill` (exit 0, listed "Not written"); unmergeable settings JSON, or an explicitly
+  named `.claude/settings.json` that cannot be written, is refused with exit 1.
+- `write_identity` keeps keys of `.metaproject.json` it does not own (`commands`,
+  `e2e_port`).

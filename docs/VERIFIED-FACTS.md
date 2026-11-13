@@ -63,3 +63,18 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - hatchling's `WheelBuilder(root).build(directory=...)` builds the wheel in-process with
   no network, so wheel-content tests need neither `uv build` nor an unsandboxed run.
 
+
+## 2026-11-12 — issue #7 (Claude Code hooks)
+
+- The Claude Code sandbox this was built in lists a project's `.claude/settings.json`
+  and `.claude/hooks/` as write-denied; an agent-run `backfill` there gets
+  `PermissionError`, which `install_hooks` turns into a notice (2026-11-12).
+- A function-local `from metaproject.deliverables import DeliverableClass` placed
+  late in a function makes the name local for the whole function, so an earlier use
+  raises `UnboundLocalError` — `backfill_missing` now uses the module-level import.
+- `subprocess.run(..., shell=True, timeout=...)` only kills the shell; the hook runs the
+  command in its own session and kills the process group on timeout so a lint child
+  holding the pipe cannot hang the hook.
+- `tests/test_skills.py::test_ac5_...` failed on `main` before this change: Rich wraps
+  the long tmp path and splits "real directory" across lines; the assertion now compares
+  whitespace-normalised output.

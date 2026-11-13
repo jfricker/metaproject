@@ -30,7 +30,8 @@ WORKING_PATHS = {
 }
 ON_DEMAND_PATHS = {"docs/HANDOFF.md"}
 DIRECTORY_PATHS = {"docs", "docs/archive"}
-ALL_PATHS = GOVERNANCE_PATHS | WORKING_PATHS | ON_DEMAND_PATHS | DIRECTORY_PATHS
+SETTINGS_PATHS = {".claude/settings.json"}
+ALL_PATHS = GOVERNANCE_PATHS | WORKING_PATHS | ON_DEMAND_PATHS | DIRECTORY_PATHS | SETTINGS_PATHS
 
 
 def test_every_declared_path_has_exactly_one_class() -> None:
@@ -48,6 +49,8 @@ def test_every_declared_path_has_exactly_one_class() -> None:
         assert by_path[path] is DeliverableClass.ON_DEMAND
     for path in DIRECTORY_PATHS:
         assert by_path[path] is DeliverableClass.DIRECTORY
+    for path in SETTINGS_PATHS:
+        assert by_path[path] is DeliverableClass.SETTINGS
 
 
 def test_deliverable_is_frozen() -> None:
@@ -88,6 +91,7 @@ def test_learn_targets_is_governance_plus_working() -> None:
     assert "docs/HANDOFF.md" not in result
     assert "docs" not in result
     assert "docs/archive" not in result
+    assert ".claude/settings.json" not in result
 
 
 def test_docs_archive_is_directory() -> None:
