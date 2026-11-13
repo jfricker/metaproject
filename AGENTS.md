@@ -161,6 +161,9 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
 
 The cycle documents live in `docs/`; the cycle skills are this project's own copies in `.agents/skills/` (reachable as `.claude/skills/`), invoked by bare name (`/write-intent`, …, `/wrapup`).
 
+### docs/TODO.md
+ On-demand (`metaproject backfill docs/TODO.md`). `wrapup` appends a dated "Needs manual verification" entry listing what the agent could not verify itself, with exact steps for the operator. Never archived.
+
 ### docs/HANDOFF.md
  When work is interrupted before completion, create `docs/HANDOFF.md` (`metaproject backfill docs/HANDOFF.md`) to capture the state of the work and any other information needed to resume the work or hand it off to another agent at another time.
 

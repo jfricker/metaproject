@@ -149,6 +149,7 @@ def test_bundled_templates_exist() -> None:
         "docs.template/INTENT.template.md",
         "docs.template/STATE.template.md",
         "docs.template/HANDOFF.template.md",
+        "docs.template/TODO.template.md",
         "CLAUDE.template.md",
         ".gitignore.template",
     ]

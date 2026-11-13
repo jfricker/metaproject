@@ -149,3 +149,16 @@ def test_import_staging_and_plugin_scaffolding_are_gone() -> None:
     assert not (REPO_ROOT / "sdlc-skills-import").exists()
     assert not (REPO_ROOT / ".claude-plugin").exists()
     assert not list(REPO_ROOT.glob("**/check-metaproject.sh"))
+
+
+def test_wrapup_records_manual_verification_in_todo() -> None:
+    text = _skill_text("wrapup")
+    assert "Needs manual verification" in text
+    assert "metaproject backfill docs/TODO.md" in text
+    assert "never\n   archived or reset" in text
+    assert "exact steps" in text
+    # The entry is written in step 9, before the commit and the /shipit handoff.
+    step9 = text[text.index("\n9. ") : text.index("\n10. ")]
+    assert "docs/TODO.md" in step9 and "Then commit" in step9
+    # TODO.md is not among the archived documents.
+    assert "{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md" in text
