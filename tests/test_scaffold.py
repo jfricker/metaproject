@@ -125,6 +125,7 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
 
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
     assert not (target / "docs" / "HANDOFF.md").exists()
+    assert not (target / "docs" / "TODO.md").exists()
     root_md = {p.name for p in target.iterdir() if p.suffix == ".md"}
     assert root_md == {"AGENTS.md", "CLAUDE.md", "README.md"}
 

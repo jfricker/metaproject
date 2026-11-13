@@ -180,6 +180,7 @@ def test_new_dry_run_lists_every_r_tpl_4_file_and_not_handoff(tmp_path: Path) ->
         assert expected in rendered, f"{expected} missing from dry-run listing"
 
     assert "docs/HANDOFF.md" not in rendered
+    assert "docs/TODO.md" not in rendered
     assert not any(
         "/" not in p and p.endswith(".md") and p not in ("AGENTS.md", "CLAUDE.md", "README.md")
         for p in rendered
