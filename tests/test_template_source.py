@@ -186,6 +186,30 @@ def test_missing_path_source_falls_back_to_bundled_and_says_so(tmp_path: Path) -
     assert "not found" in res.detail
 
 
+@pytest.mark.parametrize("location", ["../outside", "/etc", "~/templates", "a/../../outside"])
+def test_path_source_outside_the_project_is_refused(tmp_path: Path, location: str) -> None:
+    proj = make_project(tmp_path, source=location)
+    custom_store(tmp_path / "outside")
+    res = resolve_templates(proj)
+    assert res.origin == ORIGIN_BUNDLED and res.source_declared
+    assert "outside the project" in res.detail
+
+
+def test_path_source_symlinked_out_of_the_project_is_refused(tmp_path: Path) -> None:
+    proj = make_project(tmp_path, source="tpl")
+    custom_store(tmp_path / "outside")
+    (proj / "tpl").symlink_to(tmp_path / "outside", target_is_directory=True)
+    res = resolve_templates(proj)
+    assert res.origin == ORIGIN_BUNDLED
+    assert "outside the project" in res.detail
+
+
+@pytest.mark.parametrize("url", ["http://example.com/t.git", "git://example.com/t.git"])
+def test_unauthenticated_url_schemes_are_refused(tmp_path: Path, url: str) -> None:
+    res = resolve_templates(make_project(tmp_path, source={"url": url}))
+    assert res.origin == ORIGIN_BUNDLED and res.source_declared
+
+
 def test_malformed_source_falls_back_to_bundled(tmp_path: Path) -> None:
     res = resolve_templates(make_project(tmp_path, source={"ref": "main"}))
     assert res.origin == ORIGIN_BUNDLED and res.source_declared

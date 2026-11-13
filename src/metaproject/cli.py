@@ -1848,6 +1848,7 @@ def templates_fetch_cmd(
     """
     from metaproject.template_source import (
         TemplateSourceError,
+        confined_path,
         fetch_template_source,
         read_template_source,
         store_usable,
@@ -1863,7 +1864,14 @@ def templates_fetch_cmd(
         console.print("[dim]No templates.source in .metaproject.json; nothing to fetch.[/dim]")
         return
     if source.kind == "path":
-        path = (target / Path(source.location).expanduser()).resolve()
+        path = confined_path(target, source.location)
+        if path is None:
+            console.print(
+                f"[bold red]Error:[/bold red] templates.source path {escape(source.location)} "
+                "is outside the project; only repo-relative paths are allowed.",
+                soft_wrap=True,
+            )
+            raise typer.Exit(code=1)
         if store_usable(path):
             console.print(f"[green]✓[/green] templates.source is a path: {path}", soft_wrap=True)
             return

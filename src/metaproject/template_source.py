@@ -50,7 +50,9 @@ GIT_TIMEOUT_SECONDS = 120
 # Git transports a declared source may use. `ext::` (runs a command) and anything else
 # exotic is refused: `.metaproject.json` arrives with the repository, so its contents
 # are data, never a way to run something.
-_URL_SCHEMES = ("https://", "http://", "ssh://", "git://", "file://")
+# Authenticated or local transports only: http:// and git:// are unauthenticated and
+# MITM-able, and what they fetch is rendered into the repository.
+_URL_SCHEMES = ("https://", "ssh://", "file://")
 _SCP_LIKE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^:]")
 _REF = re.compile(r"^[A-Za-z0-9._/+-]+$")
 
@@ -220,6 +222,22 @@ def cache_dir(source: TemplateSource, config_dir: Optional[Path] = None) -> Path
     return cache_root(config_dir) / f"{base}-{key}"
 
 
+def confined_path(project: Path, location: str) -> Optional[Path]:
+    """Resolve a path-kind `templates.source` inside `project`, or None if it escapes.
+
+    `.metaproject.json` is data an agent can edit, so an absolute path, a `~` path, or a
+    `..`/symlink route out of the repository is refused rather than used as a store.
+    """
+    raw = Path(location)
+    if raw.is_absolute() or location.startswith("~"):
+        return None
+    root = project.resolve()
+    path = (root / raw).resolve()
+    if path != root and root not in path.parents:
+        return None
+    return path
+
+
 def store_usable(path: Path) -> bool:
     """A directory holding at least one entry other than `.git`. Never raises."""
     try:
@@ -380,7 +398,13 @@ def resolve_templates(
         return _bundled(bundled_detail, declared=False)
 
     if source.kind == "path":
-        path = (project / Path(source.location).expanduser()).resolve()
+        path = confined_path(project, source.location)
+        if path is None:
+            return _bundled(
+                f"bundled defaults (templates.source path {source.location} is outside "
+                "the project; only repo-relative paths are allowed)",
+                True,
+            )
         if store_usable(path):
             return TemplateResolution(
                 path=path,
