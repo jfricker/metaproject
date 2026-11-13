@@ -1,4 +1,4 @@
-.PHONY: help install install-global lint format test clean build package testpypi pypi install-testpypi uninstall bump-version bump-major
+.PHONY: help install install-global lint format test clean build package testpypi pypi install-testpypi uninstall bump-version bump-major skill-history
 
 VENV := .venv
 PYTHON := $(VENV)/bin/python
@@ -51,6 +51,9 @@ install-testpypi: ## Install the latest version of the tool from TestPyPI
 
 uninstall: ## Uninstall the tool from the current Python environment
 	python3 -m pip uninstall -y metaproject
+
+skill-history: ## Regenerate the ledger of released skill digests (src/metaproject/skill_history.json)
+	$(PYTHON) scripts/gen_skill_history.py
 
 bump-version: ## Increment project version based on git heuristics
 	scripts/bump_version.sh

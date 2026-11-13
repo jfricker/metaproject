@@ -20,6 +20,8 @@ project→templates?"
 | templates → new project | `new` | Scaffold a project (or scaffold into an existing directory) |
 | templates → existing project | `backfill` | Create specific missing documents, agent-safe |
 | templates → existing repo | `adopt` | Adopt a repo: identity, every missing document and skill, agent-safe |
+| package → project skills | `skills` | `skills status` / `skills sync`: update the project's bundled skills, agent-safe |
+| declared store → cache | `templates fetch` | Fetch the project's `templates.source` for a fresh container, agent-safe |
 | templates ↔ project | `review` | Report what is missing or has drifted; remediate |
 | projects → templates | `learn` | Turn recurring drift into reviewed template proposals |
 | survey | `universe` | Catalog and classify projects across a workspace tree |
@@ -134,8 +136,10 @@ In a Claude Code on the web session (the *web profile*: `CLAUDE_CODE_REMOTE=true
 no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a
 "not available in web sessions" notice and exit 0; `doctor` skips its store, config and
 catalog checks with that notice but still checks the current project (identity, docs,
-skills); `adopt`, `backfill` and `review --no-tui` work as usual. See
-`references/commands.md`.
+skills); `adopt`, `backfill` and `review --no-tui` work as usual, rendering from the
+project's `templates.source` (`.metaproject.json`) when the local store is absent. A
+session-start hook installed by `new`/`backfill` puts the pinned CLI on `PATH` and runs
+`skills sync` at the start of each web session. See `references/commands.md`.
 
 ## Scaffolding a new project
 
@@ -201,6 +205,17 @@ project skill; it never overwrites, runs no git, needs no confirmation, and is p
 in agent sessions. Re-running it is a no-op. Use it instead of `new .`, which needs an
 operator.
 
+## Keeping project skills current: `metaproject skills`
+
+After an upgrade, a project's skills in `.agents/skills/` may be from an earlier release.
+`metaproject skills status` reports each one as `current`, `outdated` (a pristine copy of
+an earlier release), `modified` (local edits) or `missing`; `metaproject skills sync`
+installs missing ones and replaces outdated ones, and keeps modified ones (exit 0) unless
+the operator names one with `--force NAME`, which discards its edits. Both are agent-safe
+and accept `--format json`. Every install records `.agents/skills/.metaproject-skills.json`
+(release and per-file sha256), which is how a pristine copy is told from an edit —
+commit it with the project. Never delete a skill directory to refresh it; run `sync`.
+
 ## Auditing a project against the templates
 
 ```bash
@@ -241,7 +256,8 @@ migrates, each fix behind the operator's confirmation: it moves the store's cycl
 templates into `docs.template/` (one commit in the store), rewrites old paths in
 `learn.targets`, moves each cataloged project's documents into `docs/` with their new
 names (`git mv` when tracked; it never overwrites and never commits in the project),
-installs missing project skills (a stale copy is reported, never overwritten), and
+installs missing project skills and updates outdated unmodified ones (a modified copy is
+reported, never overwritten), and
 removes the old global `~/.claude/skills/metaproject/`. Naming a project scopes the run
 to it — `metaproject doctor .` checks only that project's anchor, cycle documents, and
 skills, skipping the environment-wide checks. Only `metaproject doctor

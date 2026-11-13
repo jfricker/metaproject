@@ -12,16 +12,26 @@ from metaproject.scaffold import TransactionalTracker, scaffold_project
 from metaproject.skills import (
     CURRENT,
     INSTALLED,
+    MANIFEST_NAME,
     MISSING,
-    STALE,
+    MODIFIED,
     bundled_skills,
+    classify_skill,
+    file_map,
     get_bundled_skill_dir,
     install_project_skills,
-    is_skill_current,
     legacy_global_skill_dir,
     project_skills_dir,
-    skill_state,
 )
+
+
+def is_skill_current(source_dir: Path, target_dir: Path) -> bool:
+    return target_dir.is_dir() and file_map(source_dir) == file_map(target_dir)
+
+
+def skill_state(skill, dest: Path) -> str:
+    return classify_skill(skill, dest, None, {}, "0.0.0").state
+
 
 SDLC_SKILLS = {
     "backlog-new",
@@ -130,6 +140,8 @@ def test_rollback_removes_installed_skills(tmp_path: Path) -> None:
     install_project_skills(proj, tracker=tracker)
     assert (proj / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
 
+    assert (proj / ".agents" / "skills" / MANIFEST_NAME).is_file()
+
     tracker.rollback()
 
     assert list(proj.iterdir()) == []
@@ -140,7 +152,7 @@ def test_rollback_removes_installed_skills(tmp_path: Path) -> None:
 
 def test_ac4_backfill_recreates_only_a_deleted_skill_then_is_idempotent(tmp_path: Path) -> None:
     """AC-4 (R-SKL-3/4): first run recreates just the deleted skill; second writes nothing;
-    an edited skill is stale and left byte-identical."""
+    an edited skill is modified and left byte-identical."""
     import shutil
 
     proj = _scaffold(tmp_path)
@@ -152,7 +164,7 @@ def test_ac4_backfill_recreates_only_a_deleted_skill_then_is_idempotent(tmp_path
 
     first = backfill_missing(proj)
     assert first.skills["write-intent"] == INSTALLED
-    assert first.skills["wrapup"] == STALE
+    assert first.skills["wrapup"] == MODIFIED
     assert [name for name, state in first.skills.items() if state == INSTALLED] == ["write-intent"]
     assert (skills_root / "write-intent" / "SKILL.md").is_file()
     assert edited.read_bytes() == edited_bytes
@@ -165,14 +177,14 @@ def test_ac4_backfill_recreates_only_a_deleted_skill_then_is_idempotent(tmp_path
 
 
 def test_backfill_never_adds_files_inside_an_existing_skill(tmp_path: Path) -> None:
-    """A skill directory missing one of its files is stale, and is not topped up."""
+    """A skill directory missing one of its files is modified, and is not topped up."""
     proj = _scaffold(tmp_path)
     ref = proj / ".agents" / "skills" / "metaproject" / "references" / "commands.md"
     ref.unlink()
 
     result = backfill_missing(proj)
 
-    assert result.skills["metaproject"] == STALE
+    assert result.skills["metaproject"] == MODIFIED
     assert not ref.exists()
 
 
@@ -254,7 +266,7 @@ def test_symlink_elsewhere_is_refused(tmp_path: Path) -> None:
     assert list(elsewhere.iterdir()) == []
 
 
-def test_skill_state_reports_missing_current_stale(tmp_path: Path) -> None:
+def test_skill_state_reports_missing_current_modified(tmp_path: Path) -> None:
     skill = next(s for s in bundled_skills() if s.name == "write-intent")
     dest = tmp_path / "write-intent"
     assert skill_state(skill, dest) == MISSING
@@ -262,7 +274,7 @@ def test_skill_state_reports_missing_current_stale(tmp_path: Path) -> None:
     installed = tmp_path / "p" / ".agents" / "skills" / "write-intent"
     assert skill_state(skill, installed) == CURRENT
     (installed / "SKILL.md").write_text("x", encoding="utf-8")
-    assert skill_state(skill, installed) == STALE
+    assert skill_state(skill, installed) == MODIFIED
 
 
 # ------------------------------------------------------------------------------ init

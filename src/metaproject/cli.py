@@ -36,7 +36,7 @@ from metaproject.scaffold import (
     scaffold_project,
 )
 from metaproject.session import agent_marker, override_hint, web_profile_reason
-from metaproject.skills import CURRENT, INSTALLED, STALE
+from metaproject.skills import CURRENT, INSTALLED, MODIFIED, OUTDATED, UPDATED
 from metaproject.templates import seed_templates
 
 console = Console()
@@ -233,10 +233,11 @@ def main(
 
 
 def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: bool) -> None:
-    """Narrate one project-skills install pass (`new`, `backfill`).
+    """Narrate one project-skills install pass (`new`, `backfill`, `adopt`).
 
-    Stale skills are named because they are the one state an operator may want to act
-    on: the directory differs from this release and was left untouched on purpose.
+    Outdated and modified skills are named because they are the states an operator may
+    want to act on: an outdated copy is pristine and `skills sync` replaces it; a
+    modified one is the project's own edit and only `skills sync --force NAME` does.
     """
     if notice:
         console.print(f"[yellow]Notice:[/] {notice}")
@@ -244,28 +245,42 @@ def print_skills_report(states: Dict[str, str], notice: Optional[str], dry_run: 
     if not states:
         return
     installed = [name for name, state in states.items() if state == INSTALLED]
+    updated = [name for name, state in states.items() if state == UPDATED]
     current = [name for name, state in states.items() if state == CURRENT]
-    stale = [name for name, state in states.items() if state == STALE]
+    outdated = [name for name, state in states.items() if state == OUTDATED]
+    modified = [name for name, state in states.items() if state == MODIFIED]
     if installed:
         verb = "Would install" if dry_run else "Installed"
         console.print(
             f"[cyan]✓ {verb} {len(installed)} project skill(s) in .agents/skills/:[/cyan] "
             + ", ".join(installed)
         )
+    if updated:
+        verb = "Would update" if dry_run else "Updated"
+        console.print(
+            f"[cyan]↻ {verb} {len(updated)} project skill(s):[/cyan] " + ", ".join(updated)
+        )
     if current:
         console.print(f"[dim]{len(current)} project skill(s) already current[/dim]")
-    if stale:
+    if outdated:
         console.print(
-            "[yellow]Notice:[/] project skill(s) differ from this release and were left "
-            "untouched: " + ", ".join(stale) + ". Delete a skill's directory and run "
-            "[bold cyan]metaproject backfill[/bold cyan] to take the bundled copy."
+            "[yellow]Notice:[/] project skill(s) from an earlier release, unmodified: "
+            + ", ".join(outdated)
+            + ". Run [bold cyan]metaproject skills sync[/bold cyan] to update them."
+        )
+    if modified:
+        console.print(
+            "[yellow]Notice:[/] project skill(s) modified locally and left untouched: "
+            + ", ".join(modified)
+            + ". [bold cyan]metaproject skills sync --force NAME[/bold cyan] discards "
+            "local edits."
         )
 
 
 def print_hooks_report(
     project_dir: Path,
     added: List[str],
-    script_installed: bool,
+    scripts_installed: List[str],
     notice: Optional[str],
     dry_run: bool,
 ) -> None:
@@ -275,21 +290,21 @@ def print_hooks_report(
     hook was just wired up but `.metaproject.json` names no command, say so: the hook is
     silent until `commands.lint` (or `commands.typecheck`) is set.
     """
-    from metaproject.hooks import HOOK_SCRIPT_PATH, SETTINGS_PATH
+    from metaproject.hooks import SETTINGS_PATH
 
     if notice:
         console.print(f"[yellow]Notice:[/] {notice}")
         return
-    if not added and not script_installed:
+    if not added and not scripts_installed:
         return
     verb = "Would add" if dry_run else "Added"
     if added:
         console.print(
             f"[cyan]✓ {verb} metaproject hook(s) to {SETTINGS_PATH}:[/cyan] " + ", ".join(added)
         )
-    if script_installed:
+    if scripts_installed:
         script_verb = "would install" if dry_run else "installed"
-        console.print(f"[dim]{script_verb} {HOOK_SCRIPT_PATH}[/dim]")
+        console.print(f"[dim]{script_verb} {', '.join(scripts_installed)}[/dim]")
     print_hook_config_hint(project_dir)
 
 
@@ -302,6 +317,24 @@ def print_hook_config_hint(project_dir: Path) -> None:
             '[dim]The post-edit hook is idle until .metaproject.json sets "commands": '
             '{"lint": "..."} (optionally "typecheck", and "e2e_port" for playwright).[/dim]'
         )
+
+
+def resolve_project_templates(project_dir: Path, templates_path: Optional[Path]) -> Optional[Path]:
+    """Resolve the store once for `backfill`/`adopt`/`review` and say where it came from.
+
+    Resolved once per command and handed on as an explicit path, so a git
+    `templates.source` is fetched at most once and every write in the batch renders from
+    the same store. The line is printed only when the project declares
+    `templates.source`, so output is unchanged for every project that does not.
+    """
+    from metaproject.template_source import ORIGIN_BUNDLED, resolve_templates
+
+    resolution = resolve_templates(project_dir, templates_path)
+    if not resolution.source_declared:
+        return templates_path
+    style = "yellow" if resolution.origin == ORIGIN_BUNDLED else "dim"
+    console.print(f"[{style}]{escape(resolution.describe())}[/{style}]", soft_wrap=True)
+    return resolution.path
 
 
 def print_agent_degradation_notice(what: str, action: str) -> None:
@@ -810,12 +843,10 @@ def new_cmd(
         print_skills_report(skills_report.states, skills_report.notice, dry_run)
     hooks_report = result.get("hooks")
     if hooks_report is not None:
-        from metaproject.hooks import INSTALLED as HOOK_SCRIPT_INSTALLED
-
         print_hooks_report(
             target_dir,
             [entry.event for entry in hooks_report.added],
-            hooks_report.script == HOOK_SCRIPT_INSTALLED,
+            hooks_report.installed_scripts,
             hooks_report.notice,
             dry_run,
         )
@@ -1181,6 +1212,7 @@ def review_cmd(
             include_ignored=show_ignored,
         )
     else:
+        templates_path = resolve_project_templates(target, templates_path)
         results = [review_project(target, templates_path)]
 
     if not results:
@@ -1340,6 +1372,7 @@ def backfill_cmd(
     from metaproject.review import backfill_missing
 
     target = (project_dir or Path.cwd()).resolve()
+    templates_path = resolve_project_templates(target, templates_path)
     result = backfill_missing(
         target, files=files or None, templates_dir=templates_path, dry_run=dry_run
     )
@@ -1394,6 +1427,7 @@ def adopt_cmd(
     from metaproject.scaffold import adopt_project
 
     target = (project_dir or Path.cwd()).resolve()
+    templates_path = resolve_project_templates(target, templates_path)
     try:
         result = adopt_project(
             target,
@@ -1567,6 +1601,296 @@ def doctor_cmd(
 
     if not all(result.healthy for result in results):
         raise typer.Exit(code=1)
+
+
+# -------------------------------------------------------------------------- skills
+#
+# `skills status` and `skills sync` are agent-safe: no agent guard, no prompt, no config
+# or template store, and not behind the web profile. They act on one project's
+# `.agents/skills` and nothing else.
+
+skills_app = typer.Typer(
+    name="skills",
+    help=(
+        "Inspect and update this project's bundled skills (agent-safe).\n\n"
+        "Each skill is current, outdated (a pristine copy of an earlier release), "
+        "modified (local edits) or missing. `sync` installs missing skills and replaces "
+        "outdated ones; a modified skill is replaced only when named with --force."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(skills_app, name="skills")
+
+SKILL_STATE_LABELS = {
+    "current": "[green]✓ current[/green]",
+    "outdated": "[yellow]↻ outdated[/yellow]",
+    "modified": "[magenta]~ modified[/magenta]",
+    "missing": "[red]! missing[/red]",
+}
+SKILL_ACTION_LABELS = {
+    "installed": "installed",
+    "updated": "updated",
+    "forced": "replaced (--force)",
+    "kept": "kept",
+    "recorded": "kept (manifest recorded)",
+}
+
+
+def _skills_console(output_format: str) -> Console:
+    """Diagnostics go to stderr under `--format json`, so stdout stays pure JSON."""
+    return Console(stderr=True) if output_format == "json" else console
+
+
+def _skills_project(project_dir: Optional[Path], output_format: str) -> Path:
+    """The managed project to act on, or exit 1 with the reason."""
+    from metaproject.identity import IDENTITY_FILE
+
+    out = _skills_console(output_format)
+    if output_format not in ("table", "json"):
+        out.print(f"[bold red]Error:[/bold red] unknown --format {output_format!r}")
+        raise typer.Exit(code=1)
+    target = (project_dir or Path.cwd()).resolve()
+    if not target.is_dir():
+        out.print(f"[bold red]Error:[/bold red] {target} is not a directory.", soft_wrap=True)
+        raise typer.Exit(code=1)
+    if not (target / IDENTITY_FILE).is_file():
+        out.print(
+            f"[bold red]Error:[/bold red] no {IDENTITY_FILE} in {target}; run "
+            "[bold cyan]metaproject adopt[/bold cyan] first.",
+            soft_wrap=True,
+        )
+        raise typer.Exit(code=1)
+    return target
+
+
+def _skills_payload(project: Path, report, dry_run: bool, with_action: bool) -> Dict[str, Any]:
+    from metaproject.skills import running_release
+
+    try:
+        target = report.target.relative_to(project).as_posix()
+    except ValueError:
+        target = str(report.target)
+    return {
+        "project": str(project),
+        "target": target,
+        "release": running_release(),
+        "manifest": report.manifest_state,
+        "refusal": report.notice,
+        "dry_run": dry_run,
+        "skills": [
+            {
+                "name": status.name,
+                "state": status.state,
+                "installed_release": status.installed_release,
+                "basis": status.basis,
+                "changed": list(status.changed),
+                "note": status.note,
+                "action": status.action if with_action else None,
+            }
+            for status in report.statuses
+        ],
+    }
+
+
+def _skill_detail(status) -> str:
+    if status.note:
+        return escape(status.note)
+    if status.state in ("outdated", "modified") and status.changed:
+        shown = ", ".join(status.changed[:3])
+        more = f" (+{len(status.changed) - 3} more)" if len(status.changed) > 3 else ""
+        return escape(f"differs: {shown}{more}")
+    return "—"
+
+
+def _render_skills_report(
+    project: Path, report, output_format: str, dry_run: bool, with_action: bool
+) -> None:
+    """Print one status/sync report; exit 1 on a refusal."""
+    import json
+
+    out = _skills_console(output_format)
+    if output_format == "json":
+        typer.echo(json.dumps(_skills_payload(project, report, dry_run, with_action), indent=2))
+    for warning in report.warnings:
+        out.print(f"[yellow]Notice:[/] {escape(warning)}", soft_wrap=True)
+    if report.notice:
+        out.print(f"[yellow]Refused:[/] {escape(report.notice)}", soft_wrap=True)
+        raise typer.Exit(code=1)
+    if output_format == "json":
+        return
+    title = f"Project skills — {project}"
+    if dry_run:
+        title += " (dry run)"
+    table = Table(title=escape(title), show_header=True, header_style="bold magenta")
+    table.add_column("Skill", style="bold cyan")
+    table.add_column("State")
+    table.add_column("Installed release")
+    if with_action:
+        table.add_column("Action")
+    table.add_column("Detail")
+    for status in report.statuses:
+        row = [
+            status.name,
+            SKILL_STATE_LABELS.get(status.state, status.state),
+            status.installed_release or "—",
+        ]
+        if with_action:
+            row.append(SKILL_ACTION_LABELS.get(status.action or "", status.action or "—"))
+        row.append(_skill_detail(status))
+        table.add_row(*row)
+    console.print(table)
+    modified = [s.name for s in report.statuses if s.state == "modified" and s.action != "forced"]
+    if modified:
+        console.print(
+            "[yellow]Notice:[/] modified skill(s) left untouched: "
+            + ", ".join(modified)
+            + ". [bold cyan]metaproject skills sync --force NAME[/bold cyan] discards local "
+            "edits.",
+            soft_wrap=True,
+        )
+    outdated = [s.name for s in report.statuses if s.state == "outdated" and s.action is None]
+    if outdated:
+        console.print(
+            "[yellow]Notice:[/] outdated skill(s): "
+            + ", ".join(outdated)
+            + ". Run [bold cyan]metaproject skills sync[/bold cyan] to update them.",
+            soft_wrap=True,
+        )
+
+
+@skills_app.command(name="status")
+def skills_status_cmd(
+    project_dir: Optional[Path] = typer.Option(
+        None, "--dir", "-d", help="Project to inspect (default: current directory)."
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table or json."
+    ),
+) -> None:
+    """Report each bundled skill as current, outdated, modified or missing. Read-only."""
+    from metaproject.skills import inspect_project_skills
+
+    project = _skills_project(project_dir, output_format)
+    report = inspect_project_skills(project)
+    _render_skills_report(project, report, output_format, dry_run=False, with_action=False)
+
+
+@skills_app.command(name="sync")
+def skills_sync_cmd(
+    project_dir: Optional[Path] = typer.Option(
+        None, "--dir", "-d", help="Project to sync (default: current directory)."
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would change without writing anything."
+    ),
+    force: Optional[List[str]] = typer.Option(
+        None,
+        "--force",
+        help="Replace this skill even if modified (discards local edits). Repeatable.",
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table or json."
+    ),
+) -> None:
+    """Install missing skills and update outdated, unmodified ones.
+
+    A modified skill is kept and reported (exit 0) unless named with `--force NAME`.
+    Each replacement is atomic per skill and recorded in
+    .agents/skills/.metaproject-skills.json.
+    """
+    from metaproject.skills import sync_project_skills
+
+    project = _skills_project(project_dir, output_format)
+    out = _skills_console(output_format)
+    try:
+        report = sync_project_skills(
+            project, update=True, force=tuple(force or ()), dry_run=dry_run
+        )
+    except MetaProjectError as exc:
+        out.print(f"[bold red]Skills Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
+        raise typer.Exit(code=1)
+    _render_skills_report(project, report, output_format, dry_run=dry_run, with_action=True)
+    claude_skills = project / ".claude" / "skills"
+    if not claude_skills.exists() and not claude_skills.is_symlink():
+        out.print(
+            "[yellow]Notice:[/] .claude/skills is absent, so Claude Code will not see these "
+            "skills; run [bold cyan]metaproject adopt[/bold cyan] to create the link.",
+            soft_wrap=True,
+        )
+
+
+# ----------------------------------------------------------------------- templates
+
+templates_app = typer.Typer(
+    name="templates",
+    help=(
+        "Work with a project's declared template store (agent-safe).\n\n"
+        'A project may declare `"templates": {"source": ...}` in .metaproject.json — a '
+        "git URL (optionally with ref and subdir) or a path in the repository. When "
+        "~/.metaproject/templates is missing, backfill, adopt and review render from it."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(templates_app, name="templates")
+
+
+@templates_app.command(name="fetch")
+def templates_fetch_cmd(
+    project_dir: Optional[Path] = typer.Option(
+        None, "--dir", "-d", help="Project whose templates.source to fetch (default: cwd)."
+    ),
+) -> None:
+    """Shallow-fetch (or refresh) the project's git `templates.source` into the cache.
+
+    A no-op that exits 0 when the project declares no source. A path source is checked,
+    not copied. Exits 1 when the source is malformed or cannot be fetched; a cache from
+    an earlier fetch is kept and still used.
+    """
+    from metaproject.template_source import (
+        TemplateSourceError,
+        confined_path,
+        fetch_template_source,
+        read_template_source,
+        store_usable,
+    )
+
+    target = (project_dir or Path.cwd()).resolve()
+    try:
+        source = read_template_source(target)
+    except TemplateSourceError as exc:
+        console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
+        raise typer.Exit(code=1)
+    if source is None:
+        console.print("[dim]No templates.source in .metaproject.json; nothing to fetch.[/dim]")
+        return
+    if source.kind == "path":
+        path = confined_path(target, source.location)
+        if path is None:
+            console.print(
+                f"[bold red]Error:[/bold red] templates.source path {escape(source.location)} "
+                "is outside the project; only repo-relative paths are allowed.",
+                soft_wrap=True,
+            )
+            raise typer.Exit(code=1)
+        if store_usable(path):
+            console.print(f"[green]✓[/green] templates.source is a path: {path}", soft_wrap=True)
+            return
+        console.print(
+            f"[bold red]Error:[/bold red] templates.source path {path} is missing or empty.",
+            soft_wrap=True,
+        )
+        raise typer.Exit(code=1)
+
+    result = fetch_template_source(source)
+    if result.ok:
+        console.print(f"[green]✓[/green] {escape(result.message)} → {result.path}", soft_wrap=True)
+        return
+    color = "yellow" if result.path is not None else "bold red"
+    console.print(
+        f"[{color}]Could not fetch {escape(source.label)}:[/{color}] {escape(result.message)}",
+        soft_wrap=True,
+    )
+    raise typer.Exit(code=1)
 
 
 # --------------------------------------------------------------------------- learn

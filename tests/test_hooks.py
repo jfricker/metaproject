@@ -101,8 +101,9 @@ def test_settings_is_declared_as_its_own_class() -> None:
 def test_project_hook_entries_match_the_issue() -> None:
     assert POST_EDIT_HOOK.event == "PostToolUse" and POST_EDIT_HOOK.matcher == "Edit|Write"
     assert PRE_BASH_HOOK.event == "PreToolUse" and PRE_BASH_HOOK.matcher == "Bash"
-    for entry in project_hook_entries():
+    for entry in (POST_EDIT_HOOK, PRE_BASH_HOOK):
         assert HOOK_SCRIPT_PATH in entry.command
+    for entry in project_hook_entries():
         assert "$CLAUDE_PROJECT_DIR" in entry.command
 
 

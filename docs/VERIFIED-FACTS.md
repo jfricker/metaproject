@@ -92,3 +92,20 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
 - `tests/test_skills.py::test_ac5_...` failed on `main` before this change: Rich wraps
   the long tmp path and splits "real directory" across lines; the assertion now compares
   whitespace-normalised output.
+
+## 2026-11-13 — issue #3 part 3c
+
+- `git init` + `git fetch --depth 1 --no-tags -- <url> <ref>` + `git checkout --detach
+  FETCH_HEAD` shallow-fetches a named branch from a `file://` remote; verified by
+  `tests/test_template_source.py` with a real local repository (no network). Tags and
+  `HEAD` take the same path but are only exercised against a fake git runner.
+- `metaproject --version` prints "Package Manifest — metaproject v<version>" first, so
+  the session script's `grep -oE '[0-9]+\.[0-9]+\.[0-9]+…' | head -n 1` reads the
+  installed version (run with `COLUMNS=200` so Rich does not wrap the title).
+- `v0.9.1` and earlier have no `skills` or `templates` command (`git show
+  v0.9.1:src/metaproject/cli.py` has no `skills_app`/`templates_app`), so a pinned install
+  of those versions cannot run the session script's steps 2 and 3.
+- As of 2026-11-13 origin has no tags (`gh api repos/jfricker/metaproject/tags` is empty;
+  v0.6.1..v0.9.1 exist only locally), so every `@v<version>` install currently fails and
+  falls back to the default branch. "Install at the pinned version" needs release tags
+  pushed to origin.

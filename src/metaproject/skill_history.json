@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "skills": {
+    "backlog-new": [
+      {
+        "digest": "ef25bcb82b8c41f12f5777ad73b9efe247610cf89ed3db673f1721b635ae9d8a",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "93997021d86da47a7ef41ea65d97e939088182e0d477e1dd8bcfa1a1e5651fb5",
+        "release": "0.9.1"
+      }
+    ],
+    "execute-tests": [
+      {
+        "digest": "817210bc4a2ec44c32d387c471a1c32c9f27e7a1c11f050d7c14ee9aac213235",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "bf73513626dce8e2683f920040d8e2b4bba64579be0b0764bcd00201eb5684c4",
+        "release": "0.9.1"
+      }
+    ],
+    "generate-design": [
+      {
+        "digest": "2d6167be470f5748f8f5cdb37cad9ba7092213e1d6f3772de71b27bdc74170b4",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "e5ed4f07b94ad404ea8861842d5f39b0f11b513ed22ebaec44353bb4d6f20aec",
+        "release": "0.9.1"
+      }
+    ],
+    "generate-plan": [
+      {
+        "digest": "f6d1f4aea94ab3be0fb74a62c90f6f6358fde754d8fcc52e9387a97a7db23d50",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "9fdc9879bdd378d297e86546e18e47264ce57b2fe04cd42c100cf1cace1fc9af",
+        "release": "0.9.1"
+      }
+    ],
+    "generate-spec": [
+      {
+        "digest": "be24463d4f7d6ec6f17be82e36a5647a0e233297fc2c1797969128cb4741e6d3",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "751326cb908b55d252667131844b73e323bcff04e17ae413f5c08336ff31de78",
+        "release": "0.9.1"
+      }
+    ],
+    "implement-plan": [
+      {
+        "digest": "ba20de1e83d34af32829ed2dba3c4364ae883e78e12ebf05675ebdf341470ab0",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "c3f9077df7568266ee24d0e8729579972a6dc493766e7c4e40719b1b0b43c7bc",
+        "release": "0.9.1"
+      }
+    ],
+    "metaproject": [
+      {
+        "digest": "dc09fcf5c162b5c93dc836177fc97b83581faf781f5fbe035396a33f7d1303eb",
+        "release": "0.8.0"
+      },
+      {
+        "digest": "3bb0c2db0a1d2fd16b1e4f009620d1749808295f8a4bb24e4817f83fe6a4b049",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "ce4c2c3fcf5f406ec0df6d49a437af680e17cf03f5bc2cf8aa65ae89ff9bd3bc",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "c5be7ccdd0dd309ac800c884a3c455f8fa0cf49983770aacd0a75e2c7a07822b",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "a30159c9851dce8a779ae877a5f814f76c12f690d824856ec02d39f51ee5097d",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "cab7761a0cb41ba201d28c4e76d3df7b4bbb652b81e773379c8e57e3e31b1063",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "d0b2a109b353dca882700fe977298b878f6c7648d41e752d9c6bace057fb8c39",
+        "release": "0.9.1"
+      }
+    ],
+    "shipit": [
+      {
+        "digest": "b93d580583e3e96a956b3f7093cb9584d6f50d3653ac701504943ead569ae51a",
+        "release": "0.9.1"
+      }
+    ],
+    "wrapup": [
+      {
+        "digest": "0ee2b6dc7d0bc9eb8d196c777a00fa745899cac197f1bfaa22aa4b0dc365659b",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "ea3fac8db18df395fc81ae74a20b7cfddffbbf9ff3575abfdcf5b92226048404",
+        "release": "0.9.1"
+      }
+    ],
+    "write-intent": [
+      {
+        "digest": "25ce9bc5b9b2988844b3d39b307a5b0de1f68b21672e6186886a9d6702249b14",
+        "release": "0.9.0"
+      },
+      {
+        "digest": "1b28caec40bbe3308dfa6de52ef3bf8fca03ab83c431109a9b87770455f1c5d5",
+        "release": "0.9.1"
+      }
+    ]
+  }
+}
