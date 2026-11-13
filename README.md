@@ -7,7 +7,7 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 - **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
 - **Agent-Safe Adoption (`metaproject adopt`)**: Bring an already-cloned repository under metaproject — identity, every missing document and skill — create-only, no git, no confirmation.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
-- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new`, `backfill` and `adopt`, and kept current by `metaproject skills sync`.
+- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`, plus the `/verify-browser` cross-browser loop and the `/backlog-factory` parallel orchestrator) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new`, `backfill` and `adopt`, and kept current by `metaproject skills sync`.
 - **Repair & Migration (`metaproject doctor`)**: Bring the template store, config and cataloged projects up to date after an upgrade, behind per-fix confirmation.
 - **Workspace Universe (`metaproject universe`)**: Catalog and classify all projects across subdirectories into a SQLite database.
 - **Drift Auditing (`metaproject review`)**: Detect drift between project files and central templates.
@@ -282,14 +282,18 @@ The wizard will prompt for:
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
 #### Project Skills
-`init` installs no skill. Ten skills ship inside the package and are copied into each
+`init` installs no skill. Twelve skills ship inside the package and are copied into each
 project by `metaproject new` and `metaproject backfill`, into `.agents/skills/<name>/`
 (reachable as `.claude/skills/<name>/` through the symlink `new` creates), and committed
 with the project like any other file:
 
-- the nine SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
+- the eleven SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
   `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, `/shipit` (merge, push, deploy and
-  clean up a finished branch; production deploys wait for a five-line zero-downtime plan and your OK), and `/backlog-new` for parking ideas — invoked by bare name;
+  clean up a finished branch; production deploys wait for a five-line zero-downtime plan and your OK), `/backlog-new` for parking ideas,
+  `/verify-browser` (reproduce a browser bug in WebKit with a failing Playwright test, then fix
+  it until webkit, chromium and mobile-safari all pass; real-device checks go to `docs/TODO.md`),
+  and `/backlog-factory` (work the top N independent backlog items in parallel, one worktree,
+  subagent and PR each; merges only with your OK and deploys to preview only) — invoked by bare name;
 - the `metaproject` skill, which teaches an agent when to reach for each command, which
   forms are safe to run unattended (`review --no-tui`, `learn list`, `universe`) and which
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;

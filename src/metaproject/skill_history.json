@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "backlog-factory": [
+      {
+        "digest": "22ccfc31edb8948676db9f9b18d6034eb16c1dd1753e1709246e7e8c65361764",
+        "release": "0.9.1"
+      }
+    ],
     "backlog-new": [
       {
         "digest": "ef25bcb82b8c41f12f5777ad73b9efe247610cf89ed3db673f1721b635ae9d8a",
@@ -129,6 +135,10 @@
       {
         "digest": "e11a7e1bc341dd2ef798bfee7d3b14252ad31a79543b1420826a2da31065b0d2",
         "release": "0.9.1"
+      },
+      {
+        "digest": "47c98c1c571926f77fe2687fda735a77e4336b15cdd95ba4c4e2f3ae8dc02582",
+        "release": "0.9.1"
       }
     ],
     "shipit": [
@@ -142,6 +152,12 @@
       },
       {
         "digest": "31578a734651a87f6d8664a5718860f0b4f26ed3084da72c1e559c08d74b604d",
+        "release": "0.9.1"
+      }
+    ],
+    "verify-browser": [
+      {
+        "digest": "24d222d203b60b633a69900d210a337c7c7040c4edd05ef646c405d74c983f35",
         "release": "0.9.1"
       }
     ],

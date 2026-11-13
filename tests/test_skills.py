@@ -43,6 +43,8 @@ SDLC_SKILLS = {
     "execute-tests",
     "wrapup",
     "shipit",
+    "verify-browser",
+    "backlog-factory",
 }
 ALL_SKILLS = SDLC_SKILLS | {"metaproject"}
 
@@ -70,8 +72,8 @@ def test_bundled_skill_declares_required_frontmatter() -> None:
     assert "description:" in frontmatter
 
 
-def test_bundled_skills_is_the_single_declaration_of_ten() -> None:
-    """R-SKL-1: the metaproject skill plus the nine SDLC skills, sorted by name."""
+def test_bundled_skills_is_the_single_declaration_of_twelve() -> None:
+    """R-SKL-1: the metaproject skill plus the eleven SDLC skills, sorted by name."""
     declared = bundled_skills()
     names = [skill.name for skill in declared]
     assert set(names) == ALL_SKILLS
@@ -89,7 +91,7 @@ def test_legacy_global_skill_dir_follows_home(monkeypatch: pytest.MonkeyPatch, t
 
 
 def test_ac3_new_installs_every_skill_reachable_through_claude_skills(tmp_path: Path) -> None:
-    """AC-3 (R-SKL-2): all ten skills under .agents/skills, visible via .claude/skills."""
+    """AC-3 (R-SKL-2): all twelve skills under .agents/skills, visible via .claude/skills."""
     proj = tmp_path / "demo"
     result = scaffold_project(project_name="demo", output=proj, interactive=False, no_git=True)
 

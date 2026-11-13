@@ -20,6 +20,8 @@ SDLC_SKILLS = (
     "execute-tests",
     "wrapup",
     "shipit",
+    "verify-browser",
+    "backlog-factory",
 )
 
 PRECONDITION = (
@@ -47,8 +49,8 @@ def _frontmatter(text: str) -> dict:
     return fields
 
 
-def test_all_ten_skills_are_bundled() -> None:
-    """AC-1: nine SDLC skills plus the metaproject skill."""
+def test_all_twelve_skills_are_bundled() -> None:
+    """AC-1: eleven SDLC skills plus the metaproject skill."""
     assert {s.name for s in bundled_skills()} == {*SDLC_SKILLS, "metaproject"}
 
 
