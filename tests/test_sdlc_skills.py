@@ -92,6 +92,35 @@ def test_wrapup_archives_from_docs_and_resets_with_backfill() -> None:
     assert "`metaproject backfill` (no file arguments)" in text
 
 
+def test_wrapup_hands_branch_cleanup_to_shipit_and_flags_unrelated_changes() -> None:
+    text = _skill_text("wrapup")
+    assert "/shipit" in text
+    assert "Fallback if `/shipit` is not installed" in text
+    assert "fast-forward merged to `main`" in text
+    assert "Flag unrelated changes" in text
+    assert "git branch -d" in text
+    assert "git push origin --delete" in text
+    assert ".agents/skills/shipit/" in text
+    # Branch wrap-up definition (issue #5): five parts, stated in step 10.
+    assert "A branch is *wrapped up* when" in text
+    for part in (
+        "passed the gate",
+        "fast-forward merged to `main`",
+        "pushed",
+        "deployed and\n   verified (where the project deploys)",
+        "worktree and local and remote branch\n   are gone",
+    ):
+        assert part in text, part
+    assert "Wrapup owns the documents; `/shipit` owns that sequence." in text
+    # Fallback stops on an unmerged branch.
+    assert "if it is not merged, stop and report to the operator" in text
+    # Frontmatter scope covers branches and remote.
+    assert "the cycle's local and remote branches" in text.split("---", 2)[1]
+    # Ordering: archive (7), reset (8), commit (9) all precede the /shipit handoff (10).
+    pos = [text.index(m) for m in ("\n7. ", "\n8. ", "\n9. ", "\n10. ")]
+    assert pos == sorted(pos)
+
+
 def test_metaproject_skill_has_no_plugin_plumbing_and_new_paths() -> None:
     skill_dir = next(s.source_dir for s in bundled_skills() if s.name == "metaproject")
     for path in [skill_dir / "SKILL.md", *sorted((skill_dir / "references").glob("*.md"))]:
