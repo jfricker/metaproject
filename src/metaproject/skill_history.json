@@ -5,6 +5,10 @@
       {
         "digest": "22ccfc31edb8948676db9f9b18d6034eb16c1dd1753e1709246e7e8c65361764",
         "release": "0.9.1"
+      },
+      {
+        "digest": "07d5093bcbff092c36b5fb5127b89d592790bbe5246887d75f28c080a6f053ce",
+        "release": "0.9.1"
       }
     ],
     "backlog-new": [
@@ -158,6 +162,10 @@
     "verify-browser": [
       {
         "digest": "24d222d203b60b633a69900d210a337c7c7040c4edd05ef646c405d74c983f35",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "e26d33a0033f6e4405a4dadfed6fb705e75b9ab400fa78f2ab279c9db8c516c2",
         "release": "0.9.1"
       }
     ],

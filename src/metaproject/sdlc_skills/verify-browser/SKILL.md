@@ -5,8 +5,8 @@ description: Proves a browser bug is fixed in every engine — reproduces it in 
 
 # verify-browser
 
-> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
-> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
 Cross-browser verification loop: reproduce a browser bug in WebKit with a failing
