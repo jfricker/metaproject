@@ -21,6 +21,7 @@ project→templates?"
 | templates → existing project | `backfill` | Create specific missing documents, agent-safe |
 | templates → existing repo | `adopt` | Adopt a repo: identity, every missing document and skill, agent-safe |
 | package → project skills | `skills` | `skills status` / `skills sync`: update the project's bundled skills, agent-safe |
+| declared store → cache | `templates fetch` | Fetch the project's `templates.source` for a fresh container, agent-safe |
 | templates ↔ project | `review` | Report what is missing or has drifted; remediate |
 | projects → templates | `learn` | Turn recurring drift into reviewed template proposals |
 | survey | `universe` | Catalog and classify projects across a workspace tree |
@@ -135,8 +136,10 @@ In a Claude Code on the web session (the *web profile*: `CLAUDE_CODE_REMOTE=true
 no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a
 "not available in web sessions" notice and exit 0; `doctor` skips its store, config and
 catalog checks with that notice but still checks the current project (identity, docs,
-skills); `adopt`, `backfill` and `review --no-tui` work as usual. See
-`references/commands.md`.
+skills); `adopt`, `backfill` and `review --no-tui` work as usual, rendering from the
+project's `templates.source` (`.metaproject.json`) when the local store is absent. A
+session-start hook installed by `new`/`backfill` puts the pinned CLI on `PATH` and runs
+`skills sync` at the start of each web session. See `references/commands.md`.
 
 ## Scaffolding a new project
 

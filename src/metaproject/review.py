@@ -35,18 +35,19 @@ from metaproject.deliverables import (
 from metaproject.exceptions import MetaProjectError
 from metaproject.hooks import (
     HOOK_SCRIPT_PATH,
+    SESSION_SCRIPT_PATH,
     STALE,
     HooksWriteDenied,
     SettingsError,
     hook_script_state,
     hooks_installed,
     install_hooks,
+    session_script_state,
     settings_problem,
 )
 from metaproject.markdown import Heading, missing_headings
 from metaproject.templates import (
     find_unknown_placeholders,
-    get_bundled_templates_dir,
     is_junk_file_name,
     render_template_tree,
     transform_template_name,
@@ -132,20 +133,17 @@ def unignore_project(project_dir: Path, config_dir: Optional[Path] = None) -> bo
 # --------------------------------------------------------------------------- templates
 
 
-def resolve_templates_dir(templates_dir: Optional[Path] = None) -> Path:
-    """The template store to audit against: explicit path, configured store, or bundled."""
-    if templates_dir:
-        return Path(templates_dir).expanduser().resolve()
-    try:
-        cfg = load_config()
-        tmpl_path = Path(cfg.templates_dir)
-        if tmpl_path.exists() and any(tmpl_path.iterdir()):
-            return tmpl_path.resolve()
-    except (PermissionError, OSError):
-        pass
-    except MetaProjectError:
-        pass
-    return get_bundled_templates_dir()
+def resolve_templates_dir(
+    templates_dir: Optional[Path] = None, project_dir: Optional[Path] = None
+) -> Path:
+    """The template store to audit against: explicit path, configured store, the
+    project's `templates.source` (when `project_dir` is given), or bundled.
+
+    `template_source.resolve_templates` owns the order and the fallbacks.
+    """
+    from metaproject.template_source import resolve_templates
+
+    return resolve_templates(project_dir, templates_dir).path
 
 
 def resolve_template_entry(rel_path: str, templates_dir: Path) -> Optional[Path]:
@@ -368,11 +366,13 @@ def review_project(
     (e.g. `docs/HANDOFF.md`) are skipped entirely (R-CLS-5); directory deliverables are a
     presence check. See `ReviewResult` for what the derived verdicts mean.
     """
-    resolved_proj = project_dir.expanduser().resolve()
-    resolved_templates = resolve_templates_dir(templates_dir)
-    cfg = config or load_config()
-
     from metaproject.identity import read_identity
+    from metaproject.template_source import ORIGIN_EXPLICIT, resolve_templates
+
+    resolved_proj = project_dir.expanduser().resolve()
+    cfg = config or load_config()
+    resolution = resolve_templates(resolved_proj, templates_dir, cfg)
+    resolved_templates = resolution.path
 
     missing_files: List[str] = []
     deployable: List[str] = []
@@ -382,6 +382,11 @@ def review_project(
     warnings: List[str] = []
     legacy_found = legacy_locations(resolved_proj)
     legacy: Dict[str, str] = {}
+
+    if resolution.source_declared and resolution.origin != ORIGIN_EXPLICIT:
+        # Which store the audit was measured against, when the project declares one:
+        # a `templates.source` that fell back to the bundled defaults explains drift.
+        notes.append(resolution.describe())
 
     if read_identity(resolved_proj) is None:
         # Informational only (R-ID-4): `.metaproject.json` is not itself reviewable, and
@@ -408,8 +413,13 @@ def review_project(
                     warnings.append(problem)
                 else:
                     deployable.append(path)
-            elif hook_script_state(resolved_proj) == STALE:
-                notes.append(f"{HOOK_SCRIPT_PATH} differs from this release; left untouched.")
+            else:
+                for script, state in (
+                    (HOOK_SCRIPT_PATH, hook_script_state(resolved_proj)),
+                    (SESSION_SCRIPT_PATH, session_script_state(resolved_proj)),
+                ):
+                    if state == STALE:
+                        notes.append(f"{script} differs from this release; left untouched.")
             continue
 
         template_entry = resolve_template_entry(path, resolved_templates)
@@ -549,7 +559,7 @@ def deploy_entry(
     if classify(deliverable) is DeliverableClass.SETTINGS:
         return _deploy_hooks(resolved_proj, deliverable)
 
-    resolved_templates = resolve_templates_dir(templates_dir)
+    resolved_templates = resolve_templates_dir(templates_dir, resolved_proj)
     target = resolved_proj / deliverable
 
     entry = resolve_template_entry(deliverable, resolved_templates)
@@ -605,7 +615,7 @@ def _deploy_hooks(project_dir: Path, deliverable: str) -> List[Path]:
     is kept. Refuses when everything is already installed, as any other deploy does when
     its target exists, and when the settings file cannot be merged into.
     """
-    from metaproject.hooks import INSTALLED, SETTINGS_PATH
+    from metaproject.hooks import SETTINGS_PATH
 
     if hooks_installed(project_dir):
         raise MetaProjectError(f"{deliverable} already has the metaproject hooks.")
@@ -615,8 +625,7 @@ def _deploy_hooks(project_dir: Path, deliverable: str) -> List[Path]:
     written: List[Path] = []
     if report.added:
         written.append(project_dir / SETTINGS_PATH)
-    if report.script == INSTALLED:
-        written.append(project_dir / HOOK_SCRIPT_PATH)
+    written.extend(project_dir / path for path in report.installed_scripts)
     return written
 
 
@@ -705,8 +714,8 @@ def backfill_missing(
     in the batch could change how a later one renders.
     """
     resolved_proj = Path(project_dir).expanduser().resolve()
-    resolved_templates = resolve_templates_dir(templates_dir)
     cfg = config or load_config()
+    resolved_templates = resolve_templates_dir(templates_dir, resolved_proj)
     variables = resolve_variables(resolved_proj, cfg)
 
     def write(path: str) -> None:
@@ -852,7 +861,7 @@ def update_entry(
         )
 
     resolved_proj = Path(project_dir).expanduser().resolve()
-    resolved_templates = resolve_templates_dir(templates_dir)
+    resolved_templates = resolve_templates_dir(templates_dir, resolved_proj)
     target = resolved_proj / deliverable
 
     if not target.exists():

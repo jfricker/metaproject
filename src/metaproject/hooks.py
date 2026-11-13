@@ -20,6 +20,12 @@ time, so a project's lint command can change without re-running metaproject:
   `commands.typecheck`; silent and exit 0 when neither is configured or both pass.
 - `pre-bash` (PreToolUse, `Bash`) stops stale listeners on `e2e_port` before a command
   that mentions playwright; always exit 0.
+
+A third entry, `SessionStart`, runs the bundled shell script
+`scripts/metaproject-session.sh` (also copied create-only) only when
+`CLAUDE_CODE_REMOTE=true`: in a Claude Code on the web container it installs the CLI at
+the version `.metaproject.json` pins, runs `metaproject skills sync` and refreshes the
+`templates.source` cache. It always exits 0, so it never blocks a session.
 """
 
 import filecmp
@@ -38,6 +44,8 @@ if TYPE_CHECKING:
 SETTINGS_PATH = ".claude/settings.json"
 HOOK_SCRIPT_PATH = ".claude/hooks/metaproject_hook.py"
 _BUNDLED_SCRIPT = "metaproject_hook.py"
+SESSION_SCRIPT_PATH = "scripts/metaproject-session.sh"
+_BUNDLED_SESSION_SCRIPT = "metaproject-session.sh"
 
 # Script states, mirroring the project-skill install states.
 INSTALLED = "installed"
@@ -101,10 +109,22 @@ PRE_BASH_HOOK = HookEntry(
     event="PreToolUse", matcher="Bash", command=_script_command("pre-bash"), timeout=15
 )
 
+# Guarded twice: a missing script is a no-op exactly like the hooks above, and a local
+# (non-web) session never even spawns the script. The script re-checks the variable
+# itself and always exits 0. Like `_script_command`, this string is the entry's identity.
+SESSION_START_HOOK = HookEntry(
+    event="SessionStart",
+    command=(
+        f'f="$CLAUDE_PROJECT_DIR/{SESSION_SCRIPT_PATH}"; [ -f "$f" ] || exit 0; '
+        '[ "$CLAUDE_CODE_REMOTE" = "true" ] || exit 0; bash "$f"; exit 0'
+    ),
+    timeout=300,
+)
+
 
 def project_hook_entries() -> Tuple[HookEntry, ...]:
     """The hook entries every scaffolded project carries."""
-    return (POST_EDIT_HOOK, PRE_BASH_HOOK)
+    return (POST_EDIT_HOOK, PRE_BASH_HOOK, SESSION_START_HOOK)
 
 
 # ----------------------------------------------------------------------- settings merge
@@ -233,24 +253,48 @@ def read_hook_config(project_dir: Path) -> HookConfig:
 # -------------------------------------------------------------------------- hook script
 
 
-def get_bundled_hook_script() -> Path:
-    """The hook script shipped inside this package."""
+def _bundled(name: str) -> Path:
     try:
-        return Path(
-            str(importlib.resources.files("metaproject").joinpath("hook_scripts", _BUNDLED_SCRIPT))
-        )
+        return Path(str(importlib.resources.files("metaproject").joinpath("hook_scripts", name)))
     except Exception as exc:
         raise MetaProjectError(f"Failed to access the bundled hook script: {exc}") from exc
 
 
-def hook_script_state(project_dir: Path) -> str:
-    """`missing`, `current` (byte-identical to the bundled copy) or `stale`."""
-    dest = Path(project_dir) / HOOK_SCRIPT_PATH
+def get_bundled_hook_script() -> Path:
+    """The hook script shipped inside this package."""
+    return _bundled(_BUNDLED_SCRIPT)
+
+
+def get_bundled_session_script() -> Path:
+    """The SessionStart shell script shipped inside this package."""
+    return _bundled(_BUNDLED_SESSION_SCRIPT)
+
+
+def _script_pairs() -> Tuple[Tuple[str, Path], ...]:
+    """(project path, bundled source) for every script the hooks run."""
+    return (
+        (HOOK_SCRIPT_PATH, get_bundled_hook_script()),
+        (SESSION_SCRIPT_PATH, get_bundled_session_script()),
+    )
+
+
+def _script_state(project_dir: Path, rel_path: str, bundled: Path) -> str:
+    dest = Path(project_dir) / rel_path
     if not dest.exists() and not dest.is_symlink():
         return MISSING
-    if dest.is_file() and filecmp.cmp(get_bundled_hook_script(), dest, shallow=False):
+    if dest.is_file() and filecmp.cmp(bundled, dest, shallow=False):
         return CURRENT
     return STALE
+
+
+def hook_script_state(project_dir: Path) -> str:
+    """`missing`, `current` (byte-identical to the bundled copy) or `stale`."""
+    return _script_state(project_dir, HOOK_SCRIPT_PATH, get_bundled_hook_script())
+
+
+def session_script_state(project_dir: Path) -> str:
+    """The SessionStart script's state: `missing`, `current` or `stale`."""
+    return _script_state(project_dir, SESSION_SCRIPT_PATH, get_bundled_session_script())
 
 
 # ------------------------------------------------------------------------- installation
@@ -261,6 +305,7 @@ class HooksReport:
     """What one install pass did, or would do under `dry_run`."""
 
     script: str = MISSING
+    session_script: str = MISSING
     added: List[HookEntry] = field(default_factory=list)
     settings_created: bool = False
     notice: Optional[str] = None
@@ -269,12 +314,18 @@ class HooksReport:
 
     @property
     def wrote(self) -> bool:
-        return self.script == INSTALLED or bool(self.added)
+        return bool(self.installed_scripts) or bool(self.added)
+
+    @property
+    def installed_scripts(self) -> List[str]:
+        """Project paths of the scripts this pass copied in (or would, under dry_run)."""
+        states = ((HOOK_SCRIPT_PATH, self.script), (SESSION_SCRIPT_PATH, self.session_script))
+        return [path for path, state in states if state == INSTALLED]
 
 
 def hooks_installed(project_dir: Path) -> bool:
-    """Is the hook script present and every project hook entry merged? Never raises."""
-    if hook_script_state(project_dir) == MISSING:
+    """Are both scripts present and every project hook entry merged? Never raises."""
+    if MISSING in (hook_script_state(project_dir), session_script_state(project_dir)):
         return False
     try:
         return not missing_hooks(Path(project_dir) / SETTINGS_PATH, project_hook_entries())
@@ -297,7 +348,7 @@ def install_hooks(
     tracker: "Optional[TransactionalTracker]" = None,
     entries: Optional[Sequence[HookEntry]] = None,
 ) -> HooksReport:
-    """Copy the hook script (create-only) and merge the hook entries into settings.json.
+    """Copy the hook scripts (create-only) and merge the hook entries into settings.json.
 
     An unmergeable settings file is checked *first*, so a refusal writes nothing at all —
     not even the script — and comes back as `notice`. Paths created are recorded on
@@ -311,15 +362,22 @@ def install_hooks(
     try:
         pending = missing_hooks(settings_path, wanted)
     except SettingsError as exc:
-        return HooksReport(script=hook_script_state(project_dir), notice=str(exc))
+        return HooksReport(
+            script=hook_script_state(project_dir),
+            session_script=session_script_state(project_dir),
+            notice=str(exc),
+        )
 
-    script = hook_script_state(project_dir)
+    states: Dict[str, str] = {}
     created = not settings_path.exists()
     try:
-        if script == MISSING:
-            if not dry_run:
-                _copy_script(project_dir, tracker)
-            script = INSTALLED
+        for rel_path, bundled in _script_pairs():
+            state = _script_state(project_dir, rel_path, bundled)
+            if state == MISSING:
+                if not dry_run:
+                    _copy_script(project_dir, rel_path, bundled, tracker)
+                state = INSTALLED
+            states[rel_path] = state
 
         if pending and not dry_run:
             if tracker is not None:
@@ -335,6 +393,7 @@ def install_hooks(
         # and `.claude/hooks/`, so an agent-driven backfill lands here: report, never crash.
         return HooksReport(
             script=hook_script_state(project_dir),
+            session_script=session_script_state(project_dir),
             write_denied=True,
             notice=(
                 f"Could not write the metaproject hooks ({exc}). Claude Code's sandbox can "
@@ -344,7 +403,10 @@ def install_hooks(
         )
 
     return HooksReport(
-        script=script, added=list(pending), settings_created=created and bool(pending)
+        script=states[HOOK_SCRIPT_PATH],
+        session_script=states[SESSION_SCRIPT_PATH],
+        added=list(pending),
+        settings_created=created and bool(pending),
     )
 
 
@@ -356,10 +418,15 @@ def _make_parents(path: Path, tracker: "Optional[TransactionalTracker]") -> None
                 tracker.record_created_dir(parent)
 
 
-def _copy_script(project_dir: Path, tracker: "Optional[TransactionalTracker]") -> None:
-    dest = project_dir / HOOK_SCRIPT_PATH
+def _copy_script(
+    project_dir: Path,
+    rel_path: str,
+    bundled: Path,
+    tracker: "Optional[TransactionalTracker]",
+) -> None:
+    dest = project_dir / rel_path
     _make_parents(dest, tracker)
     if tracker is not None:
         tracker.record_created_file(dest)
-    shutil.copyfile(get_bundled_hook_script(), dest)
+    shutil.copyfile(bundled, dest)
     dest.chmod(0o755)
