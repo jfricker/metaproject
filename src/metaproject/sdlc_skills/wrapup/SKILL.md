@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into docs/archive/, flags unrelated changes that would ship, hands branch and worktree cleanup to `/shipit` (with a manual fallback), and recreates blank cycle documents with `metaproject backfill`. Besides documents it changes only git worktrees and the cycle's local and remote branches; never source code or tests. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into docs/archive/, flags unrelated changes that would ship, hands branch and worktree cleanup to `/shipit` (with a manual fallback), and recreates blank cycle documents with `metaproject backfill`. Besides documents it changes only git worktrees and the cycle's local and remote branches; never source code or tests. Records everything it could not verify itself in docs/TODO.md. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # wrapup
@@ -21,7 +21,8 @@ what's worth keeping long-term, and reset `docs/` to a blank slate for the next
   Create a missing one with `metaproject backfill docs/<FILE>.md` (create-only — it
   never overwrites); `metaproject backfill` with no files creates every missing
   scaffolded deliverable at once. `docs/HANDOFF.md` is on-demand:
-  `metaproject backfill docs/HANDOFF.md`.
+  `metaproject backfill docs/HANDOFF.md`. `docs/TODO.md` is on-demand too
+  (`metaproject backfill docs/TODO.md`).
 - If a metaproject command fails, stop and show the user its output.
 - **Blank rule**: a cycle document (INTENT/SPEC/TECH-DESIGN/PLAN) is blank iff its first
   `# ` heading contains `<Title>`.
@@ -35,7 +36,7 @@ what's worth keeping long-term, and reset `docs/` to a blank slate for the next
   Process below).
 
 **Scope discipline**: this skill only ever touches SDLC documents (`docs/INTENT.md`,
-`docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/HANDOFF.md`, `docs/STATE.md`), the long-lived docs
+`docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/HANDOFF.md`, `docs/STATE.md`), `docs/TODO.md` (append-only), the long-lived docs
 (`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`), the
 `docs/archive/` directory, and git worktree bookkeeping. It never edits source code,
 tests, or opens a PR — if any of those are still outstanding, the cycle isn't done; send
@@ -115,8 +116,16 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    Then, if step 2 produced any "carry forward" items, seed the new `docs/INTENT.md`'s
    **Open questions** section with them, each one linked back to the cycle it came from
    (`docs/archive/YYYY-MM-DD-<slug>/`).
-9. Commit the archive + long-lived doc updates + reset as one commit on the cycle branch (before the `/shipit` handoff, so the gate and merge carry it to `main`) (e.g.
-    `chore: archive <slug> cycle, reset SDLC docs`).
+9. **Record what you could not verify, then commit.** Append a dated
+   `## YYYY-MM-DD: Needs manual verification (<slug>)` entry to `docs/TODO.md`; if the
+   file is missing, create it first with `metaproject backfill docs/TODO.md`. List
+   everything this cycle needed but you could not check yourself (browsers, devices, CI
+   runs, third-party widgets, deployed environments) as `- [ ]` items, each with the
+   exact steps for the operator to check it and the expected result. If there is
+   nothing, add the entry anyway with "Nothing outstanding." `docs/TODO.md` is never
+   archived or reset. Then commit the archive + long-lived doc updates + `docs/TODO.md`
+   entry + reset as one commit on the cycle branch (before the `/shipit` handoff, so the gate and merge carry it to `main`) (e.g.
+   `chore: archive <slug> cycle, reset SDLC docs`).
 10. **Wrap up the cycle's branch and worktrees** (only after step 9's commit, so the archive and reset ship with the merge). A branch is *wrapped up* when its work
    has passed the gate, been fast-forward merged to `main`, pushed, deployed and
    verified (where the project deploys), and its worktree and local and remote branch
@@ -150,6 +159,7 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
   - `docs/INTENT.md` (Open questions possibly seeded with carried-forward items),
     `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md` recreated via
     `metaproject backfill`.
+  - `docs/TODO.md` with a new dated "Needs manual verification" entry, committed with the archive.
   - No worktrees or merged branches left over from the closed cycle.
 - Or: an early exit back to `implement-plan` — nothing archived, nothing reset,
   triggered by the operator choosing "return to implement-plan" on an open item in
@@ -164,6 +174,8 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
   here); proceed only once they confirm the cycle's work is actually complete.
 - Never delete a worktree with uncommitted or unmerged work without explicit
   confirmation.
+- Never claim something was verified that you did not verify; anything unverified goes
+  into the `docs/TODO.md` entry (step 9) with exact steps. Never archive `docs/TODO.md`.
 - Never push unrelated changes (step 10) without the operator's explicit say-so.
 - Never archive STATE.md without first preserving any non-empty Design
   invariants/Verified facts content into the long-lived docs — that knowledge doesn't

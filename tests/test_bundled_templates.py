@@ -73,6 +73,13 @@ def test_handoff_has_a_bundled_template_despite_being_on_demand() -> None:
     assert entry.is_file()
 
 
+def test_todo_has_a_bundled_template_and_is_on_demand() -> None:
+    """D6: docs/TODO.md is on-demand, created by name, with a bundled template."""
+    entry = resolve_template_entry("docs/TODO.md", TEMPLATES_DIR)
+    assert entry is not None
+    assert entry.is_file()
+
+
 @pytest.mark.parametrize("template_name", CYCLE_TEMPLATES)
 def test_cycle_templates_share_the_header(template_name: str) -> None:
     """R-TPL-5: intent/spec/design/plan templates share `Author`/`Last updated`/
@@ -173,6 +180,7 @@ def test_new_dry_run_lists_every_r_tpl_4_file_and_not_handoff(tmp_path: Path) ->
         assert expected in rendered, f"{expected} missing from dry-run listing"
 
     assert "docs/HANDOFF.md" not in rendered
+    assert "docs/TODO.md" not in rendered
     assert not any(
         "/" not in p and p.endswith(".md") and p not in ("AGENTS.md", "CLAUDE.md", "README.md")
         for p in rendered

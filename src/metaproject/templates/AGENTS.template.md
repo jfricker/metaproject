@@ -30,6 +30,11 @@ On-demand: created only when work is interrupted before completion, to capture t
 state of the work and anything needed to resume it or hand it off to another agent at
 another time.
 
+### docs/TODO.md
+On-demand: the operator's standing list of manual checks. `wrapup` appends a dated
+"Needs manual verification" entry (what the agent could not verify, with exact steps)
+and commits it with the cycle; it is never archived.
+
 ### docs/STATE.md
 A running record of the current cycle. Its `## Process` section is a checklist of the
 seven stages above; each stage ticks its own item as it completes. Update it as tasks

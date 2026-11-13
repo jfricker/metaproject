@@ -237,6 +237,30 @@ def test_cli_backfill_ac10_all_missing_in_one_call(runner: CliRunner, tmp_path: 
     assert "AGENTS.md" in result.output
 
 
+def test_backfill_by_name_creates_on_demand_todo(tmp_path: Path) -> None:
+    """`backfill docs/TODO.md` creates the on-demand file `new` never scaffolds."""
+    proj, templates = scaffolded_project(tmp_path)
+    assert not (proj / "docs/TODO.md").exists()
+
+    result = backfill_missing(proj, files=["docs/TODO.md"], templates_dir=templates)
+
+    assert result.created == ["docs/TODO.md"]
+    assert (proj / "docs/TODO.md").exists()
+    assert result.refused == []
+
+
+def test_cli_backfill_by_name_creates_todo(runner: CliRunner, tmp_path: Path) -> None:
+    proj, templates = scaffolded_project(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["backfill", "docs/TODO.md", "--dir", str(proj), "--templates", str(templates)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (proj / "docs/TODO.md").exists()
+
+
 def test_cli_backfill_by_name_creates_handoff(runner: CliRunner, tmp_path: Path) -> None:
     proj, templates = scaffolded_project(tmp_path)
 

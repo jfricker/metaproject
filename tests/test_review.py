@@ -134,6 +134,7 @@ def test_review_missing_files_and_drift(tmp_path: Path) -> None:
     assert review.is_compliant is False
     # docs/HANDOFF.md is on-demand (R-CLS-5): never scaffolded, never reported missing.
     assert "docs/HANDOFF.md" not in review.missing_files
+    assert "docs/TODO.md" not in review.missing_files
     assert "docs/STATE.md" in review.missing_files
     assert "CLAUDE.md" in review.missing_files
     assert ".gitignore" in review.missing_files
@@ -343,6 +344,9 @@ def test_ac4_missing_handoff_is_never_incomplete(tmp_path: Path) -> None:
     review = review_project(proj, templates_dir=templates)
     assert "docs/HANDOFF.md" not in review.missing_files
     assert "docs/HANDOFF.md" not in review.deployable
+    assert not (proj / "docs/TODO.md").exists()
+    assert "docs/TODO.md" not in review.missing_files
+    assert "docs/TODO.md" not in review.deployable
     assert review.is_compliant is True
     assert review.is_clean is True
 

@@ -447,8 +447,8 @@ and never touches git — it is safe to run from an agent session or a hook:
 # Create every deliverable `new` scaffolds that is currently missing, plus missing skills
 metaproject backfill
 
-# Create specific documents by name, including the on-demand docs/HANDOFF.md
-metaproject backfill docs/SPEC.md docs/HANDOFF.md
+# Create specific documents by name, including the on-demand docs/HANDOFF.md and docs/TODO.md
+metaproject backfill docs/SPEC.md docs/HANDOFF.md docs/TODO.md
 
 # Old names still resolve to docs/ — this creates docs/TECH-DESIGN.md
 metaproject backfill design.md

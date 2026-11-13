@@ -58,8 +58,9 @@ Every file `metaproject` scaffolds, reviews, or learns from belongs to exactly o
   heading structure only — a template heading with no matching heading in the project
   file is drift — never body-for-body, and never offered for Update; you fill their
   content freely as the cycle runs.
-- **on-demand** — `docs/HANDOFF.md`. Never scaffolded by `new` and never reported missing
-  by `review`; create it (with `backfill docs/HANDOFF.md`) only when work is interrupted.
+- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new` and never
+  reported missing by `review`; create HANDOFF (with `backfill docs/HANDOFF.md`) only when
+  work is interrupted. `wrapup` creates TODO (`backfill docs/TODO.md`) to log manual checks.
 - **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
 
 ## Project identity: `.metaproject.json`
@@ -325,6 +326,8 @@ work happens, and that is your job in every session inside a metaproject-managed
 - **`docs/HANDOFF.md`** — written when work is interrupted, so the next session (or the next
   person) can resume without re-deriving context. On-demand: create it with `backfill`
   only when actually stopping mid-stream.
+- **`docs/TODO.md`** — the operator's manual-verification list; `wrapup` appends a dated
+  entry per cycle and it is never archived.
 - **`AGENTS.md` / `CLAUDE.md`** — how to build, test, and work in this repo.
 
 When you finish a meaningful chunk of work in one of these repos, updating `docs/STATE.md`

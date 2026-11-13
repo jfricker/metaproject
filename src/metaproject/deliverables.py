@@ -9,8 +9,10 @@ exactly one of five classes, declared once here rather than re-decided by each c
   `docs/STATE.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`,
   `docs/VERIFIED-FACTS.md`. Checked for heading structure only, never diffed
   body-for-body, and never offered for Update.
-- **on-demand** — `docs/HANDOFF.md`. Never scaffolded by `new` and never reported missing
-  by `review`; created only when asked for by name (`backfill HANDOFF.md`).
+- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new` and never
+  reported missing by `review`; created only when asked for by name (`backfill HANDOFF.md`).
+  `docs/TODO.md` is the operator's standing manual-verification list, appended by `wrapup`
+  and never archived.
 - **directory** — `docs`, `docs/archive`. A presence check, nothing more.
 - **settings** — `.claude/settings.json`. Never rendered from the template store and
   never overwritten: metaproject *merges* its hook entries into it (`hooks.py`), keeping
@@ -65,6 +67,7 @@ DELIVERABLES: Tuple[Deliverable, ...] = (
     Deliverable("docs/VERIFIED-FACTS.md", DeliverableClass.WORKING),
     # on-demand
     Deliverable("docs/HANDOFF.md", DeliverableClass.ON_DEMAND),
+    Deliverable("docs/TODO.md", DeliverableClass.ON_DEMAND),
     # directory
     Deliverable("docs", DeliverableClass.DIRECTORY),
     Deliverable("docs/archive", DeliverableClass.DIRECTORY),

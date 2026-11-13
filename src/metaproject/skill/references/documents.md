@@ -48,9 +48,9 @@ INTENT.md   SPEC.md    TECH-DESIGN.md  PLAN.md   code + tests    STATE.md      a
   heading structure only: a template heading with no matching heading in the project
   file is drift, body text is never diffed, and these are never offered for Update — you
   fill their content freely and `review` never second-guesses it.
-- **on-demand** — `docs/HANDOFF.md`. Never scaffolded by `new`, never reported missing by
-  `review`. Create it with `metaproject backfill docs/HANDOFF.md` only when work stops
-  mid-stream.
+- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new`, never
+  reported missing by `review`. Create HANDOFF with `metaproject backfill docs/HANDOFF.md`
+  only when work stops mid-stream; `wrapup` creates TODO the same way.
 - **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
 - **settings** — `.claude/settings.json`. Never rendered from a template and never
   overwritten: `new`/`backfill` merge two hook entries into it (`PostToolUse` `Edit|Write`
@@ -189,6 +189,13 @@ SDLC stage, branch/worktree, last commit, command(s) to re-run, next steps, bloc
 
 The failure mode is writing it as a summary of what was done. Bias it toward what is
 *unfinished*.
+
+## `docs/TODO.md`
+
+On-demand, append-only, never archived. `wrapup` appends a dated "Needs manual
+verification" entry per cycle: each thing the agent could not verify itself (browsers,
+devices, CI runs, third-party widgets) with exact steps and the expected result. The
+entry is committed with the cycle. The operator ticks or deletes items.
 
 ## `docs/ARCHITECTURE.md`
 
