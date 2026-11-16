@@ -1,0 +1,79 @@
+{
+  "skills": {
+    "backlog-factory": {
+      "files": {
+        "SKILL.md": "dcfde1b154f018475aee3787c757879083e8fb071fcd3bc7b75f82753ad5de35"
+      },
+      "release": "0.9.1"
+    },
+    "backlog-new": {
+      "files": {
+        "SKILL.md": "3d322765ae7baeec0489c25d2461071c0937388e4183a722495b29fd7fffee35"
+      },
+      "release": "0.9.1"
+    },
+    "execute-tests": {
+      "files": {
+        "SKILL.md": "38ece6da480a0c2281e1a0f96128e5b3a4d4a712e26e62722d60bb03fb1fa6a3"
+      },
+      "release": "0.9.1"
+    },
+    "generate-design": {
+      "files": {
+        "SKILL.md": "9f1e0bcff1d4ee5121f62cc9daccf50eb5085aaaf5ecc3bb81db8ffca1e9ff36"
+      },
+      "release": "0.9.1"
+    },
+    "generate-plan": {
+      "files": {
+        "SKILL.md": "8d4274de9b9fca2a2ed667855758c7f9511df503682144b675b4b896a46bfd50"
+      },
+      "release": "0.9.1"
+    },
+    "generate-spec": {
+      "files": {
+        "SKILL.md": "096ee9ecae08e59e1cb66f7da2023f6a423ed260cc9e5ec7a196c7f46a0bd5b8"
+      },
+      "release": "0.9.1"
+    },
+    "implement-plan": {
+      "files": {
+        "SKILL.md": "3e693510631b7b0c00bfd72ee1cdac02db0b030ecc9fe46037bb901de3dd3079"
+      },
+      "release": "0.9.1"
+    },
+    "metaproject": {
+      "files": {
+        "SKILL.md": "f15e344e9a0c87a6a4bea959b00f409ef12561a0f88e7436be8e387f8c1dbb4f",
+        "references/commands.md": "4d5b4041c9d5e0b3a0c21be3244802e86976aee2d81b47f654a4cc373c37201e",
+        "references/documents.md": "0850c437d82c30d5ca6fa743782a8d6b84671af2632f45d748f0df61aef3c21f"
+      },
+      "release": "0.9.1"
+    },
+    "shipit": {
+      "files": {
+        "SKILL.md": "752a387aafd777b0e0a2e38e186be80c0c217f2569be2eac9b2f510834fed2db"
+      },
+      "release": "0.9.1"
+    },
+    "verify-browser": {
+      "files": {
+        "SKILL.md": "d43056d7ec74cd8c032a91685286c2a073ac02ed6d9246a2fdf41d6a421b689e"
+      },
+      "release": "0.9.1"
+    },
+    "wrapup": {
+      "files": {
+        "SKILL.md": "cfdbe26e88ceed24eea539891e3d492f2a28b44e8e15e614d15c302b0d7209da"
+      },
+      "release": "0.9.1"
+    },
+    "write-intent": {
+      "files": {
+        "SKILL.md": "d2bb69c4549b589eb6ba9554ad35d11c206f648c42b705432dc9e5b9b0b99f07"
+      },
+      "release": "0.9.1"
+    }
+  },
+  "version": 1
+}

@@ -1,6 +1,6 @@
 ---
 name: metaproject
-description: Use the `metaproject` CLI to scaffold, audit, and maintain a project's SDLC documents — docs/INTENT.md, docs/SPEC.md, docs/TECH-DESIGN.md, docs/PLAN.md, docs/STATE.md, docs/HANDOFF.md, AGENTS.md, CLAUDE.md, README.md — and its project skills from a central template store at ~/.metaproject/templates. Use this skill whenever the user wants to start a new project with SDLC boilerplate, add missing documents to a repo ("backfill", "scaffold into this directory"), check whether a project has drifted from their templates ("review", "compliance", "is this project up to date"), migrate an older project whose cycle documents still sit at its root ("doctor"), promote a recurring pattern across projects into the templates themselves ("learn"), or list and classify the projects on their machine ("universe", "which projects am I working on"). Reach for it even when the user does not say "metaproject" by name — if they ask for an AGENTS.md, a STATE.md, a spec, a handoff doc, or ask why a project is missing its standard files, this is the tool that owns those files.
+description: Uses the `metaproject` CLI to scaffold, audit, and maintain a project's SDLC documents (docs/INTENT.md, SPEC.md, TECH-DESIGN.md, PLAN.md, STATE.md, HANDOFF.md, AGENTS.md, CLAUDE.md, README.md) and project skills from the template store at ~/.metaproject/templates. Use when the user wants to start a project with SDLC boilerplate, add missing documents ("backfill", "scaffold into this directory"), check drift from the templates ("review", "is this project up to date"), migrate a project whose cycle documents sit at its root ("doctor"), promote recurring drift into the templates ("learn"), or list projects on the machine ("universe"). Also use when the user asks for an AGENTS.md, STATE.md, spec, or handoff doc, or why a project is missing its standard files, even without naming metaproject.
 ---
 
 # metaproject
@@ -19,6 +19,9 @@ project→templates?"
 |---|---|---|
 | templates → new project | `new` | Scaffold a project (or scaffold into an existing directory) |
 | templates → existing project | `backfill` | Create specific missing documents, agent-safe |
+| templates → existing repo | `adopt` | Adopt a repo: identity, every missing document and skill, agent-safe |
+| package → project skills | `skills` | `skills status` / `skills sync`: update the project's bundled skills, agent-safe |
+| declared store → cache | `templates fetch` | Fetch the project's `templates.source` for a fresh container, agent-safe |
 | templates ↔ project | `review` | Report what is missing or has drifted; remediate |
 | projects → templates | `learn` | Turn recurring drift into reviewed template proposals |
 | survey | `universe` | Catalog and classify projects across a workspace tree |
@@ -31,7 +34,7 @@ Every project's documents move through one cycle, each stage owned by a project 
 and ticked off in `docs/STATE.md`'s Process list. The skills ship in the metaproject
 wheel; `new` and `backfill` copy them into the project's `.agents/skills/` (reachable as
 `.claude/skills/`), where they are committed with the project and invoked by bare name
-(`/write-intent`, `/generate-spec`, …, plus `/backlog-new` for parking ideas):
+(`/write-intent`, `/generate-spec`, …, plus utility skills such as `/backlog-new` and `/verify-browser`):
 
 ```
 write-intent → generate-spec → generate-design → generate-plan →
@@ -55,8 +58,9 @@ Every file `metaproject` scaffolds, reviews, or learns from belongs to exactly o
   heading structure only — a template heading with no matching heading in the project
   file is drift — never body-for-body, and never offered for Update; you fill their
   content freely as the cycle runs.
-- **on-demand** — `docs/HANDOFF.md`. Never scaffolded by `new` and never reported missing
-  by `review`; create it (with `backfill docs/HANDOFF.md`) only when work is interrupted.
+- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new` and never
+  reported missing by `review`; create HANDOFF (with `backfill docs/HANDOFF.md`) only when
+  work is interrupted. `wrapup` creates TODO (`backfill docs/TODO.md`) to log manual checks.
 - **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
 
 ## Project identity: `.metaproject.json`
@@ -69,6 +73,14 @@ then the directory name. `metaproject_version` records which version last brough
 project up to date; `new` sets it, and `doctor` when it backfills a missing anchor.
 `.metaproject.json` is never itself reviewed or diffed — its absence is an informational
 note, not a defect.
+
+The nearest `.metaproject.json` at or above the current directory (stopping at the git
+root) is the project root, so in a monorepo every command run inside a sub-project acts
+on that sub-project; `--dir`/`PROJECT` overrides it. `adopt` with no `--dir` inside a
+managed project re-adopts that project — use `adopt --dir .` to create a sub-project.
+A sub-project declaring `"skills": {"location": "root"}` keeps no skills of its own: they
+live once in the nearest ancestor project (or the git root) and its `.claude/skills`
+links up to them.
 
 ## The blank rule
 
@@ -113,8 +125,9 @@ useful you can do.
 **Scaffolding into an existing directory (`new .` on a non-empty directory) is
 refused** for the same reason: its two confirmations need a person. `--dry-run` still
 previews it, which is how you show the operator what would happen. `metaproject
-backfill` is the agent-safe alternative for filling in specific missing documents — see
-below.
+backfill` is the agent-safe alternative for filling in specific missing documents, and
+`metaproject adopt` the agent-safe way to bring a whole existing repository under
+metaproject — see below.
 
 When a guard fires, relay it — "this needs you to run it, here is the command" —
 instead of reaching for `--force` or `METAPROJECT_AGENT=0`. Those exist for the
@@ -125,8 +138,17 @@ incident.
 them or pass `--yes`. Give it what it needs and it runs unattended.
 
 Read-only or safe to run whenever they would help — none of these write anything except
-`backfill`, and `backfill` only ever *creates* a file that did not exist: `review`,
-`universe`, `learn list`, `learn show`, `backfill` (and any `--dry-run`).
+`backfill`/`adopt`, which only ever *create* files that did not exist: `review`,
+`universe`, `learn list`, `learn show`, `backfill`, `adopt` (and any `--dry-run`).
+
+In a Claude Code on the web session (the *web profile*: `CLAUDE_CODE_REMOTE=true` with
+no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a
+"not available in web sessions" notice and exit 0; `doctor` skips its store, config and
+catalog checks with that notice but still checks the current project (identity, docs,
+skills); `adopt`, `backfill` and `review --no-tui` work as usual, rendering from the
+project's `templates.source` (`.metaproject.json`) when the local store is absent. A
+session-start hook installed by `new`/`backfill` puts the pinned CLI on `PATH` and runs
+`skills sync` at the start of each web session. See `references/commands.md`.
 
 ## Scaffolding a new project
 
@@ -183,6 +205,30 @@ still work: `backfill intent.md` or `backfill INTENT.md` creates `docs/INTENT.md
 existing named file is refused — nothing is written and the command exits non-zero — so
 it never clobbers real content. `--dry-run` previews without writing.
 
+## `metaproject adopt`: adopting a repository that already exists
+
+For a repository that is already cloned but has never been under metaproject — always
+the case in a web session — run `metaproject adopt` (optionally `--title`). It writes
+`.metaproject.json`, the `.agents/skills` layout, and every missing deliverable and
+project skill; it never overwrites, runs no git, needs no confirmation, and is permitted
+in agent sessions. Re-running it is a no-op. Use it instead of `new .`, which needs an
+operator.
+
+## Keeping project skills current: `metaproject skills`
+
+After an upgrade, a project's skills in `.agents/skills/` may be from an earlier release.
+`metaproject skills status` reports each one as `current`, `outdated` (a pristine copy of
+an earlier release), `modified` (local edits) or `missing`; `metaproject skills sync`
+installs missing ones and replaces outdated ones, and keeps modified ones (exit 0) unless
+the operator names one with `--force NAME`, which discards its edits. Both are agent-safe
+and accept `--format json`. Every install records `.agents/skills/.metaproject-skills.json`
+(release and per-file sha256), which is how a pristine copy is told from an edit —
+commit it with the project. Never delete a skill directory to refresh it; run `sync`.
+`skills status --all` reports every cataloged, managed project; `skills sync --all`
+updates them all but is the operator's call — in an agent session without `--yes` it only
+reports, so hand the operator `metaproject skills sync --all --yes` rather than adding
+`--yes` yourself.
+
 ## Auditing a project against the templates
 
 ```bash
@@ -223,8 +269,11 @@ migrates, each fix behind the operator's confirmation: it moves the store's cycl
 templates into `docs.template/` (one commit in the store), rewrites old paths in
 `learn.targets`, moves each cataloged project's documents into `docs/` with their new
 names (`git mv` when tracked; it never overwrites and never commits in the project),
-installs missing project skills (a stale copy is reported, never overwritten), and
-removes the old global `~/.claude/skills/metaproject/`. Only `metaproject doctor
+installs missing project skills and updates outdated unmodified ones (a modified copy is
+reported, never overwritten), and
+removes the old global `~/.claude/skills/metaproject/`. Naming a project scopes the run
+to it — `metaproject doctor .` checks only that project's anchor, cycle documents, and
+skills, skipping the environment-wide checks. Only `metaproject doctor
 --dry-run` runs in an agent session — run it to show the findings, then hand the
 operator `metaproject doctor`.
 
@@ -285,6 +334,8 @@ work happens, and that is your job in every session inside a metaproject-managed
 - **`docs/HANDOFF.md`** — written when work is interrupted, so the next session (or the next
   person) can resume without re-deriving context. On-demand: create it with `backfill`
   only when actually stopping mid-stream.
+- **`docs/TODO.md`** — the operator's manual-verification list; `wrapup` appends a dated
+  entry per cycle and it is never archived.
 - **`AGENTS.md` / `CLAUDE.md`** — how to build, test, and work in this repo.
 
 When you finish a meaningful chunk of work in one of these repos, updating `docs/STATE.md`

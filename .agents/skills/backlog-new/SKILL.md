@@ -1,12 +1,12 @@
 ---
 name: backlog-new
-description: Capture an idea that is NOT ready to become an SDLC cycle — brainstorm it with the user and park the result as docs/backlog/<slug>.md. Use when the user says "new backlog", "backlog-new", "park this idea", "add to backlog", "save this for later", or wants to brainstorm a direction without starting work. Not for work starting now — that is write-intent.
+description: Captures an idea that is NOT ready to become an SDLC cycle — brainstorms it with the user and parks the result as docs/backlog/<slug>.md. Use when the user says "new backlog", "backlog-new", "park this idea", "add to backlog", "save this for later", or wants to brainstorm a direction without starting work. Not for work starting now — that is write-intent.
 ---
 
 # backlog-new
 
-> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
-> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
 Pre-cycle idea parking lot: brainstorm an idea the user does not want to start yet and

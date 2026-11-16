@@ -48,10 +48,15 @@ INTENT.md   SPEC.md    TECH-DESIGN.md  PLAN.md   code + tests    STATE.md      a
   heading structure only: a template heading with no matching heading in the project
   file is drift, body text is never diffed, and these are never offered for Update — you
   fill their content freely and `review` never second-guesses it.
-- **on-demand** — `docs/HANDOFF.md`. Never scaffolded by `new`, never reported missing by
-  `review`. Create it with `metaproject backfill docs/HANDOFF.md` only when work stops
-  mid-stream.
+- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new`, never
+  reported missing by `review`. Create HANDOFF with `metaproject backfill docs/HANDOFF.md`
+  only when work stops mid-stream; `wrapup` creates TODO the same way.
 - **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
+- **settings** — `.claude/settings.json`. Never rendered from a template and never
+  overwritten: `new`/`backfill` merge two hook entries into it (`PostToolUse` `Edit|Write`
+  and `PreToolUse` `Bash`, both running `.claude/hooks/metaproject_hook.py`) and keep every
+  other key. `review` reports it missing until both entries are merged; it is never
+  diffed or offered for Update. Invalid JSON there is refused and reported, not fixed.
 
 ## `.metaproject.json`
 
@@ -64,6 +69,29 @@ records which version of `metaproject` last brought the project's documents up t
 `new` writes it, and `doctor` when it backfills a missing anchor. It is not itself a
 reviewable deliverable — never diffed, never `DRIFTED` — and its absence is an
 informational note from `review`, not `! INCOMPLETE`.
+
+Optional keys the hooks read at run time (metaproject keeps them when it rewrites the
+identity fields):
+
+```json
+{
+  "commands": { "lint": "make lint", "typecheck": "npx tsc --noEmit -p ." },
+  "e2e_port": 4173
+}
+```
+
+With no `commands.lint`/`commands.typecheck` the post-edit hook does nothing; with no
+`e2e_port` the pre-Bash hook does nothing. To lint after edits, set `commands.lint` to the
+project's own lint command (the one AGENTS.md names).
+
+The hooks read the nearest `.metaproject.json` at or above the edited file (post-edit)
+or the session's directory (pre-Bash), never outside `CLAUDE_PROJECT_DIR`, and run the
+commands from that directory — in a monorepo, an edit in a sub-project runs that
+sub-project's lint. Nothing is inherited from an outer `.metaproject.json`.
+
+A sub-project may also set `"skills": {"location": "root"}` to keep its skills in the
+nearest ancestor project (or the git root) instead of its own `.agents/skills`; see
+`skills` in `commands.md`.
 
 ## The blank rule
 
@@ -170,6 +198,13 @@ SDLC stage, branch/worktree, last commit, command(s) to re-run, next steps, bloc
 
 The failure mode is writing it as a summary of what was done. Bias it toward what is
 *unfinished*.
+
+## `docs/TODO.md`
+
+On-demand, append-only, never archived. `wrapup` appends a dated "Needs manual
+verification" entry per cycle: each thing the agent could not verify itself (browsers,
+devices, CI runs, third-party widgets) with exact steps and the expected result. The
+entry is committed with the cycle. The operator ticks or deletes items.
 
 ## `docs/ARCHITECTURE.md`
 

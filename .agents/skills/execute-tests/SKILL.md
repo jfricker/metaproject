@@ -1,15 +1,15 @@
 ---
 name: execute-tests
-description: Run the project's test/build/lint feedback loop (via make, per AGENTS.md) and fix failures before a human reviews the work — every session checks its own work before a person sees it. Use after implement-plan, before opening or updating a PR. Sixth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: Runs the project's test/build/lint feedback loop (via make, per AGENTS.md) and fix failures before a human reviews the work — every session checks its own work before a person sees it. Use after implement-plan, before opening or updating a PR. Sixth step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # execute-tests
 
-> **Precondition.** This project must be metaproject-managed: `.metaproject.json` at the
-> repository root and `metaproject` on `PATH`. If either is missing, stop and tell the
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 4 of the SDLC loop: the self-check loop that runs before a person is asked to
+Stage 6 of 7: the self-check loop that runs before a person is asked to
 look — tests, build, and (for UI work) screenshots.
 
 ## Conventions (metaproject)
@@ -28,7 +28,8 @@ look — tests, build, and (for UI work) screenshots.
   `Superseded`. Header fields are `Author`, `Derived from` (not on INTENT.md),
   `Last updated`, `Status`, `Approved by`. On approval set `**Status**: Approved.` and
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
-  `Approved`. Never set it to `Approved` yourself.
+  `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
+  own judgment.
 - Tick `docs/STATE.md` Process item 6 once this stage is done.
 
 ## When to use
@@ -46,15 +47,27 @@ look — tests, build, and (for UI work) screenshots.
 
 1. Run `make help` if you haven't already this session, to confirm the actual available
    targets — don't assume target names.
-2. Run the test suite, build, and any lint/typecheck targets. Capture full output.
-3. For UI-facing changes, use the `run` skill (or project-specific launch skill) to
+2. **Before any e2e run**, clear the way (skip when the project has no Playwright e2e):
+   - Stop stale preview/dev servers on the e2e port (`e2e_port` in `.metaproject.json`;
+     `lsof -nP -iTCP:<port> -sTCP:LISTEN`). The bundled pre-Bash hook already does this
+     for commands that mention playwright.
+   - Check whether a Playwright install lock is held: a `__dirlock` directory under the
+     browsers path (`$PLAYWRIGHT_BROWSERS_PATH`, else `~/Library/Caches/ms-playwright` on
+     macOS or `~/.cache/ms-playwright` on Linux), or a running `playwright install`
+     process. **If it is held, do not wait.** Set `PLAYWRIGHT_BROWSERS_PATH` to a
+     worktree-local, git-ignored directory (`.playwright-browsers/`), install only the
+     engines this run needs (`npx playwright install <engine>`), and run only the
+     affected project(s) (`--project=<name>`) rather than the whole matrix. If a stale
+     lock is suspected, report it to the operator; never delete another session's lock.
+3. Run the test suite, build, and any lint/typecheck targets. Capture full output.
+4. For UI-facing changes, use the `run` skill (or project-specific launch skill) to
    actually run the app and take a screenshot confirming the change works, not just that
    tests pass.
-4. On failure: fix the code and re-run, don't just report the failure and stop, unless
+5. On failure: fix the code and re-run, don't just report the failure and stop, unless
    the fix requires a decision outside `docs/PLAN.md`'s scope — then stop and flag it.
-5. Check each item in `docs/SPEC.md`'s Acceptance criteria against what was actually
+6. Check each item in `docs/SPEC.md`'s Acceptance criteria against what was actually
    implemented; note any criteria not yet met.
-6. Report results plainly: what passed, what failed, what was fixed, and anything still
+7. Report results plainly: what passed, what failed, what was fixed, and anything still
    open — never claim tests pass without having run them.
 
 ## Output artifact
