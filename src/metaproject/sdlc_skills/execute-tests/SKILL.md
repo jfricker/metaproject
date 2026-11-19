@@ -73,7 +73,7 @@ look — tests, build, and (for UI work) screenshots.
 ## Output artifact
 
 A verified, green test/build run (or an explicit list of what's still failing and why),
-ready for `wrapup`/PR.
+ready for `wrapup`.
 
 ## Stop conditions / human gate
 

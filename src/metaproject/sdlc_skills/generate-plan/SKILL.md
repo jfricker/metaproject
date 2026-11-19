@@ -9,8 +9,7 @@ description: Turns approved SPEC.md and TECH-DESIGN.md into an implementation PL
 > (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
-Stage 4 of 7: plan mode prevents code generation until strategy is
-approved.
+Stage 4 of 7: plan mode prevents code generation until strategy is approved.
 
 ## Conventions (metaproject)
 
@@ -46,9 +45,8 @@ approved.
 ## Process
 
 1. Read `docs/SPEC.md` and `docs/TECH-DESIGN.md` in full. Refuse to proceed if either isn't `Approved`.
-2. Enter plan mode (`EnterPlanMode`) — do not write or edit source files in this step.
-3. If `docs/PLAN.md` doesn't exist, create it with
-   `metaproject backfill docs/PLAN.md` once plan mode work is ready to be written down.
+2. If `docs/PLAN.md` doesn't exist, create it with `metaproject backfill docs/PLAN.md`.
+3. Enter plan mode (`EnterPlanMode`) — do not write or edit source files in this step.
 4. Build the plan from `docs/TECH-DESIGN.md`'s components: concrete steps, the specific files to
    create/modify, sequencing (what must land before what), and risks/rollback
    considerations. Reference existing functions/utilities to reuse rather than
