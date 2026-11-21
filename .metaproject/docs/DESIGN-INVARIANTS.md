@@ -154,3 +154,15 @@ invariant established in one cycle isn't accidentally violated in the next.
   per-file, `.gitkeep`, and `docs.template/` `.gitkeep`s) via `exact_exists` + conflict-safe
   `git mv`/`git rm` and prunes `docs/` only when empty or untracked-junk-only, never
   committing inside projects (`R-DRX-1..5`).
+
+## 2026-11-21 — move-project-identity-to-metaproject-config
+
+From [.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-config/](archive/2026-11-21-move-project-identity-to-metaproject-config/).
+
+- Every project-config reader goes through `identity.config_path`/`has_config`: new path first, legacy `.metaproject.json` fallback (`tests/test_identity.py::test_legacy_only_project_is_still_read_and_anchors`, `::test_new_file_wins_over_legacy`).
+- A `.metaproject/` dir without `config.json` is never an anchor or universe root (`test_identity.py::test_bare_dot_metaproject_dir_is_not_an_anchor`, `test_config_location.py::test_bare_dot_metaproject_is_not_a_universe_root`).
+- The user store dir (`METAPROJECT_CONFIG_DIR`/`~/.metaproject`) is never a project anchor, in the CLI and the hook script (`test_identity.py::test_user_store_dir_is_never_an_anchor`, `test_hooks.py::test_hook_never_anchors_on_the_user_store`).
+- `write_identity` updates a legacy file in place; only doctor moves it (`test_identity.py::test_write_identity_updates_a_legacy_file_in_place`, `test_config_location.py::test_adopt_keeps_a_legacy_config_where_it_is`).
+- Doctor never touches a differing legacy/new pair; it reports the differing keys (`test_config_location.py::test_doctor_reports_a_differing_pair_and_changes_nothing`, `::test_doctor_store_identical_and_differing_pairs`).
+- `review` puts a legacy `.metaproject.json` in `ReviewResult.legacy` (OUTOFDATE) (`test_config_location.py::test_review_reports_the_legacy_config_as_out_of_date`).
+- Hook scripts read `.metaproject/config.json`, falling back to the legacy file (`test_hooks.py::test_post_edit_reads_a_legacy_config_when_the_new_one_is_absent`, `test_session_hook.py::test_script_reads_the_pin_from_a_legacy_config`).

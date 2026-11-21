@@ -146,3 +146,12 @@ STATE.md. Read this before re-deriving something a prior cycle already confirmed
   `git mv --follow` history).
 - `scripts/bump_version.py --dry-run` evaluates the diff as `MINOR` (`0.9.1` → `0.10.0`),
   matching `R-NFR-6` (deferred until release/wrapup).
+
+## 2026-11-21 — move-project-identity-to-metaproject-config
+
+From [.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-config/](archive/2026-11-21-move-project-identity-to-metaproject-config/).
+
+- The user config file path is resolved in one place, `config.get_config_file_path` (`rg get_config_file_path src`); `doctor`, `init` and `session` all go through it.
+- The editable install's metadata had drifted to 0.9.1 while `pyproject.toml` said 0.10.0, failing `test_baseline`/`test_readme`; `make install` fixed it (no code change).
+- This repository has no installed hook scripts (`.claude/hooks/` and `scripts/metaproject-session.sh` are absent), so the hook-refresh check has nothing to do here (`metaproject doctor . --dry-run`: all healthy after the move).
+- Gate on 2026-11-21: `make lint` clean, `make test` 1115 passed, `make build` built sdist and wheel.
