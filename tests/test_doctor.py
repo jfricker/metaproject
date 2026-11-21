@@ -223,7 +223,7 @@ def test_healthy_environment_exits_zero_without_prompts(tmp_path: Path) -> None:
 
 def _cli_env(config_file: Path) -> dict[str, str]:
     """Env pointing the CLI's config resolution at the test's config dir."""
-    return {"METAPROJECT_CONFIG_DIR": str(config_file.parent)}
+    return {"METAPROJECT_CONFIG_DIR": str(config_file.parent), "COLUMNS": "140"}
 
 
 def test_cli_doctor_requires_initialization(runner: CliRunner, tmp_path: Path) -> None:
