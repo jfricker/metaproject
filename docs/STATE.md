@@ -16,8 +16,8 @@
 <!-- written by implement-plan as steps land -->
 - [x] 1. Relocated deliverables, template store layout, and review legacy detection
 - [x] 2. backfill no-args legacy safeguard
-- [ ] 3. universe and learn compatibility
-- [ ] 4. doctor migrations and git.git_rm
+- [x] 3. universe and learn compatibility
+- [x] 4. doctor migrations and git.git_rm
 - [ ] 5. Bundled skills, skill_history.json, and skill/wheel tests
 - [ ] 6. Root governance docs (README.md, AGENTS.md) and grep sweep
 - [ ] 7. Self-migrate this repo and sync .agents/skills/

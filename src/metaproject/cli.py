@@ -1526,11 +1526,12 @@ def doctor_cmd(
 ) -> None:
     """Diagnose and repair a stale installed environment after an upgrade.
 
-    Without a project, checks, in order: the template store's layout (cycle templates
-    still at its root), the template store, `learn.targets` in config.json, an orphaned
-    `~/.claude/skills/metaproject/` from older releases, per-project
-    `.metaproject.json` anchors, and — per cataloged, metaproject-managed project —
-    cycle documents at their old root locations and missing or stale project skills.
+    Without a project, checks, in order: the template store's layout (templates still
+    at the store root or under `docs.template/`), the template store, `learn.targets`
+    in config.json, an orphaned `~/.claude/skills/metaproject/` from older releases,
+    per-project `.metaproject.json` anchors, and — per cataloged, metaproject-managed
+    project — cycle documents at legacy root or `docs/` locations (plus legacy
+    `docs/archive`, `backlog`, `discovery`) and missing or stale project skills.
     With a PROJECT path, only that project is examined — its anchor, its cycle
     documents, its skills — and the environment-wide checks are skipped. Each fix
     needs an operator's confirmation (per project for the project checks);

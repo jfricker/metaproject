@@ -40,7 +40,29 @@ from metaproject.extras import LazyModule
 
 questionary = LazyModule("questionary", "Doctor's confirmations")
 
-STORE_LAYOUT_COMMIT = "chore(templates): relocate cycle templates to docs.template/"
+STORE_LAYOUT_COMMIT = (
+    "chore(templates): relocate doc templates to .metaproject.template/docs.template/"
+)
+
+_STORE_GITKEEP_MOVES: Tuple[Tuple[str, str], ...] = (
+    (
+        ".metaproject.template/docs.template/.gitkeep",
+        "docs.template/.gitkeep",
+    ),
+    (
+        ".metaproject.template/docs.template/archive.template/.gitkeep",
+        "docs.template/archive.template/.gitkeep",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class _MigrationPlan:
+    moves: List[Tuple[str, str]] = field(default_factory=list)
+    removals: List[str] = field(default_factory=list)
+    mkdirs: List[str] = field(default_factory=list)
+    empty_subdirs: List[str] = field(default_factory=list)
+    conflicts: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -86,11 +108,11 @@ def check_templates(cfg: Config) -> tuple[List[str], str]:
     store = Path(cfg.templates_dir)
     bundled = _relative_files(templates.get_bundled_templates_dir())
     live = _relative_files(store)
-    # A cycle template still at its legacy location is the layout check's finding, not a
-    # missing one: seeding it here would put a blank copy beside the real one.
-    moves = _store_moves(store)[0]
-    relocating = {Path(dest) for dest, _ in moves}
-    legacy = {Path(src) for _, src in moves}
+    # A template still at its legacy location is the layout check's finding, not missing;
+    # seeding it here would put a blank copy beside the real one (or flag a redundant .gitkeep).
+    plan = _store_plan(store)
+    relocating = {Path(dest) for dest, _ in plan.moves}
+    legacy = {Path(src) for _, src in plan.moves} | {Path(src) for src in plan.removals}
     missing = sorted(bundled - live - relocating)
     extras = sorted(live - bundled - legacy)
 
@@ -153,9 +175,9 @@ def _relocate(root: Path, src_rel: str, dest_rel: str, git_repo: bool) -> Option
     """Move one file to its new path; return a conflict message instead of overwriting.
 
     `git mv` when `root` is a git work tree and the source is tracked, a plain rename
-    otherwise. A case-only rename (`docs/intent.md` → `docs/INTENT.md`) goes through an
-    intermediate name so a case-insensitive filesystem cannot turn it into a no-op
-    (R-NFR-6). Each move stands alone, so an interrupted run can simply be re-run.
+    otherwise. A case-only rename (`.metaproject/docs/intent.md` →
+    `.metaproject/docs/INTENT.md`) goes through an intermediate name so APFS cannot turn
+    it into a no-op (R-NFR-1). Each move stands alone, so an interrupted run can re-run.
     """
     root = Path(root)
     if deliverables.exact_exists(root / dest_rel):
@@ -207,31 +229,155 @@ def _apply_moves(root: Path, moves: Sequence[Tuple[str, str]]) -> List[str]:
     return moved
 
 
+def _bundled_gitkeep_bytes() -> Tuple[bytes, ...]:
+    bundled = templates.get_bundled_templates_dir() / ".metaproject.template" / "docs.template"
+    samples: List[bytes] = []
+    for candidate in (bundled / ".gitkeep", bundled / "archive.template" / ".gitkeep"):
+        if candidate.is_file():
+            samples.append(candidate.read_bytes())
+    return tuple(samples)
+
+
+def _is_redundant_gitkeep(src: Path, dest: Path) -> bool:
+    """True when `src` is an empty/default/duplicate `.gitkeep` beside an existing `dest`."""
+    if not src.is_file():
+        return False
+    src_bytes = src.read_bytes()
+    if not src_bytes.strip():
+        return True
+    if dest.is_file() and not dest.is_symlink() and src_bytes == dest.read_bytes():
+        return True
+    return src_bytes in _bundled_gitkeep_bytes()
+
+
+def _plan_destination(
+    root: Path,
+    src_rel: str,
+    dest_rel: str,
+    moves: List[Tuple[str, str]],
+    removals: List[str],
+    conflicts: List[str],
+    *,
+    allow_redundant_gitkeep: bool = False,
+) -> None:
+    if not deliverables.exact_exists(root / dest_rel):
+        moves.append((dest_rel, src_rel))
+    elif allow_redundant_gitkeep and _is_redundant_gitkeep(root / src_rel, root / dest_rel):
+        removals.append(src_rel)
+    else:
+        conflicts.append(f"conflict: {src_rel} kept; {dest_rel} already exists")
+
+
+def _remove_file(root: Path, rel_path: str, git_repo: bool) -> bool:
+    target = Path(root) / rel_path
+    if not (deliverables.exact_exists(target) and target.is_file() and not target.is_symlink()):
+        return False
+    if git_repo and git.is_tracked(root, rel_path):
+        git.git_rm(root, rel_path)
+    else:
+        target.unlink()
+    return True
+
+
+def _prune_single_dir(root: Path, dir_path: Path, git_repo: bool) -> bool:
+    """Unlink untracked OS junk in `dir_path` and rmdir it if nothing else remains."""
+    try:
+        entries = list(dir_path.iterdir())
+    except OSError:
+        return False
+    junk: List[Path] = []
+    for entry in entries:
+        if entry.is_symlink() or entry.is_dir() or not entry.is_file():
+            return False
+        if not templates.is_junk_file_name(entry.name):
+            return False
+        rel = entry.relative_to(root).as_posix()
+        if git_repo and git.is_tracked(root, rel):
+            return False
+        junk.append(entry)
+    for item in junk:
+        item.unlink()
+    try:
+        dir_path.rmdir()
+    except OSError:
+        return False
+    return True
+
+
+def _prune_dir_if_junk_only(
+    root: Path, rel_dir: str, git_repo: bool, *, recursive: bool = False
+) -> None:
+    """Remove an emptied legacy directory, unlinking untracked OS junk if that is all left."""
+    root = Path(root)
+    base = root / rel_dir
+    if not (deliverables.exact_exists(base) and base.is_dir() and not base.is_symlink()):
+        return
+    if recursive:
+        dirs = [p for p in base.rglob("*") if p.is_dir() and not p.is_symlink()]
+        dirs.sort(key=lambda p: len(p.parts), reverse=True)
+        for sub in [*dirs, base]:
+            _prune_single_dir(root, sub, git_repo)
+    else:
+        _prune_single_dir(root, base, git_repo)
+
+
 # ------------------------------------------------------------------ store layout
 
 
-def _store_moves(store: Path) -> Tuple[List[Tuple[str, str]], List[str]]:
+def _store_plan(store: Path) -> _MigrationPlan:
     if not store.is_dir():
-        return [], []
-    return _planned_moves(store, template_suffix=True)
+        return _MigrationPlan()
+    moves, conflicts = _planned_moves(store, template_suffix=True)
+    removals: List[str] = []
+    for dest, src in _STORE_GITKEEP_MOVES:
+        src_path = store / src
+        if deliverables.exact_exists(src_path) and src_path.is_file() and not src_path.is_symlink():
+            _plan_destination(
+                store,
+                src,
+                dest,
+                moves,
+                removals,
+                conflicts,
+                allow_redundant_gitkeep=True,
+            )
+    return _MigrationPlan(moves=moves, removals=removals, conflicts=conflicts)
+
+
+def _store_moves(store: Path) -> Tuple[List[Tuple[str, str]], List[str]]:
+    plan = _store_plan(store)
+    return plan.moves, plan.conflicts
 
 
 def check_store_layout(cfg: Config) -> tuple[List[str], List[str], str]:
-    """Cycle templates still at the store root or under old names (R-DRX-1)."""
-    moves, conflicts = _store_moves(Path(cfg.templates_dir))
-    fix_summary = (
-        f"move {len(moves)} cycle template(s) into docs.template/ with their new names "
-        "(one commit in the store repository)"
-    )
-    return _move_findings(moves) + conflicts, conflicts, fix_summary
+    """Templates still at the store root or under `docs.template/` (R-DRX-1)."""
+    plan = _store_plan(Path(cfg.templates_dir))
+    findings = _move_findings(plan.moves) + [f"remove redundant {r}" for r in plan.removals]
+    findings += plan.conflicts
+    parts = []
+    if plan.moves:
+        parts.append(f"move {len(plan.moves)} template(s)")
+    if plan.removals:
+        parts.append(f"remove {len(plan.removals)} redundant placeholder(s)")
+    action = ", ".join(parts) if parts else "migrate layout"
+    fix_summary = f"{action} into .metaproject.template/docs.template/ (one commit in store repo)"
+    return findings, plan.conflicts, fix_summary
 
 
 def fix_store_layout(cfg: Config) -> None:
     store = Path(cfg.templates_dir)
-    moves, _ = _store_moves(store)
-    moved = _apply_moves(store, moves)
-    if moved and git.is_git_repository(store):
-        git.commit_paths(store, STORE_LAYOUT_COMMIT, moved)
+    plan = _store_plan(store)
+    git_repo = git.is_git_repository(store)
+    changed = _apply_moves(store, plan.moves)
+    for rel in plan.removals:
+        was_tracked = git_repo and git.is_tracked(store, rel)
+        if _remove_file(store, rel, git_repo) and was_tracked:
+            changed.append(rel)
+    if plan.moves or plan.removals:
+        _prune_dir_if_junk_only(store, "docs.template/archive.template", git_repo, recursive=True)
+        _prune_dir_if_junk_only(store, "docs.template", git_repo, recursive=False)
+    if changed and git_repo:
+        git.commit_paths(store, STORE_LAYOUT_COMMIT, changed)
 
 
 # ----------------------------------------------------------------- global skill
@@ -314,16 +460,124 @@ _is_managed = catalog.is_managed
 _managed_projects = catalog.managed_projects
 
 
+def _project_doc_plan(project_dir: Path) -> _MigrationPlan:
+    root = Path(project_dir)
+    moves, conflicts = _planned_moves(root)
+    removals: List[str] = []
+    mkdirs: List[str] = []
+    empty_subdirs: List[str] = []
+
+    for sub in deliverables.MIGRATABLE_SUBDIRS:
+        src_dir_rel = f"docs/{sub}"
+        dest_dir_rel = f".metaproject/docs/{sub}"
+        src_dir = root / src_dir_rel
+        if not (
+            deliverables.exact_exists(src_dir) and src_dir.is_dir() and not src_dir.is_symlink()
+        ):
+            continue
+        subdir_files: List[Path] = []
+        for walk_root, dir_names, file_names in os.walk(src_dir, followlinks=False):
+            dir_names[:] = sorted(
+                d for d in dir_names if d != ".git" and not templates.is_junk_file_name(d)
+            )
+            for fname in sorted(file_names):
+                if templates.is_junk_file_name(fname):
+                    continue
+                candidate = Path(walk_root) / fname
+                if candidate.is_file() and not candidate.is_symlink():
+                    subdir_files.append(candidate)
+        if not subdir_files:
+            if not deliverables.exact_exists(root / dest_dir_rel):
+                mkdirs.append(dest_dir_rel)
+            empty_subdirs.append(src_dir_rel)
+            continue
+        for file_path in subdir_files:
+            rel = file_path.relative_to(src_dir).as_posix()
+            src_rel = f"{src_dir_rel}/{rel}"
+            dest_rel = f"{dest_dir_rel}/{rel}"
+            _plan_destination(
+                root,
+                src_rel,
+                dest_rel,
+                moves,
+                removals,
+                conflicts,
+                allow_redundant_gitkeep=(file_path.name == ".gitkeep"),
+            )
+
+    docs_gitkeep = root / "docs" / ".gitkeep"
+    if (
+        deliverables.exact_exists(root / "docs")
+        and deliverables.exact_exists(docs_gitkeep)
+        and docs_gitkeep.is_file()
+        and not docs_gitkeep.is_symlink()
+    ):
+        _plan_destination(
+            root,
+            "docs/.gitkeep",
+            ".metaproject/docs/.gitkeep",
+            moves,
+            removals,
+            conflicts,
+            allow_redundant_gitkeep=True,
+        )
+
+    return _MigrationPlan(
+        moves=moves,
+        removals=removals,
+        mkdirs=mkdirs,
+        empty_subdirs=empty_subdirs,
+        conflicts=conflicts,
+    )
+
+
 def check_project_docs(project_dir: Path) -> tuple[List[str], List[str], str]:
-    """Cycle documents at the root or under old names in one project (R-DRX-3)."""
-    moves, conflicts = _planned_moves(project_dir)
-    fix_summary = f"move {len(moves)} document(s) into docs/ (git mv when tracked; never commits)"
-    return _move_findings(moves) + conflicts, conflicts, fix_summary
+    """Cycle docs, metaproject subdirs, or `.gitkeep` at root/`docs/` locations (R-DRX-3..5)."""
+    plan = _project_doc_plan(project_dir)
+    findings = _move_findings(plan.moves)
+    findings += [f"remove redundant {r}" for r in plan.removals]
+    for sub_rel in plan.empty_subdirs:
+        dest_sub = f".metaproject/{sub_rel}"
+        if dest_sub in plan.mkdirs:
+            findings.append(f"move empty directory {sub_rel}/ → {dest_sub}/")
+        else:
+            findings.append(f"remove empty legacy directory {sub_rel}/")
+    findings += plan.conflicts
+    parts = []
+    if plan.moves:
+        parts.append(f"move {len(plan.moves)} file(s)")
+    if plan.removals:
+        parts.append(f"remove {len(plan.removals)} redundant placeholder(s)")
+    if plan.empty_subdirs:
+        parts.append(f"relocate {len(plan.empty_subdirs)} empty dir(s)")
+    action = ", ".join(parts) if parts else "migrate docs"
+    fix_summary = f"{action} into .metaproject/docs/ (git mv when tracked; never commits)"
+    return findings, plan.conflicts, fix_summary
 
 
 def fix_project_docs(project_dir: Path) -> None:
-    moves, _ = _planned_moves(project_dir)
-    _apply_moves(project_dir, moves)
+    root = Path(project_dir)
+    plan = _project_doc_plan(root)
+    git_repo = git.is_git_repository(root)
+    _apply_moves(root, plan.moves)
+    for rel in plan.removals:
+        _remove_file(root, rel, git_repo)
+    for dir_rel in plan.mkdirs:
+        (root / dir_rel).mkdir(parents=True, exist_ok=True)
+    for sub in deliverables.MIGRATABLE_SUBDIRS:
+        sub_rel = f"docs/{sub}"
+        if (
+            any(src.startswith(f"{sub_rel}/") for _, src in plan.moves)
+            or any(r.startswith(f"{sub_rel}/") for r in plan.removals)
+            or sub_rel in plan.empty_subdirs
+        ):
+            _prune_dir_if_junk_only(root, sub_rel, git_repo, recursive=True)
+    if (
+        any(src.startswith("docs/") for _, src in plan.moves)
+        or any(r.startswith("docs/") for r in plan.removals)
+        or plan.empty_subdirs
+    ):
+        _prune_dir_if_junk_only(root, "docs", git_repo, recursive=False)
 
 
 def check_project_skills(project_dir: Path) -> tuple[List[str], List[str], str]:

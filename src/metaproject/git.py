@@ -205,6 +205,13 @@ def git_mv(repo_dir: Path, src_rel: str, dest_rel: str) -> None:
         raise GitError(f"git mv {src_rel} {dest_rel} failed: {res.stderr.strip()}")
 
 
+def git_rm(repo_dir: Path, rel_path: str) -> None:
+    """`git rm` one tracked path without committing."""
+    res = _run_git(repo_dir, "rm", "--", rel_path)
+    if res.returncode != 0:
+        raise GitError(f"git rm {rel_path} failed: {res.stderr.strip()}")
+
+
 def commit_paths(repo_dir: Path, message: str, paths: Sequence[str]) -> None:
     """Commit exactly `paths` (staged renames included); nothing else in the tree.
 

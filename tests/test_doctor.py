@@ -763,3 +763,302 @@ def test_cli_doctor_bad_project_path(runner: CliRunner, tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Not a directory" in result.output
+
+
+def _init_git_repo(path: Path) -> None:
+    import subprocess
+
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-b", "main"], cwd=path, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"], cwd=path, check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=path,
+        check=True,
+        capture_output=True,
+    )
+
+
+def _git_all_commit(path: Path, message: str = "init") -> None:
+    import subprocess
+
+    subprocess.run(["git", "add", "."], cwd=path, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", message], cwd=path, check=True, capture_output=True)
+
+
+def test_ac5_migrates_v09_docs_subdirs_gitkeep_and_cleans_untracked_junk(tmp_path: Path) -> None:
+    """AC-5: migrates all 10 files, subdirs, `.gitkeep`, and cleans untracked junk `docs/`."""
+    from metaproject import doctor
+
+    project = tmp_path / "v09_repo"
+    _init_git_repo(project)
+    write_identity(
+        project,
+        Identity(
+            title="v09",
+            description="",
+            author="T",
+            created=date(2026, 9, 1),
+            metaproject_version="0.9.1",
+        ),
+    )
+    (project / "docs" / "archive" / "2026-09").mkdir(parents=True)
+    (project / "docs" / "backlog").mkdir(parents=True)
+    (project / "docs" / "discovery").mkdir(parents=True)
+    for name in (
+        "INTENT.md",
+        "SPEC.md",
+        "TECH-DESIGN.md",
+        "PLAN.md",
+        "STATE.md",
+        "ARCHITECTURE.md",
+        "DESIGN-INVARIANTS.md",
+        "VERIFIED-FACTS.md",
+        "HANDOFF.md",
+        "TODO.md",
+        ".gitkeep",
+    ):
+        (project / "docs" / name).write_text(f"# {name}\n", encoding="utf-8")
+    (project / "docs" / "archive" / "2026-09" / "SPEC.md").write_text("arch\n", encoding="utf-8")
+    (project / "docs" / "backlog" / "idea.md").write_text("idea\n", encoding="utf-8")
+    (project / "docs" / "discovery" / "notes.md").write_text("notes\n", encoding="utf-8")
+    _git_all_commit(project, "initial v0.9 docs")
+
+    # Add untracked macOS junk in docs/ and docs/archive/.
+    (project / "docs" / ".DS_Store").write_bytes(b"junk")
+    (project / "docs" / "archive" / ".DS_Store").write_bytes(b"junk")
+    head_before = _git(project, "rev-parse", "HEAD").strip()
+
+    findings, conflicts, _ = doctor.check_project_docs(project)
+    assert conflicts == []
+    assert any("docs/INTENT.md → .metaproject/docs/INTENT.md" in f for f in findings)
+    assert any("docs/archive/2026-09/SPEC.md" in f for f in findings)
+
+    doctor.fix_project_docs(project)
+
+    # Never commits inside a user project.
+    assert _git(project, "rev-parse", "HEAD").strip() == head_before
+    # Empty + untracked-junk-only docs/ tree was cleaned up.
+    assert not (project / "docs").exists()
+    dest = project / ".metaproject" / "docs"
+    for name in ("INTENT.md", "TODO.md", "DESIGN-INVARIANTS.md", ".gitkeep"):
+        assert (dest / name).read_text(encoding="utf-8") == f"# {name}\n"
+    assert (dest / "archive" / "2026-09" / "SPEC.md").is_file()
+    assert (dest / "backlog" / "idea.md").is_file()
+    assert (dest / "discovery" / "notes.md").is_file()
+
+    status = _git(project, "status", "--porcelain")
+    assert "R  docs/INTENT.md -> .metaproject/docs/INTENT.md" in status
+    assert "R  docs/archive/2026-09/SPEC.md -> .metaproject/docs/archive/2026-09/SPEC.md" in status
+    _git_all_commit(project, "commit migration")
+    follow_log = _git(project, "log", "--follow", "--oneline", "--", ".metaproject/docs/INTENT.md")
+    assert len(follow_log.strip().splitlines()) == 2
+
+    findings_after, conflicts_after, _ = doctor.check_project_docs(project)
+    assert findings_after == []
+    assert conflicts_after == []
+
+
+def test_ac6_preserves_project_owned_docs_files_and_directory(tmp_path: Path) -> None:
+    """AC-6: metaproject files move out of `docs/`, leaving user docs and `docs/` intact."""
+    from metaproject import doctor
+
+    project = tmp_path / "mixed_docs"
+    _init_git_repo(project)
+    (project / "docs" / "archive" / "old").mkdir(parents=True)
+    (project / "docs" / "api").mkdir(parents=True)
+    (project / "docs" / "INTENT.md").write_text("# Intent\n", encoding="utf-8")
+    (project / "docs" / "archive" / "old" / "SPEC.md").write_text("# Old Spec\n", encoding="utf-8")
+    (project / "docs" / "user-guide.md").write_text("# User Guide\n", encoding="utf-8")
+    (project / "docs" / "api" / "index.md").write_text("# API\n", encoding="utf-8")
+    _git_all_commit(project)
+
+    doctor.fix_project_docs(project)
+
+    assert (project / ".metaproject" / "docs" / "INTENT.md").is_file()
+    assert (project / ".metaproject" / "docs" / "archive" / "old" / "SPEC.md").is_file()
+    assert (project / "docs" / "user-guide.md").read_text(encoding="utf-8") == "# User Guide\n"
+    assert (project / "docs" / "api" / "index.md").read_text(encoding="utf-8") == "# API\n"
+    assert not (project / "docs" / "archive").exists()
+
+    findings_after, conflicts_after, _ = doctor.check_project_docs(project)
+    assert findings_after == []
+    assert conflicts_after == []
+
+
+def test_ac7_v08_root_migrates_directly_to_dot_metaproject_docs(tmp_path: Path) -> None:
+    """AC-7: v0.8 root docs move directly to `.metaproject/docs/`; root `TODO.md` stays."""
+    from metaproject import doctor
+
+    project = tmp_path / "v08_repo"
+    _init_git_repo(project)
+    (project / "intent.md").write_text("# Root Intent\n", encoding="utf-8")
+    (project / "design.md").write_text("# Root Design\n", encoding="utf-8")
+    (project / "STATE.md").write_text("# Root State\n", encoding="utf-8")
+    (project / "TODO.md").write_text("# User TODO\n", encoding="utf-8")
+    _git_all_commit(project)
+
+    doctor.fix_project_docs(project)
+
+    assert (project / ".metaproject" / "docs" / "INTENT.md").is_file()
+    assert (project / ".metaproject" / "docs" / "TECH-DESIGN.md").is_file()
+    assert (project / ".metaproject" / "docs" / "STATE.md").is_file()
+    assert (project / "TODO.md").read_text(encoding="utf-8") == "# User TODO\n"
+    assert not (project / "docs").exists()
+
+
+def test_ac8_conflicts_in_top_level_and_nested_archive_kept_untouched(tmp_path: Path) -> None:
+    """AC-8: top-level and nested `archive/` conflicts stay untouched; redundant gitkeep rm'd."""
+    from metaproject import doctor
+
+    project = tmp_path / "conflict_repo"
+    _init_git_repo(project)
+    (project / "docs" / "archive" / "old").mkdir(parents=True)
+    (project / "docs" / "backlog").mkdir(parents=True)
+    (project / ".metaproject" / "docs" / "archive" / "old").mkdir(parents=True)
+
+    (project / "docs" / "INTENT.md").write_text("old intent\n", encoding="utf-8")
+    (project / ".metaproject" / "docs" / "INTENT.md").write_text("new intent\n", encoding="utf-8")
+    (project / "docs" / "archive" / "old" / "SPEC.md").write_text("old spec\n", encoding="utf-8")
+    (project / ".metaproject" / "docs" / "archive" / "old" / "SPEC.md").write_text(
+        "new spec\n", encoding="utf-8"
+    )
+    (project / "docs" / ".gitkeep").write_text("", encoding="utf-8")
+    (project / ".metaproject" / "docs" / ".gitkeep").write_text("", encoding="utf-8")
+    (project / "docs" / "backlog" / "item.md").write_text("move me\n", encoding="utf-8")
+    _git_all_commit(project)
+
+    findings, conflicts, _ = doctor.check_project_docs(project)
+    assert "conflict: docs/INTENT.md kept; .metaproject/docs/INTENT.md already exists" in conflicts
+    assert (
+        "conflict: docs/archive/old/SPEC.md kept; .metaproject/docs/archive/old/SPEC.md "
+        "already exists"
+    ) in conflicts
+    assert any("remove redundant docs/.gitkeep" in f for f in findings)
+
+    doctor.fix_project_docs(project)
+
+    assert (project / "docs" / "INTENT.md").read_text(encoding="utf-8") == "old intent\n"
+    assert (project / ".metaproject" / "docs" / "INTENT.md").read_text(
+        encoding="utf-8"
+    ) == "new intent\n"
+    assert (project / "docs" / "archive" / "old" / "SPEC.md").read_text(
+        encoding="utf-8"
+    ) == "old spec\n"
+    assert (project / ".metaproject" / "docs" / "archive" / "old" / "SPEC.md").read_text(
+        encoding="utf-8"
+    ) == "new spec\n"
+    assert (project / ".metaproject" / "docs" / "backlog" / "item.md").is_file()
+    assert not (project / "docs" / ".gitkeep").exists()
+    assert "D  docs/.gitkeep" in _git(project, "status", "--porcelain")
+    assert (project / "docs").is_dir()
+
+
+def test_ac9_store_v09_migration_keeps_custom_templates_and_migrates_targets(
+    tmp_path: Path, home: Path
+) -> None:
+    """AC-9: store migrates `docs.template/` + `.gitkeep`s in 1 commit and keeps custom files."""
+    import shutil
+
+    from metaproject import doctor
+    from metaproject.config import load_config
+    from metaproject.templates import get_bundled_templates_dir
+
+    cfg, config_file = _make_env(
+        tmp_path,
+        learn_targets=["AGENTS.md", "intent.md", "docs/DESIGN-INVARIANTS.md", "docs/", "Makefile"],
+    )
+    store = Path(cfg.templates_dir)
+    _init_git_repo(store)
+    # Replace the current store layout with a v0.9 `docs.template/` store plus a custom file.
+    shutil.rmtree(store / ".metaproject.template")
+    (store / "docs.template").mkdir()
+    bundled_docs = get_bundled_templates_dir() / ".metaproject.template" / "docs.template"
+    shutil.copytree(bundled_docs, store / "docs.template", dirs_exist_ok=True)
+    (store / "docs.template" / "custom.template.md").write_text("# User docs\n", encoding="utf-8")
+    _git_all_commit(store, "seed v0.9 store")
+
+    before_log = _git(store, "log", "--format=%H").strip().splitlines()
+    results = doctor.run_checks(cfg, config_file, confirm=lambda _: True)
+
+    assert all(r.healthy for r in results), [(r.name, r.findings) for r in results]
+    after_log = _git(store, "log", "--format=%H").strip().splitlines()
+    assert len(after_log) == len(before_log) + 1
+    assert doctor.STORE_LAYOUT_COMMIT in _git(store, "log", "-1", "--pretty=%B")
+
+    target_dir = store / ".metaproject.template" / "docs.template"
+    assert (target_dir / "INTENT.template.md").is_file()
+    assert (target_dir / ".gitkeep").is_file()
+    assert (target_dir / "archive.template" / ".gitkeep").is_file()
+    # Custom template stays under docs.template/ and docs.template/ is preserved.
+    assert (store / "docs.template" / "custom.template.md").read_text(
+        encoding="utf-8"
+    ) == "# User docs\n"
+
+    updated_cfg = load_config(config_file)
+    assert updated_cfg.learn.targets[:5] == [
+        "AGENTS.md",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/DESIGN-INVARIANTS.md",
+        ".metaproject/docs/",
+        "Makefile",
+    ]
+    assert len(updated_cfg.learn.targets) == len(set(updated_cfg.learn.targets))
+
+
+def test_ac10_apfs_lowercase_docs_and_dot_metaproject_docs_case_fixes(tmp_path: Path) -> None:
+    """AC-10: `docs/intent.md` and `.metaproject/docs/intent.md` fix to exact `INTENT.md`."""
+    from metaproject import doctor
+
+    p1 = tmp_path / "p1"
+    _init_git_repo(p1)
+    (p1 / "docs").mkdir()
+    (p1 / "docs" / "intent.md").write_text("# lower\n", encoding="utf-8")
+    _git_all_commit(p1)
+    doctor.fix_project_docs(p1)
+    assert "INTENT.md" in os.listdir(p1 / ".metaproject" / "docs")
+    assert not (p1 / "docs").exists()
+
+    p2 = tmp_path / "p2"
+    _init_git_repo(p2)
+    (p2 / ".metaproject" / "docs").mkdir(parents=True)
+    (p2 / ".metaproject" / "docs" / "intent.md").write_text("# wrong case\n", encoding="utf-8")
+    _git_all_commit(p2)
+    doctor.fix_project_docs(p2)
+    assert "INTENT.md" in os.listdir(p2 / ".metaproject" / "docs")
+    assert "intent.md" not in os.listdir(p2 / ".metaproject" / "docs")
+
+
+def test_doctor_web_profile_checks_single_v09_project(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`R-DRX-5`: web profile doctor inspects CWD's `docs/` via `check_project_docs`."""
+    project = tmp_path / "web_proj"
+    project.mkdir()
+    write_identity(
+        project,
+        Identity(
+            title="web_proj",
+            description="",
+            author="T",
+            created=date(2026, 9, 1),
+            metaproject_version="0.9.1",
+        ),
+    )
+    (project / "docs").mkdir()
+    (project / "docs" / "INTENT.md").write_text("# Web Intent\n", encoding="utf-8")
+    install_project_skills(project)
+    monkeypatch.chdir(project)
+
+    env = {
+        "HOME": str(tmp_path / "home"),
+        "METAPROJECT_CONFIG_DIR": str(tmp_path / "cfg"),
+        "METAPROJECT_PROFILE": "web",
+        "COLUMNS": "140",
+    }
+    res = runner.invoke(app, ["doctor", "--dry-run"], env=env)
+    assert res.exit_code == 1
+    assert "move docs/INTENT.md → .metaproject/docs/INTENT.md" in res.output
+    assert "template store" not in res.output
