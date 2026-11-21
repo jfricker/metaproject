@@ -65,18 +65,22 @@ Every file `metaproject` scaffolds, reviews, or learns from belongs to exactly o
   work is interrupted. `wrapup` creates TODO (`backfill .metaproject/docs/TODO.md`) to log manual checks.
 - **directory** — `.metaproject/docs/`, `.metaproject/docs/archive/`. Presence checks, nothing more.
 
-## Project identity: `.metaproject.json`
+## Project identity: `.metaproject/config.json`
 
-`new` writes `.metaproject.json` at the project root — `title`, `description`, `author`,
+`new` writes `.metaproject/config.json` (inside the `.metaproject/` directory) — `title`, `description`, `author`,
 `created`, `metaproject_version` — and it is tracked in git. Every other command
 (`review`, `learn`, `backfill`, `universe`) reads it first for variable resolution;
 without it they fall back to `README.md`, then `pyproject.toml`, then `package.json`,
 then the directory name. `metaproject_version` records which version last brought the
 project up to date; `new` sets it, and `doctor` when it backfills a missing anchor.
-`.metaproject.json` is never itself reviewed or diffed — its absence is an informational
-note, not a defect.
+`.metaproject/config.json` is never itself reviewed or diffed — its absence is an informational
+note, not a defect. A project from before 0.11 keeps its config at the legacy root
+`.metaproject.json`; every command still reads it (the new file wins when both exist),
+`review` reports it as `OUTOFDATE`, and only `metaproject doctor` moves it. The user's
+own settings live at `~/.metaproject/settings.json` (formerly `config.json`, which
+doctor renames).
 
-The nearest `.metaproject.json` at or above the current directory (stopping at the git
+The nearest `.metaproject/config.json` at or above the current directory (stopping at the git
 root) is the project root, so in a monorepo every command run inside a sub-project acts
 on that sub-project; `--dir`/`PROJECT` overrides it. `adopt` with no `--dir` inside a
 managed project re-adopts that project — use `adopt --dir .` to create a sub-project.
@@ -100,7 +104,7 @@ metaproject --version || echo "not installed"
 ```
 
 If the command is missing, say so rather than guessing at what it would have done. If
-`~/.metaproject/config.json` does not exist, the environment has not been initialized —
+`~/.metaproject/settings.json` does not exist, the environment has not been initialized —
 `metaproject init` is interactive, so hand that command to the user rather than running
 it yourself.
 
@@ -150,7 +154,7 @@ no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a
 "not available in web sessions" notice and exit 0; `doctor` skips its store, config and
 catalog checks with that notice but still checks the current project (identity, docs,
 skills); `adopt`, `backfill` and `review --no-tui` work as usual, rendering from the
-project's `templates.source` (`.metaproject.json`) when the local store is absent. A
+project's `templates.source` (`.metaproject/config.json`) when the local store is absent. A
 session-start hook installed by `new`/`backfill` puts the pinned CLI on `PATH` and runs
 `skills sync` at the start of each web session. See `references/commands.md`.
 
@@ -164,7 +168,7 @@ metaproject new rover-api \
 ```
 
 This creates the directory, renders every scaffolded template into it (writing
-`.metaproject.json` too), copies the project skills into `.agents/skills/`, and makes an
+`.metaproject/config.json` too), copies the project skills into `.agents/skills/`, and makes an
 initial git commit. Add `--dry-run` first if you
 want to show the user what will appear before anything is written. `--no-git` skips the
 repository.
@@ -213,7 +217,7 @@ it never clobbers real content. `--dry-run` previews without writing.
 
 For a repository that is already cloned but has never been under metaproject — always
 the case in a web session — run `metaproject adopt` (optionally `--title`). It writes
-`.metaproject.json`, the `.agents/skills` layout, and every missing deliverable and
+`.metaproject/config.json`, the `.agents/skills` layout, and every missing deliverable and
 project skill; it never overwrites, runs no git, needs no confirmation, and is permitted
 in agent sessions. Re-running it is a no-op. Use it instead of `new .`, which needs an
 operator.

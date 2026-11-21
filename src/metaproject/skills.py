@@ -13,7 +13,7 @@ files still hash to its recorded manifest (or to a known earlier release, from t
 `skill_history.json` ledger) is a pristine copy and may be replaced; anything else is the
 project's own edit and is never touched unless the operator names it with `--force`.
 
-A sub-project whose `.metaproject.json` declares `"skills": {"location": "root"}` keeps
+A sub-project whose `.metaproject/config.json` declares `"skills": {"location": "root"}` keeps
 no copy of its own: its skills (and the manifest) live in its home — the nearest ancestor
 project that does not itself declare `"root"`, else the git root — and its
 `.claude/skills` is a relative symlink up to the home's `.agents/skills`.
@@ -399,7 +399,7 @@ LOCATION_ROOT = "root"
 
 
 def skills_location(project_dir: Path) -> Tuple[str, Optional[str]]:
-    """`skills.location` from `.metaproject.json`, and a warning when it is invalid.
+    """`skills.location` from `.metaproject/config.json`, and a warning when it is invalid.
 
     An enum, never a path: absent, `"project"` or anything invalid is `"project"`
     (today's behaviour); an invalid value or shape also yields a warning, never raises.
@@ -425,11 +425,11 @@ def skills_home(project_dir: Path) -> Optional[Path]:
     """The directory whose `.agents/skills` holds this project's skills.
 
     Without `skills.location: "root"`, the project itself. With it, the nearest strict
-    ancestor (up to and including the repository root) that has `.metaproject.json`
+    ancestor (up to and including the repository root) that has `.metaproject/config.json`
     and does not itself declare `"root"`; failing that, the repository root (which may
     be the project itself, making `"root"` at the top a no-op); failing that, None.
     """
-    from metaproject.identity import IDENTITY_FILE, find_repo_root
+    from metaproject.identity import find_repo_root, has_config
 
     project_dir = Path(project_dir).resolve()
     if skills_location(project_dir)[0] != LOCATION_ROOT:
@@ -439,9 +439,7 @@ def skills_home(project_dir: Path) -> Optional[Path]:
         return None
     if repo_root != project_dir:
         for ancestor in project_dir.parents:
-            if (ancestor / IDENTITY_FILE).is_file() and (
-                skills_location(ancestor)[0] != LOCATION_ROOT
-            ):
+            if has_config(ancestor) and (skills_location(ancestor)[0] != LOCATION_ROOT):
                 return ancestor
             if ancestor == repo_root:
                 break

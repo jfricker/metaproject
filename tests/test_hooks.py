@@ -124,6 +124,7 @@ def test_hook_command_is_a_no_op_when_the_script_is_absent(tmp_path: Path, entry
 
 def test_hook_command_runs_the_script_when_present(tmp_path: Path) -> None:
     proj = scaffolded(tmp_path)
+    (proj / ".metaproject").mkdir(parents=True, exist_ok=True)
     (proj / IDENTITY_FILE).write_text(
         json.dumps({"commands": {"lint": "echo lint-broke; exit 3"}}), encoding="utf-8"
     )
@@ -442,6 +443,7 @@ def test_backfill_cli_hints_when_no_lint_command(runner: CliRunner, tmp_path: Pa
 
 def test_read_hook_config(tmp_path: Path) -> None:
     assert read_hook_config(tmp_path) == HookConfig()
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text(
         json.dumps({"commands": {"lint": " make lint ", "typecheck": ""}, "e2e_port": "4173"}),
         encoding="utf-8",
@@ -450,11 +452,14 @@ def test_read_hook_config(tmp_path: Path) -> None:
     assert config == HookConfig(lint="make lint", typecheck=None, e2e_port=4173)
     assert config.has_commands
 
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
+
     (tmp_path / IDENTITY_FILE).write_text('{"e2e_port": true, "commands": []}', encoding="utf-8")
     assert read_hook_config(tmp_path) == HookConfig()
 
 
 def test_write_identity_keeps_commands_and_e2e_port(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text(
         json.dumps({"commands": {"lint": "make lint"}, "e2e_port": 4173, "title": "Old"}),
         encoding="utf-8",
@@ -482,6 +487,7 @@ def run_hook(project: Path, mode: str, payload: dict) -> subprocess.CompletedPro
 
 
 def configure(project: Path, **data: object) -> None:
+    (project / ".metaproject").mkdir(parents=True, exist_ok=True)
     (project / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
 
 
@@ -529,6 +535,37 @@ def test_post_edit_runs_lint_and_typecheck_in_the_project_dir(tmp_path: Path) ->
     assert result.returncode == 2
     assert "typecheck failed (exit 1)" in result.stderr
     assert str(tmp_path.resolve()) in result.stderr or str(tmp_path) in result.stderr
+
+
+def test_post_edit_reads_a_legacy_config_when_the_new_one_is_absent(tmp_path: Path) -> None:
+    """R-HOOK-1: an unmigrated project's commands still run."""
+    (tmp_path / ".metaproject.json").write_text(
+        json.dumps({"commands": {"lint": "touch linted"}}), encoding="utf-8"
+    )
+    result = run_hook(tmp_path, "post-edit", EDIT_PAYLOAD)
+    assert result.returncode == 0
+    assert (tmp_path / "linted").exists()
+
+
+def test_post_edit_prefers_the_new_config_over_the_legacy_one(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject.json").write_text(
+        json.dumps({"commands": {"lint": "touch legacy"}}), encoding="utf-8"
+    )
+    configure(tmp_path, commands={"lint": "touch current"})
+    run_hook(tmp_path, "post-edit", EDIT_PAYLOAD)
+    assert (tmp_path / "current").exists()
+    assert not (tmp_path / "legacy").exists()
+
+
+def test_hook_never_anchors_on_the_user_store(tmp_path: Path, monkeypatch) -> None:
+    """R-CFG-4: `<store>/config.json` is the user config, never a project's."""
+    home = tmp_path / "home"
+    (home / ".metaproject").mkdir(parents=True)
+    (home / ".metaproject" / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(home / ".metaproject"))
+    module = load_script_module()
+    assert module.config_file(str(home)) is None
+    assert module._nearest_anchor(str(home)) is None
 
 
 def test_unknown_mode_and_garbage_input_exit_0(tmp_path: Path) -> None:

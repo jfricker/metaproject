@@ -118,8 +118,8 @@ directories.
 ### Monorepos: nested sub-projects
 
 The project a command acts on is the nearest directory at or above the current one that
-holds `.metaproject.json`, stopping at the git root. Inside `packages/a/src` of a
-monorepo whose `packages/a` has its own `.metaproject.json`, `backfill`, `adopt`,
+holds `.metaproject/config.json`, stopping at the git root. Inside `packages/a/src` of a
+monorepo whose `packages/a` has its own `.metaproject/config.json`, `backfill`, `adopt`,
 `review`, `skills status|sync`, `templates fetch` and web-profile `doctor` act on
 `packages/a` (a dim `project: <path>` line says so); the hooks run that sub-project's
 `commands.lint` for edits inside it, and the web session script syncs it. `--dir` (or
@@ -134,7 +134,7 @@ To keep one copy of the skills per monorepo, a sub-project declares
 { "skills": { "location": "root" } }
 ```
 
-in its `.metaproject.json`. Its skills then live in the nearest ancestor project that
+in its `.metaproject/config.json`. Its skills then live in the nearest ancestor project that
 does not itself declare `"root"` (or the git root if none does), and its own
 `.claude/skills` becomes a relative symlink up to them (`../../../.agents/skills` from
 `packages/a`). `skills sync` and `adopt` create that link, or re-point the default one;
@@ -144,7 +144,7 @@ own `.agents/skills` are reported, never deleted.
 ## Claude Code on the web
 
 In a Claude Code on the web session (`CLAUDE_CODE_REMOTE=true` with no
-`~/.metaproject/config.json`, or `METAPROJECT_PROFILE=web` anywhere) metaproject runs in
+`~/.metaproject/settings.json`, or `METAPROJECT_PROFILE=web` anywhere) metaproject runs in
 the **web profile**: `init` writes a minimal config (`"profile": "web"`), never prompts,
 and skips template-store seeding and the workspace scan; `universe` and `learn` print a
 one-line "not available in web sessions" notice and exit 0 (`universe --format json`
@@ -160,7 +160,7 @@ else the bundled templates. `METAPROJECT_PROFILE=local` forces the local profile
 `new` and `backfill` install a `SessionStart` hook that bootstraps each web session. It
 runs `scripts/metaproject-session.sh` (copied create-only) **only** when
 `CLAUDE_CODE_REMOTE=true`; the script installs the CLI at the version pinned in
-`.metaproject.json` (`metaproject_version`) with
+`.metaproject/config.json` (`metaproject_version`) with
 `uv tool install git+https://github.com/jfricker/metaproject@v<version>` (falling back to
 pipx, then `pip --user`, then the default branch), adds `~/.local/bin` to the session's
 `PATH`, runs `metaproject skills sync` and `metaproject templates fetch`. If the
@@ -174,7 +174,7 @@ script never blocks a session.
 
 A web container has no `~/.metaproject/templates`, so documents would render from the
 bundled defaults and `review` would report drift against your own store that is not real.
-Declare where the store lives in `.metaproject.json`:
+Declare where the store lives in `.metaproject/config.json`:
 
 ```json
 { "templates": { "source": { "url": "https://github.com/you/templates.git", "ref": "main" } } }
@@ -194,11 +194,13 @@ it is a no-op without a source.
 
 This is migration reference; the everyday path is [Update](#update). After upgrading the CLI, what
 metaproject put outside it can lag behind: the template store at
-`~/.metaproject/templates` (including its layout), `learn.targets` in `config.json`, an
+`~/.metaproject/templates` (including its layout), `learn.targets` in `settings.json`, an
 orphaned `~/.claude/skills/metaproject/` from releases that installed the skill globally,
-per-project `.metaproject.json` anchors, and — in each cataloged, metaproject-managed
-project — cycle documents still at the root under their old names and missing project
-skills. Run `metaproject doctor` to check them in that order and repair what's stale —
+a user config still named `config.json` (now `settings.json`), per-project
+`.metaproject/config.json` anchors, and — in each cataloged, metaproject-managed
+project — a legacy root `.metaproject.json`, cycle documents still at the root under
+their old names, missing project skills, and hook scripts that predate
+`.metaproject/config.json`. Run `metaproject doctor` to check them in that order and repair what's stale —
 each fix asks for confirmation first (once per project for the project checks), and
 `--dry-run` previews findings without writing anything. Name a project to scope the run
 to it — `metaproject doctor Projects/PPPS`, or `metaproject doctor .` for the current
@@ -304,7 +306,7 @@ with the project like any other file:
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;
   scaffolding into an existing directory asks two confirmations).
 
-Each cycle skill checks its own precondition: there must be a `.metaproject.json` in
+Each cycle skill checks its own precondition: there must be a `.metaproject/config.json` in
 the project's directory or an ancestor, and `metaproject` must be on `PATH`, otherwise it stops and asks the operator to run
 `metaproject new .`.
 
@@ -329,7 +331,7 @@ metaproject skills sync --all        # asks once; --yes skips; --dry-run preview
 ```
 
 `sync --all` runs the single-project sync in every project of `universe.db` that carries
-`.metaproject.json`, one line per project. In an agent session it only reports unless
+`.metaproject/config.json`, one line per project. In an agent session it only reports unless
 `--yes` is given. `sync` exits 0 when it keeps modified skills; each replacement is atomic (staged, then
 swapped in by rename, with the old copy restored if the swap fails).
 
@@ -341,11 +343,11 @@ web-only `SessionStart` bootstrap described under
 
 | Event | Matcher | What it does |
 |---|---|---|
-| `PostToolUse` | `Edit\|Write` | Runs `commands.lint`, then `commands.typecheck`, from `.metaproject.json`. Silent when neither is set or both pass; on failure the first 20 lines go back to the agent (exit 2). |
+| `PostToolUse` | `Edit\|Write` | Runs `commands.lint`, then `commands.typecheck`, from `.metaproject/config.json`. Silent when neither is set or both pass; on failure the first 20 lines go back to the agent (exit 2). |
 | `PreToolUse` | `Bash` | When the command mentions playwright and `e2e_port` is set, stops whatever is listening on that port. When a Playwright install lock looks held (a `__dirlock` under the browsers path, or a running `playwright install`), it tells the agent to use a worktree-local, ignored `PLAYWRIGHT_BROWSERS_PATH` (`.playwright-browsers/`) instead of waiting. It only advises: it never sets variables, installs, or removes a lock. Never blocks the command. |
 
 Both run `.claude/hooks/metaproject_hook.py`, a stdlib-only Python script copied into the
-project create-only (needs `python3` on `PATH`). It reads `.metaproject.json` each time, so
+project create-only (needs `python3` on `PATH`). It reads `.metaproject/config.json` each time, so
 configuring a project is one edit:
 
 ```json
@@ -384,7 +386,7 @@ spends money and sends redacted diffs off the machine — that one is yours to s
 TUI back; `METAPROJECT_AGENT=1` forces agent mode.
 
 #### Existing Configuration Protection
-If `~/.metaproject/config.json` is already present, running `metaproject init` will not overwrite your settings or re-run the wizard. Instead, it displays your current configuration along with the status summary of your `universe.db` (total projects, active now count, and last run).
+If `~/.metaproject/settings.json` is already present, running `metaproject init` will not overwrite your settings or re-run the wizard. Instead, it displays your current configuration along with the status summary of your `universe.db` (total projects, active now count, and last run).
 
 To force a re-initialization and overwrite existing configuration and templates, pass `--force`:
 
@@ -403,13 +405,13 @@ metaproject init --config-dir ~/.metaproject --project-home ~/Projects --force
 The author defaults to `git config user.name`, then `$USER`, but a detected identity a
 container gives itself (`Claude`, `root`, …) is never used: it falls through to
 `Developer`. An author you configure explicitly is always used as written. Documents
-take their author from the project's `.metaproject.json` first, then config, then git.
+take their author from the project's `.metaproject/config.json` first, then config, then git.
 
 ---
 
 ### 2. Scaffolding a New Project (`metaproject new`)
 
-`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`), the long-lived docs (`.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`), `.metaproject/docs/archive/`, `.metaproject.json`, and the project skills in `.agents/skills/` — and initializes git with an initial commit in under a second. The project root keeps only `README.md`, `AGENTS.md`, `CLAUDE.md` and `.gitignore`, leaving `docs/` free for your project's own documentation. (`.metaproject/docs/HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill .metaproject/docs/HANDOFF.md` only when work is interrupted. Note: `.metaproject/` is a hidden dot-directory, so `rg`/`fd` searches targeting `.metaproject/docs/` need `--hidden` or an explicit path.)
+`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`), the long-lived docs (`.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`), `.metaproject/docs/archive/`, `.metaproject/config.json`, and the project skills in `.agents/skills/` — and initializes git with an initial commit in under a second. The project root keeps only `README.md`, `AGENTS.md`, `CLAUDE.md` and `.gitignore`, leaving `docs/` free for your project's own documentation. (`.metaproject/docs/HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill .metaproject/docs/HANDOFF.md` only when work is interrupted. Note: `.metaproject/` is a hidden dot-directory, so `rg`/`fd` searches targeting `.metaproject/docs/` need `--hidden` or an explicit path.)
 
 #### Guided Wizard
 ```bash
@@ -456,12 +458,13 @@ metaproject new .
 - In an agent session this whole flow is refused; `metaproject backfill` (below) is the
   agent-safe alternative when only specific documents are missing.
 
-Every scaffold — fresh or into an existing directory — also writes `.metaproject.json` at
-the project root (`title`, `description`, `author`, `created`, `metaproject_version`),
+Every scaffold — fresh or into an existing directory — also writes `.metaproject/config.json` (`title`, `description`, `author`, `created`, `metaproject_version`),
 tracked in the initial commit. `review`, `learn`, `backfill`, and `universe` all read it
 first when resolving a project's variables. It may also carry optional `commands.lint`,
 `commands.typecheck` and `e2e_port` for the Claude Code hooks (above); metaproject never
-removes keys it did not write.
+removes keys it did not write. Projects scaffolded before 0.11 keep a root
+`.metaproject.json`; it is still read (the new file wins when both exist), `review`
+shows it as `OUTOFDATE`, and `metaproject doctor` moves it.
 
 #### Previewing with Dry Run
 To inspect the files and paths that would be generated without writing anything to disk:
@@ -506,15 +509,15 @@ listing the file(s) under "Refused — already exists, nothing written".
 ### 2b. Adopting an Existing Repository (`metaproject adopt`)
 
 `metaproject adopt [--dir PATH] [--title T]` brings a repository that already exists —
-typically one that was just cloned — under metaproject. It writes `.metaproject.json`
+typically one that was just cloned — under metaproject. It writes `.metaproject/config.json`
 (title from `--title`, else the README heading, `pyproject.toml`/`package.json` name, or
 the directory name), the `.agents/skills` layout with its `.claude/skills` link, and
 every missing deliverable and project skill. It never overwrites a file (an existing
-`.metaproject.json` is kept as written), runs no git command, needs no confirmation, and
+`.metaproject/config.json` is kept as written), runs no git command, needs no confirmation, and
 is permitted in agent sessions. `--dry-run` previews; re-running it is a no-op. The
 author comes from `--author`, config, then git/`$USER` (never a container identity such
 as "Claude"); when none yields a real name, adopt writes nothing and asks for `--author`,
-because `.metaproject.json` would otherwise pin a placeholder author for good.
+because `.metaproject/config.json` would otherwise pin a placeholder author for good.
 `metaproject new .` keeps its interactive, operator-confirmed semantics.
 
 ```bash

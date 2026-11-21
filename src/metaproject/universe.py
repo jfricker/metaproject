@@ -20,7 +20,7 @@ from metaproject.git import (
     has_uncommitted_changes,
     is_git_repository,
 )
-from metaproject.identity import fallback_identity, read_identity
+from metaproject.identity import fallback_identity, has_config, read_identity
 
 # Only the interactive Archive confirmation needs it, and it ships in the `tui` extra.
 questionary = LazyModule("questionary", "Interactive classification")
@@ -81,11 +81,14 @@ def is_project_root(path: Path) -> bool:
     if (path / ".git").exists():
         return True
 
-    # 2. SDLC root indicators. `.metaproject.json` anchors a nested sub-project that
-    # carries nothing else. `.metaproject/docs/INTENT.md`, legacy `docs/INTENT.md`,
-    # and root `intent.md` all stay markers across migrated and unmigrated layouts (R-LEG-3).
+    # 2. SDLC root indicators. A project config (`.metaproject/config.json`, or the
+    # legacy `.metaproject.json`) anchors a nested sub-project that carries nothing else;
+    # a bare `.metaproject/` directory and the user store do not (R-CFG-3/4).
+    # `.metaproject/docs/INTENT.md`, legacy `docs/INTENT.md`, and root `intent.md` all
+    # stay markers across migrated and unmigrated layouts (R-LEG-3).
+    if has_config(path):
+        return True
     for marker in (
-        ".metaproject.json",
         "AGENTS.md",
         ".metaproject/docs/INTENT.md",
         "docs/INTENT.md",
@@ -116,7 +119,7 @@ def is_archived_path(path: Path) -> bool:
 
 
 def extract_title(project_dir: Path) -> str:
-    """Extract project title: `.metaproject.json` first, else manifest fallback (R-ID-3).
+    """Extract project title: the project config first, else manifest fallback (R-ID-3).
 
     `.metaproject/docs/INTENT.md` is never consulted and a hyphenated title is never truncated.
     """
@@ -128,7 +131,7 @@ def extract_title(project_dir: Path) -> str:
 
 
 def extract_description(project_dir: Path) -> str:
-    """Extract project description: `.metaproject.json` first, else manifest fallback.
+    """Extract project description: the project config first, else manifest fallback.
 
     `.metaproject/docs/INTENT.md` is never consulted (R-ID-3).
     """

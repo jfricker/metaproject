@@ -43,6 +43,7 @@ def anchor(path: Path, **extra: object) -> Path:
     if extra:
         data = json.loads((path / IDENTITY_FILE).read_text(encoding="utf-8"))
         data.update(extra)
+        (path / ".metaproject").mkdir(parents=True, exist_ok=True)
         (path / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
     return path
 
@@ -128,6 +129,7 @@ def test_templates_fetch_resolves_upward(
     shutil.copytree(TEMPLATES, store)
     data = json.loads((mono["sub"] / IDENTITY_FILE).read_text(encoding="utf-8"))
     data["templates"] = {"source": "tpl"}
+    (mono["sub"] / ".metaproject").mkdir(parents=True, exist_ok=True)
     (mono["sub"] / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
     monkeypatch.chdir(mono["deep"])
     result = runner.invoke(app, ["templates", "fetch"])
@@ -413,6 +415,7 @@ def run_hook(session: Path, mode: str, payload: dict) -> subprocess.CompletedPro
 def lint(project: Path, marker: Path) -> None:
     data = json.loads((project / IDENTITY_FILE).read_text(encoding="utf-8"))
     data["commands"] = {"lint": f'pwd > "{marker}"'}
+    (project / ".metaproject").mkdir(parents=True, exist_ok=True)
     (project / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
 
 
@@ -448,6 +451,7 @@ def test_pre_bash_uses_the_nearest_anchor_to_the_payload_cwd(mono: dict) -> None
     # that its config was read (a held lock note is not asserted here).
     data = json.loads((mono["sub"] / IDENTITY_FILE).read_text(encoding="utf-8"))
     data["e2e_port"] = "not-a-port"
+    (mono["sub"] / ".metaproject").mkdir(parents=True, exist_ok=True)
     (mono["sub"] / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
     result = run_hook(
         mono["root"],
@@ -489,9 +493,11 @@ def test_session_script_uses_the_nearest_anchor(tmp_path: Path, with_anchor: boo
     start = sub / "src"
     start.mkdir(parents=True)
     if with_anchor:
+        (sub / ".metaproject").mkdir(parents=True, exist_ok=True)
         (sub / IDENTITY_FILE).write_text(
             json.dumps({"metaproject_version": "1.2.3"}), encoding="utf-8"
         )
+        (repo / ".metaproject").mkdir(parents=True, exist_ok=True)
         (repo / IDENTITY_FILE).write_text(json.dumps({"metaproject_version": "9.9.9"}))
     stubs = tmp_path / "stubs"
     stubs.mkdir()

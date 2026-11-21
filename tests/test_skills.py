@@ -317,7 +317,7 @@ def test_skill_docs_cover_the_7_stage_cycle_and_classes() -> None:
         "wrapup",
         "working",
         "governance",
-        ".metaproject.json",
+        ".metaproject/config.json",
         "<Title>",
         "metaproject backfill",
     ]

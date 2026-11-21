@@ -52,6 +52,7 @@ def make_project(tmp_path: Path, source: object = None, name: str = "proj") -> P
     if source is not None:
         data = json.loads((proj / IDENTITY_FILE).read_text(encoding="utf-8"))
         data["templates"] = {"source": source}
+        (proj / ".metaproject").mkdir(parents=True, exist_ok=True)
         (proj / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
     return proj
 

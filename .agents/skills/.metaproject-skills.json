@@ -2,77 +2,77 @@
   "skills": {
     "backlog-factory": {
       "files": {
-        "SKILL.md": "00ec5b5b4d228936b5d13432be2351540396bf5707059a8289d88669bf2215ab"
+        "SKILL.md": "47ceb17a01d353c0e42809d9084605ef4c4a7a3709fef9a129fdbbe9a1c9c816"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "backlog-new": {
       "files": {
-        "SKILL.md": "ca4d421bdeecec9722a85a89a7d14b03023424a4a9e9d71d261932138c573ed7"
+        "SKILL.md": "bf8a39e2e2c4110b39b49f24714c3cdf54b23984e7b6fcfa03f45c0659885f02"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "execute-tests": {
       "files": {
-        "SKILL.md": "1c6ec54b67b674ce797c6d0e9da3a3e5df5bc1a6ecdcafef2329d10a2c8be97d"
+        "SKILL.md": "7d35659f440e2cc180328a9603f61f6063d80e2c2c1fc3aad454dc7d53d8c09c"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "generate-design": {
       "files": {
-        "SKILL.md": "57c354b172963e7cc0b55bf1a34fed1e8ccff8cc71f926d5e05346c7c03380bf"
+        "SKILL.md": "094fe954f6380bac2cec0fd20fe8ecf44707975cc72d503487dd718cf223ba81"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "generate-plan": {
       "files": {
-        "SKILL.md": "71376266537ff01a893cf8e82e8e0860c72639b7ef776159445d96548b69767b"
+        "SKILL.md": "2897810279753c247bafd23d90921d0ebe69dec2c8d41fef02414e75190eaf55"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "generate-spec": {
       "files": {
-        "SKILL.md": "af970abcb2e6fd0f5a2a57356f69d879928294990bead33304578c76a4668813"
+        "SKILL.md": "5c87224a7d790649e2f9d71e5f9ec738f2a4911ad6f03d1a21a609f13bdce300"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "implement-plan": {
       "files": {
-        "SKILL.md": "da1c7e8ad0a333b998e4e66a3010c6c831a87fd3fcde963b23a5d74de72c3552"
+        "SKILL.md": "3836f80ce89ed506e4f624aec04497b77da10f614b02dc1576b663f78674e2ea"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "metaproject": {
       "files": {
-        "SKILL.md": "78775817f5741c3f3e1689ffe32293002e7dbbe2e2a96a900ca2ea5367a5fd75",
-        "references/commands.md": "68701600dc1bdcac32406200748a324ade4dd0ce3b5a0fc8623e52b369838147",
-        "references/documents.md": "325f14daf59c781d5d8dbe9d08b4fdca051fd44080d46f99e2996711be40f6d6"
+        "SKILL.md": "4d98416307768a31b3280c46f6821149f89bb6c3b363a8090b838ba60a04fee1",
+        "references/commands.md": "340af3933e57921d9e5c847165235f69515d3d57290ca585e1b20d0bbcd11899",
+        "references/documents.md": "70e3e1eb4710be4614a690b72a138d3309604d3feaf2c9476bd0cd4f8ff4cd89"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "shipit": {
       "files": {
-        "SKILL.md": "bb8abf473ee094f80de7b3a4ff1c78c5cbc000e3a9d7ec6cd692b58404c1b67d"
+        "SKILL.md": "baf0306a036aaae5953eb6268a869fa52ad161b87815cbfd6a025ada378c4c3c"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "verify-browser": {
       "files": {
-        "SKILL.md": "7af8482fb22ef633ca7cfa08133499eda9c05eb13d81598e27d8cf04b6ab2c1f"
+        "SKILL.md": "6b539659d0539f7227f094f91d4499e06aa6f028b1432185fc0174327eaa307c"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "wrapup": {
       "files": {
-        "SKILL.md": "800fea61da5f1974646c13e74d537fbdbdf2a6ef6f331a1b9c790167b5d919a2"
+        "SKILL.md": "1a85f316c814bf52489af9b0a12352a3b4247208446129bfd3d8f0a9a68022c5"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     },
     "write-intent": {
       "files": {
-        "SKILL.md": "5ce588f58ac545fbc1fda3a4fbc249c98ca5146e3f15a925e1567c3c8b5bcaed"
+        "SKILL.md": "2c51d81dc87b5ecbf149c9277dcac6bf0f2e8936f6df35f869b2fbde9f91a342"
       },
-      "release": "0.9.1"
+      "release": "0.10.0"
     }
   },
   "version": 1

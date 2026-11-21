@@ -28,7 +28,7 @@ def cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
         templates_dir=str(tmp_path / "store"),
         universe_db=str(config_dir / "universe.db"),
     )
-    save_config(config, config_dir / "config.json")
+    save_config(config, config_dir / "settings.json")
     monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(config_dir))
     return config
 

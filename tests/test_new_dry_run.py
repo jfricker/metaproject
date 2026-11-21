@@ -58,7 +58,7 @@ def test_dry_run_previews_without_prompting_when_stdin_is_not_a_tty(
     assert result.exit_code == 0, result.output
     assert "Aborted" not in result.output
     assert "AGENTS.md" in result.output
-    assert "would write .metaproject.json" in result.output
+    assert "would write .metaproject/config.json" in result.output
     assert _snapshot(target) == before
     assert sorted(p.name for p in target.iterdir()) == ["main.py"]
 
@@ -80,7 +80,7 @@ def test_dry_run_previews_without_prompting_in_an_agent_session(
     assert result.exit_code == 0, result.output
     assert "Aborted" not in result.output
     assert "AGENTS.md" in result.output
-    assert "would write .metaproject.json" in result.output
+    assert "would write .metaproject/config.json" in result.output
     assert _snapshot(target) == before
     assert sorted(p.name for p in target.iterdir()) == ["main.py"]
 

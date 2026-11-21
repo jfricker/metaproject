@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from metaproject.cli import app
+from metaproject.identity import IDENTITY_FILE
 from metaproject.learn import synth
 
 
@@ -32,7 +33,7 @@ def test_full_lifecycle_and_performance(
         ],
     )
     assert init_res.exit_code == 0
-    assert (config_dir / "config.json").exists()
+    assert (config_dir / "settings.json").exists()
     assert (config_dir / "templates" / "AGENTS.template.md").exists()
 
     # 2. NEW (with sub-second benchmark)
@@ -77,7 +78,7 @@ def test_full_lifecycle_and_performance(
     assert (project_target / ".metaproject" / "docs" / "archive").exists()
     assert not (project_target / "docs").exists()
     assert (project_target / ".git").exists()
-    assert (project_target / ".metaproject.json").exists()
+    assert (project_target / IDENTITY_FILE).exists()
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
     assert not (project_target / ".metaproject" / "docs" / "HANDOFF.md").exists()
     # AC-3: every project skill is installed and reachable through .claude/skills, the

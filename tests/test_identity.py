@@ -1,4 +1,4 @@
-"""Tests for `.metaproject.json` identity: round-trip, fallback order, and tolerance
+"""Tests for `.metaproject/config.json` identity: round-trip, fallback order, and tolerance
 (spec.md R-ID-1, R-ID-1a, R-ID-2, R-ID-3, AC-6)."""
 
 import json
@@ -7,10 +7,14 @@ from pathlib import Path
 
 from metaproject.identity import (
     IDENTITY_FILE,
+    LEGACY_IDENTITY_FILE,
     Identity,
+    config_path,
     fallback_identity,
     find_project_root,
     find_repo_root,
+    has_config,
+    is_legacy_only,
     read_identity,
     read_settings,
     resolve_project_dir,
@@ -71,11 +75,13 @@ def test_read_identity_missing_file_returns_none(tmp_path: Path) -> None:
 
 
 def test_read_identity_bad_json_returns_none(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text("{not valid json", encoding="utf-8")
     assert read_identity(tmp_path) is None
 
 
 def test_read_identity_missing_fields_returns_none(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text(
         json.dumps({"title": "Orbit", "description": ""}), encoding="utf-8"
     )
@@ -83,6 +89,7 @@ def test_read_identity_missing_fields_returns_none(tmp_path: Path) -> None:
 
 
 def test_read_identity_bad_created_date_returns_none(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text(
         json.dumps(
             {
@@ -99,6 +106,7 @@ def test_read_identity_bad_created_date_returns_none(tmp_path: Path) -> None:
 
 
 def test_read_identity_wrong_field_type_returns_none(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text(
         json.dumps(
             {
@@ -115,6 +123,7 @@ def test_read_identity_wrong_field_type_returns_none(tmp_path: Path) -> None:
 
 
 def test_read_identity_non_object_json_returns_none(tmp_path: Path) -> None:
+    (tmp_path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (tmp_path / IDENTITY_FILE).write_text(json.dumps([1, 2, 3]), encoding="utf-8")
     assert read_identity(tmp_path) is None
 
@@ -268,6 +277,7 @@ def test_project_variables_without_identity_falls_back_and_uses_today(tmp_path: 
 
 def _anchor(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
+    (path / ".metaproject").mkdir(parents=True, exist_ok=True)
     (path / IDENTITY_FILE).write_text("{}", encoding="utf-8")
     return path.resolve()
 
@@ -309,6 +319,7 @@ def test_find_project_root_none_found_and_corrupt_nearest_still_wins(tmp_path: P
     (outer / ".git").mkdir()
     inner = outer / "in"
     inner.mkdir()
+    (inner / ".metaproject").mkdir(parents=True, exist_ok=True)
     (inner / IDENTITY_FILE).write_text("{not json", encoding="utf-8")
     assert find_project_root(inner) == inner.resolve()
     assert read_settings(inner) == {}
@@ -324,3 +335,105 @@ def test_resolve_project_dir_explicit_wins_and_falls_back_to_cwd(tmp_path: Path)
     bare = tmp_path / "bare"
     (bare / ".git").mkdir(parents=True)
     assert resolve_project_dir(None, cwd=bare) == bare.resolve()
+
+
+# ------------------------------------------------------- legacy .metaproject.json (R-CFG)
+
+
+def _write_legacy(path: Path, data: object) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    (path / LEGACY_IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
+    return path.resolve()
+
+
+def _write_new(path: Path, data: object) -> Path:
+    (path / ".metaproject").mkdir(parents=True, exist_ok=True)
+    (path / IDENTITY_FILE).write_text(json.dumps(data), encoding="utf-8")
+    return path.resolve()
+
+
+IDENTITY_DATA = {
+    "title": "Legacy",
+    "description": "Old layout.",
+    "author": "Ada",
+    "created": "2026-01-02",
+    "metaproject_version": "0.9.1",
+}
+
+
+def test_identity_file_is_under_dot_metaproject() -> None:
+    assert IDENTITY_FILE == ".metaproject/config.json"
+    assert LEGACY_IDENTITY_FILE == ".metaproject.json"
+
+
+def test_legacy_only_project_is_still_read_and_anchors(tmp_path: Path) -> None:
+    proj = _write_legacy(tmp_path / "p", {**IDENTITY_DATA, "commands": {"lint": "x"}})
+    (proj / "src").mkdir()
+    assert has_config(proj)
+    assert is_legacy_only(proj)
+    assert config_path(proj) == proj / LEGACY_IDENTITY_FILE
+    assert find_project_root(proj / "src") == proj
+    identity = read_identity(proj)
+    assert identity is not None and identity.title == "Legacy"
+    assert read_settings(proj)["commands"] == {"lint": "x"}
+
+
+def test_new_file_wins_over_legacy(tmp_path: Path) -> None:
+    proj = _write_legacy(tmp_path / "p", IDENTITY_DATA)
+    _write_new(proj, {**IDENTITY_DATA, "title": "Current"})
+    assert not is_legacy_only(proj)
+    assert config_path(proj) == proj / IDENTITY_FILE
+    identity = read_identity(proj)
+    assert identity is not None and identity.title == "Current"
+
+
+def test_bare_dot_metaproject_dir_is_not_an_anchor(tmp_path: Path) -> None:
+    proj = tmp_path / "p"
+    (proj / ".metaproject" / "docs").mkdir(parents=True)
+    (proj / ".git").mkdir()
+    assert not has_config(proj)
+    assert find_project_root(proj) is None
+
+
+def test_user_store_dir_is_never_an_anchor(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    store = home / ".metaproject"
+    store.mkdir(parents=True)
+    (store / "config.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("METAPROJECT_CONFIG_DIR", str(store))
+    (home / "work").mkdir()
+    assert not has_config(home)
+    assert find_project_root(home / "work") is None
+
+
+def test_write_identity_updates_a_legacy_file_in_place(tmp_path: Path) -> None:
+    proj = _write_legacy(tmp_path / "p", {**IDENTITY_DATA, "e2e_port": 4321})
+    path = write_identity(
+        proj,
+        Identity(
+            title="Renamed",
+            description="d",
+            author="Ada",
+            created=date(2026, 1, 2),
+            metaproject_version="0.10.0",
+        ),
+    )
+    assert path == proj / LEGACY_IDENTITY_FILE
+    assert not (proj / IDENTITY_FILE).exists()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["title"] == "Renamed" and data["e2e_port"] == 4321
+
+
+def test_write_identity_creates_dot_metaproject_for_a_new_project(tmp_path: Path) -> None:
+    path = write_identity(
+        tmp_path,
+        Identity(
+            title="New",
+            description="d",
+            author="Ada",
+            created=date(2026, 1, 2),
+            metaproject_version="0.10.0",
+        ),
+    )
+    assert path == tmp_path / IDENTITY_FILE
+    assert not (tmp_path / LEGACY_IDENTITY_FILE).exists()

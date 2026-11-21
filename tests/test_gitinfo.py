@@ -16,6 +16,7 @@ from metaproject.gitinfo import (
     score_worktree,
     uncommitted_files,
 )
+from metaproject.identity import IDENTITY_FILE
 
 
 def git(cwd: Path, *args: str) -> None:
@@ -140,13 +141,15 @@ class TestInspectProject:
             "created": "2026-09-15",
             "metaproject_version": "0.7.0",
         }
-        (repo / ".metaproject.json").write_text(json.dumps(full_identity), encoding="utf-8")
+        (repo / ".metaproject").mkdir(parents=True, exist_ok=True)
+        (repo / IDENTITY_FILE).write_text(json.dumps(full_identity), encoding="utf-8")
         details = inspect_project(repo)
         assert details.metaproject_version == "0.7.0"
 
     def test_partial_metaproject_json_degrades_to_unknown(self, tmp_path: Path) -> None:
         repo = make_repo(tmp_path)
-        (repo / ".metaproject.json").write_text(
+        (repo / ".metaproject").mkdir(parents=True, exist_ok=True)
+        (repo / IDENTITY_FILE).write_text(
             json.dumps({"metaproject_version": "0.7.0"}), encoding="utf-8"
         )
         details = inspect_project(repo)

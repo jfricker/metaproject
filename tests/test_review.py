@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from metaproject.cli import app
 from metaproject.exceptions import MetaProjectError
+from metaproject.identity import IDENTITY_FILE
 from metaproject.review import (
     ReviewResult,
     deploy_entry,
@@ -405,7 +406,7 @@ def test_ac5a_review_never_writes_identity_and_notes_its_absence(tmp_path: Path)
         interactive=False,
         no_git=True,
     )
-    identity_path = proj / ".metaproject.json"
+    identity_path = proj / IDENTITY_FILE
     before = identity_path.read_bytes()
 
     review_project(proj, templates_dir=templates)
@@ -415,7 +416,7 @@ def test_ac5a_review_never_writes_identity_and_notes_its_absence(tmp_path: Path)
 
     identity_path.unlink()
     no_identity = review_project(proj, templates_dir=templates)
-    assert any(".metaproject.json" in note for note in no_identity.notes)
+    assert any(IDENTITY_FILE in note for note in no_identity.notes)
     assert no_identity.is_compliant is True
 
 
@@ -1373,6 +1374,7 @@ def test_ac3_compliant_v09_docs_project_reports_outofdate(tmp_path: Path) -> Non
     docs_root = proj / ".metaproject" / "docs"
     v09_docs = proj / "docs"
     docs_root.rename(v09_docs)
+    (proj / ".metaproject" / "config.json").rename(proj / ".metaproject.json")
     (proj / ".metaproject").rmdir()
 
     result = review_project(proj, templates_dir=templates)

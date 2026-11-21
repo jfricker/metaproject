@@ -133,6 +133,7 @@ def test_adopt_keeps_existing_identity_and_renders_its_author(
     save_config(Config(author="Config Author"))
     repo = tmp_path / "anchored"
     repo.mkdir()
+    (repo / ".metaproject").mkdir(parents=True, exist_ok=True)
     (repo / IDENTITY_FILE).write_text(
         json.dumps(
             {
@@ -215,6 +216,7 @@ def test_adopt_refuses_to_overwrite_an_invalid_identity_file(
 ) -> None:
     repo = tmp_path / "broken"
     repo.mkdir()
+    (repo / ".metaproject").mkdir(parents=True, exist_ok=True)
     (repo / IDENTITY_FILE).write_text("{not json", encoding="utf-8")
 
     result = runner.invoke(app, ["adopt", "--dir", str(repo)])
@@ -231,7 +233,7 @@ def test_adopt_dry_run_writes_nothing(runner: CliRunner, tmp_path: Path) -> None
     result = runner.invoke(app, ["adopt", "--dir", str(repo), "--dry-run"])
 
     assert result.exit_code == 0, result.output
-    assert "would write .metaproject.json" in result.output
+    assert "would write .metaproject/config.json" in result.output
     assert sorted(p.relative_to(repo) for p in repo.rglob("*")) == before
 
 
@@ -279,6 +281,7 @@ def test_new_dot_is_still_refused_in_agent_session(
 def anchored_repo(tmp_path: Path, author: str) -> Path:
     repo = tmp_path / "anchored"
     repo.mkdir()
+    (repo / ".metaproject").mkdir(parents=True, exist_ok=True)
     (repo / IDENTITY_FILE).write_text(
         json.dumps(
             {

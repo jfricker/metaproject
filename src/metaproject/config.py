@@ -11,7 +11,12 @@ from metaproject import deliverables
 from metaproject.exceptions import ConfigError
 
 DEFAULT_CONFIG_DIR = Path.home() / ".metaproject"
-DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.json"
+# The user-global config file. It was `config.json` before projects moved their own
+# config to `.metaproject/config.json`; the legacy name is still read when the new one
+# is absent, and `metaproject doctor` renames it (R-STORE-1/3).
+CONFIG_FILENAME = "settings.json"
+LEGACY_CONFIG_FILENAME = "config.json"
+DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / CONFIG_FILENAME
 DEFAULT_TEMPLATES_DIR = DEFAULT_CONFIG_DIR / "templates"
 DEFAULT_UNIVERSE_DB = DEFAULT_CONFIG_DIR / "universe.db"
 
@@ -43,7 +48,7 @@ FALLBACK_AUTHOR = "Developer"
 # container reports `git config user.name` as "Claude"; adopting that as a project's
 # author would stamp every document with the harness rather than the person. These are
 # only ever *detected* names: an author given explicitly (`--author`, config.json,
-# `.metaproject.json`) is used as written, whatever it is.
+# `.metaproject/config.json`) is used as written, whatever it is.
 CONTAINER_DEFAULT_AUTHORS = frozenset(
     {"claude", "claude code", "claude-code", "claude[bot]", "root"}
 )
@@ -165,9 +170,26 @@ def get_config_dir(custom_path: Path | str | None = None) -> Path:
 
 
 def get_config_file_path(config_dir: Path | None = None) -> Path:
-    """Return path to config.json within the resolved configuration directory."""
+    """The user config file in the resolved configuration directory (R-STORE-1).
+
+    `settings.json` when it exists, else an existing legacy `config.json`, else
+    `settings.json` (where a new config is written).
+    """
     base_dir = config_dir or get_config_dir()
-    return base_dir / "config.json"
+    current = base_dir / CONFIG_FILENAME
+    if current.is_file():
+        return current
+    legacy = base_dir / LEGACY_CONFIG_FILENAME
+    return legacy if legacy.is_file() else current
+
+
+def legacy_config_file(config_dir: Path | None = None) -> Path | None:
+    """The legacy `config.json` when it is the only user config file, else None."""
+    base_dir = config_dir or get_config_dir()
+    legacy = base_dir / LEGACY_CONFIG_FILENAME
+    if legacy.is_file() and not (base_dir / CONFIG_FILENAME).is_file():
+        return legacy
+    return None
 
 
 def load_config(config_path: Path | None = None) -> Config:

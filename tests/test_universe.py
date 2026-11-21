@@ -31,7 +31,7 @@ def write_project_home(home: Path) -> None:
     config_dir = Path(os.environ["METAPROJECT_CONFIG_DIR"])
     config_dir.mkdir(parents=True, exist_ok=True)
     config = json.dumps({"project_home": str(home)})
-    (config_dir / "config.json").write_text(config, encoding="utf-8")
+    (config_dir / "settings.json").write_text(config, encoding="utf-8")
 
 
 def test_is_project_root(tmp_path: Path) -> None:

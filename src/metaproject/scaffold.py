@@ -13,7 +13,7 @@ from metaproject.deliverables import DELIVERABLES, DeliverableClass
 from metaproject.exceptions import CollisionError, MetaProjectError
 from metaproject.git import init_repository, is_git_repository
 from metaproject.hooks import install_hooks
-from metaproject.identity import IDENTITY_FILE, Identity, write_identity
+from metaproject.identity import IDENTITY_FILE, Identity, config_path, has_config, write_identity
 from metaproject.skills import install_project_skills
 from metaproject.templates import get_bundled_templates_dir, render_template_tree
 from metaproject.variables import collect_variables
@@ -285,7 +285,7 @@ def scaffold_project(
             resolved_templates_dir = get_bundled_templates_dir()
 
     # 3. Variable resolution. `created` is fixed here so it is the single date used both
-    # for the rendered `{Date}`/`{Year}` and for `.metaproject.json`'s `created` field.
+    # for the rendered `{Date}`/`{Year}` and for `.metaproject/config.json`'s `created` field.
     created = variables_module._today()
     variables = collect_variables(
         project_name=resolve_project_name(project_name, target_dir),
@@ -338,15 +338,19 @@ def scaffold_project(
             else:
                 tracker.record_created_file(path)
 
-        # 4a. Project identity (`.metaproject.json`), written before git init so the
-        # initial commit includes it (R-ID-1). A backfill never overwrites an existing
-        # identity file; dry-run lists the path it would create but writes nothing.
+        # 4a. Project identity (`.metaproject/config.json`), written before git init so
+        # the initial commit includes it (R-ID-1). A backfill never overwrites an existing
+        # identity file (new or legacy); dry-run lists the path it would create but
+        # writes nothing.
         identity_path = target_dir / IDENTITY_FILE
         identity_file: Optional[Path] = None
-        if not identity_path.exists():
+        if not has_config(target_dir) and not identity_path.exists():
             identity_file = identity_path
             rendered_paths.append(identity_path)
             if not dry_run:
+                if not identity_path.parent.exists():
+                    identity_path.parent.mkdir(parents=True)
+                    tracker.record_created_dir(identity_path.parent)
                 write_identity(
                     target_dir,
                     Identity(
@@ -426,7 +430,7 @@ class AdoptResult:
 
     target_dir: Path
     identity: Identity
-    # True when `.metaproject.json` was (or would be) written; False when one existed.
+    # True when `.metaproject/config.json` was (or would be) written; False when one existed.
     identity_written: bool
     # The `.claude/skills` link created (or that would be), None when one existed.
     skills_link: Optional[Path]
@@ -445,16 +449,16 @@ def adopt_project(
     """Adopt an existing repository: identity, agent-skills layout, every missing deliverable.
 
     The agent-safe counterpart to `new .` (no confirmation, permitted under CLAUDECODE).
-    Create-only end to end: an existing `.metaproject.json` is kept as written, an
+    Create-only end to end: an existing `.metaproject/config.json` is kept as written, an
     existing `.claude/skills` entry is left alone, and deliverables and skills go through
     `review.backfill_missing`, which never overwrites. It runs no git command.
 
     Identity is resolved the way `variables.project_variables` would render a project
-    with no `.metaproject.json` (`--title` > README / manifest > directory name), so
+    with no `.metaproject/config.json` (`--title` > README / manifest > directory name), so
     recording it does not change how `review` renders the project. Author: `--author`
     > config > `git config user.name` (never a container identity such as "Claude").
     When none of those yields a real name, adopt refuses before writing anything rather
-    than record the `FALLBACK_AUTHOR` placeholder in `.metaproject.json`.
+    than record the `FALLBACK_AUTHOR` placeholder in `.metaproject/config.json`.
     """
     from metaproject.identity import fallback_identity, read_identity
     from metaproject.review import backfill_missing
@@ -465,7 +469,7 @@ def adopt_project(
         raise MetaProjectError(f"Not a directory: {target_dir}")
 
     existing = read_identity(target_dir)
-    identity_path = target_dir / IDENTITY_FILE
+    identity_path = config_path(target_dir)
     if existing is not None:
         identity = existing
         identity_written = False
@@ -478,7 +482,7 @@ def adopt_project(
     else:
         resolved_author = variables_module.resolve_author(author, cfg)
         if resolved_author == FALLBACK_AUTHOR and not (author or "").strip():
-            # `.metaproject.json` is create-only and outranks config and git, so a
+            # The project config is create-only and outranks config and git, so a
             # placeholder recorded here would outlive every real author set later.
             raise MetaProjectError(
                 "No author found (no config author; git user.name and $USER are unset "

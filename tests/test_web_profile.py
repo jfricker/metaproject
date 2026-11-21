@@ -17,6 +17,7 @@ from metaproject.config import (
     load_config,
     save_config,
 )
+from metaproject.identity import IDENTITY_FILE
 from metaproject.scaffold import scaffold_project
 from metaproject.session import is_web_profile, web_profile_reason
 from metaproject.variables import resolve_author
@@ -140,9 +141,9 @@ def test_web_profile_doctor_explicit_project_wins_over_cwd(
 
     assert result.exit_code == 1, result.output
     assert NOTICE in result.output
-    assert "no .metaproject.json anchor" in result.output
+    assert "no .metaproject/config.json anchor" in result.output
     assert str(healthy) not in " ".join(result.output.split())
-    assert not (bare / ".metaproject.json").exists()
+    assert not (bare / IDENTITY_FILE).exists()
 
 
 def test_web_profile_doctor_reports_project_findings(
@@ -156,8 +157,8 @@ def test_web_profile_doctor_reports_project_findings(
 
     assert result.exit_code == 1, result.output
     assert NOTICE in result.output
-    assert "no .metaproject.json anchor" in result.output
-    assert not (proj / ".metaproject.json").exists()
+    assert "no .metaproject/config.json anchor" in result.output
+    assert not (proj / IDENTITY_FILE).exists()
 
 
 def test_web_profile_doctor_fix_still_needs_an_operator(
@@ -173,15 +174,15 @@ def test_web_profile_doctor_fix_still_needs_an_operator(
     assert reported.exit_code == 1, reported.output
     assert "Doctor Refused" not in reported.output
     assert "reporting findings only" in reported.output
-    assert "no .metaproject.json anchor" in reported.output
-    assert not (proj / ".metaproject.json").exists()
+    assert "no .metaproject/config.json anchor" in reported.output
+    assert not (proj / IDENTITY_FILE).exists()
 
     # With the agent override cleared and the operator confirming, the project fix runs.
     monkeypatch.setenv("METAPROJECT_AGENT", "0")
     monkeypatch.setattr("metaproject.doctor._confirm_with_questionary", lambda message: True)
     fixed = runner.invoke(app, ["doctor"])
     assert NOTICE in fixed.output
-    assert (proj / ".metaproject.json").is_file()
+    assert (proj / IDENTITY_FILE).is_file()
 
 
 def test_web_profile_doctor_in_agent_session_exits_zero_for_a_healthy_project(
@@ -218,8 +219,8 @@ def test_web_profile_doctor_without_questionary_reports_instead_of_failing(
     assert "Missing optional dependency" not in result.output
     assert "questionary is not installed" in result.output
     assert "metaproject[tui] @ git+https" in " ".join(result.output.split())
-    assert "no .metaproject.json anchor" in result.output
-    assert not (proj / ".metaproject.json").exists()
+    assert "no .metaproject/config.json anchor" in result.output
+    assert not (proj / IDENTITY_FILE).exists()
 
 
 def test_fallback_author_placeholder_is_never_persisted(

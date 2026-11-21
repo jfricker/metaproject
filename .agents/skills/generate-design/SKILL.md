@@ -5,7 +5,7 @@ description: Turns an approved SPEC.md into a technical TECH-DESIGN.md — affec
 
 # generate-design
 
-> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject/config.json`
 > (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 

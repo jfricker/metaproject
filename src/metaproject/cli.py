@@ -151,6 +151,22 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
+def _warn_legacy_store() -> None:
+    """R-STORE-2: one stderr line while only the legacy user `config.json` exists."""
+    from metaproject.config import CONFIG_FILENAME, legacy_config_file
+
+    try:
+        legacy = legacy_config_file()
+    except OSError:
+        return
+    if legacy is not None:
+        Console(stderr=True).print(
+            f"[yellow]{escape(str(legacy))} is the legacy user config name; run "
+            f"`metaproject doctor` to rename it to {CONFIG_FILENAME}[/yellow]",
+            soft_wrap=True,
+        )
+
+
 class MetaprojectGroup(TyperGroup):
     """The root command group: turns a missing optional extra into one clear line.
 
@@ -161,6 +177,7 @@ class MetaprojectGroup(TyperGroup):
     """
 
     def invoke(self, ctx):
+        _warn_legacy_store()
         try:
             return super().invoke(ctx)
         except MissingExtraError as exc:
@@ -299,7 +316,7 @@ def print_hooks_report(
     """Narrate one Claude Code hooks install pass (`new`).
 
     `added` names the hook events merged into `.claude/settings.json`. When the post-edit
-    hook was just wired up but `.metaproject.json` names no command, say so: the hook is
+    hook was just wired up but `.metaproject/config.json` names no command, say so: the hook is
     silent until `commands.lint` (or `commands.typecheck`) is set.
     """
     from metaproject.hooks import SETTINGS_PATH
@@ -321,12 +338,12 @@ def print_hooks_report(
 
 
 def print_hook_config_hint(project_dir: Path) -> None:
-    """Say the post-edit hook is idle when `.metaproject.json` names no command."""
+    """Say the post-edit hook is idle when `.metaproject/config.json` names no command."""
     from metaproject.hooks import read_hook_config
 
     if not read_hook_config(project_dir).has_commands:
         console.print(
-            '[dim]The post-edit hook is idle until .metaproject.json sets "commands": '
+            '[dim]The post-edit hook is idle until .metaproject/config.json sets "commands": '
             '{"lint": "..."} (optionally "typecheck", and "e2e_port" for playwright).[/dim]'
         )
 
@@ -334,17 +351,29 @@ def print_hook_config_hint(project_dir: Path) -> None:
 def resolve_project(project_dir: Optional[Path], output_format: str = "table") -> Path:
     """The project a command acts on: `--dir`/PROJECT as given, else the nearest anchor.
 
-    Without an explicit path, the nearest `.metaproject.json` at or above the current
+    Without an explicit path, the nearest project config at or above the current
     directory (stopping at the git root) is the project; with none, the current
     directory, as before. When that differs from the current directory one dim
     `project: <root>` line says so (on stderr under `--format json`).
     """
-    from metaproject.identity import resolve_project_dir
+    from metaproject.identity import (
+        IDENTITY_FILE,
+        LEGACY_IDENTITY_FILE,
+        is_legacy_only,
+        resolve_project_dir,
+    )
 
     target = resolve_project_dir(project_dir)
     if project_dir is None and target != Path.cwd().resolve():
         out = Console(stderr=True) if output_format == "json" else console
         out.print(f"[dim]project: {escape(str(target))}[/dim]", soft_wrap=True)
+    if is_legacy_only(target):
+        # R-CFG-6: the legacy file still works; only doctor moves it.
+        Console(stderr=True).print(
+            f"[yellow]{escape(str(target))}: legacy {LEGACY_IDENTITY_FILE}; run "
+            f"`metaproject doctor {escape(str(target))}` to move it to {IDENTITY_FILE}[/yellow]",
+            soft_wrap=True,
+        )
     return target
 
 
@@ -857,9 +886,9 @@ def new_cmd(
 
     if identity_file is not None:
         if dry_run:
-            console.print("[dim]would write .metaproject.json[/dim]")
+            console.print("[dim]would write .metaproject/config.json[/dim]")
         else:
-            console.print("[dim]wrote .metaproject.json[/dim]")
+            console.print("[dim]wrote .metaproject/config.json[/dim]")
 
     skills_link = result.get("skills_link")
     if dry_run and skills_link is not None:
@@ -1461,7 +1490,7 @@ def adopt_cmd(
 ) -> None:
     """Adopt an existing repository. Create-only, runs no git, needs no confirmation.
 
-    Writes `.metaproject.json`, the `.agents/skills` layout, every missing deliverable
+    Writes `.metaproject/config.json`, the `.agents/skills` layout, every missing deliverable
     and every missing project skill. Nothing that exists is overwritten, so it is the
     agent-safe way to bring an already-cloned repository under metaproject (permitted
     in agent sessions). `new .` keeps its interactive, operator-confirmed semantics.
@@ -1488,12 +1517,12 @@ def adopt_cmd(
     if result.identity_written:
         action = "would write" if dry_run else "wrote"
         console.print(
-            f"[dim]{action} .metaproject.json[/dim] "
+            f"[dim]{action} .metaproject/config.json[/dim] "
             f"(title: {result.identity.title}, author: {result.identity.author})",
             soft_wrap=True,
         )
     else:
-        console.print("[dim].metaproject.json already present — kept as-is[/dim]")
+        console.print("[dim].metaproject/config.json already present — kept as-is[/dim]")
     if result.skills_link is not None:
         from metaproject.skills import link_target, skills_home
 
@@ -1529,7 +1558,7 @@ def doctor_cmd(
     Without a project, checks, in order: the template store's layout (templates still
     at the store root or under `docs.template/`), the template store, `learn.targets`
     in config.json, an orphaned `~/.claude/skills/metaproject/` from older releases,
-    per-project `.metaproject.json` anchors, and — per cataloged, metaproject-managed
+    per-project `.metaproject/config.json` anchors, and — per cataloged, metaproject-managed
     project — cycle documents at legacy root or `docs/` locations (plus legacy
     `docs/archive`, `backlog`, `discovery`) and missing or stale project skills.
     With a PROJECT path, only that project is examined — its anchor, its cycle
@@ -1692,7 +1721,7 @@ def _skills_console(output_format: str) -> Console:
 
 def _skills_project(project_dir: Optional[Path], output_format: str) -> Path:
     """The managed project to act on, or exit 1 with the reason."""
-    from metaproject.identity import IDENTITY_FILE
+    from metaproject.identity import IDENTITY_FILE, has_config
 
     out = _skills_console(output_format)
     if output_format not in ("table", "json"):
@@ -1702,7 +1731,7 @@ def _skills_project(project_dir: Optional[Path], output_format: str) -> Path:
     if not target.is_dir():
         out.print(f"[bold red]Error:[/bold red] {target} is not a directory.", soft_wrap=True)
         raise typer.Exit(code=1)
-    if not (target / IDENTITY_FILE).is_file():
+    if not has_config(target):
         out.print(
             f"[bold red]Error:[/bold red] no {IDENTITY_FILE} in {target}; run "
             "[bold cyan]metaproject adopt[/bold cyan] first.",
@@ -2047,7 +2076,7 @@ def skills_sync_cmd(
     Each replacement is atomic per skill and recorded in
     .agents/skills/.metaproject-skills.json.
 
-    `--all` syncs every cataloged project that carries .metaproject.json, one line
+    `--all` syncs every cataloged project that carries .metaproject/config.json, one line
     per project. It asks once at a terminal (`--yes` skips it); in an agent session
     without `--yes` it reports what it would do, as `--dry-run`. It never runs git
     and never commits.
@@ -2085,7 +2114,7 @@ templates_app = typer.Typer(
     name="templates",
     help=(
         "Work with a project's declared template store (agent-safe).\n\n"
-        'A project may declare `"templates": {"source": ...}` in .metaproject.json — a '
+        'A project may declare `"templates": {"source": ...}` in .metaproject/config.json — a '
         "git URL (optionally with ref and subdir) or a path in the repository. When "
         "~/.metaproject/templates is missing, backfill, adopt and review render from it."
     ),
@@ -2121,7 +2150,9 @@ def templates_fetch_cmd(
         console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=1)
     if source is None:
-        console.print("[dim]No templates.source in .metaproject.json; nothing to fetch.[/dim]")
+        console.print(
+            "[dim]No templates.source in .metaproject/config.json; nothing to fetch.[/dim]"
+        )
         return
     if source.kind == "path":
         path = confined_path(target, source.location)

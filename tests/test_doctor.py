@@ -35,7 +35,7 @@ def _make_env(tmp_path: Path, learn_targets: list[str] | None = None) -> tuple[C
         universe_db=str(tmp_path / "universe.db"),
         learn=LearnConfig(targets=learn_targets or list(DEFAULT_LEARN_TARGETS)),
     )
-    config_file = config_dir / "config.json"
+    config_file = config_dir / "settings.json"
     save_config(cfg, config_file)
     return cfg, config_file
 
@@ -227,7 +227,7 @@ def _cli_env(config_file: Path) -> dict[str, str]:
 
 
 def test_cli_doctor_requires_initialization(runner: CliRunner, tmp_path: Path) -> None:
-    """No config.json → error pointing at init, exit 1."""
+    """No settings.json → error pointing at init, exit 1."""
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
     result = runner.invoke(
@@ -322,6 +322,9 @@ def _legacy_project(cfg: Config, root: Path, name: str, git_repo: bool = True) -
             metaproject_version="0.8.0",
         ),
     )
+    # A pre-0.11 project: its config is the legacy root `.metaproject.json`.
+    (project / ".metaproject" / "config.json").rename(project / ".metaproject.json")
+    (project / ".metaproject").rmdir()
     for old, text in _OLD_DOC_TEXT.items():
         (project / old).write_text(text, encoding="utf-8")
     if git_repo:
@@ -628,7 +631,7 @@ def test_default_confirm_asks_and_respects_no(
 
 
 def test_scoped_dry_run_checks_only_that_project(tmp_path: Path) -> None:
-    """`doctor <project> --dry-run`: that project's three checks, nothing written."""
+    """`doctor <project> --dry-run`: that project's checks, nothing written."""
     cfg, config_file = _make_env(tmp_path)
     target = _legacy_project(cfg, tmp_path / "projects", "target", git_repo=False)
     bystander = _legacy_project(cfg, tmp_path / "projects", "bystander", git_repo=False)
@@ -638,11 +641,14 @@ def test_scoped_dry_run_checks_only_that_project(tmp_path: Path) -> None:
 
     assert [r.name for r in results] == [
         "project identity",
+        f"project config: {target}",
         f"project docs: {target}",
         f"project skills: {target}",
+        f"project hook scripts: {target}",
     ]
-    assert results[0].healthy  # the anchor `_legacy_project` writes is seen
-    assert all(not r.healthy for r in results[1:])
+    assert results[0].healthy  # the legacy anchor `_legacy_project` writes is seen
+    assert all(not r.healthy for r in results[1:4])
+    assert results[4].healthy  # no hook scripts installed: nothing to refresh
     assert _snapshot(tmp_path / "projects", Path(cfg.templates_dir), config_file.parent) == before
     assert (bystander / "intent.md").is_file()
 

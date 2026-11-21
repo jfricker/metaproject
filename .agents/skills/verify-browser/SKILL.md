@@ -5,7 +5,7 @@ description: Proves a browser bug is fixed in every engine — reproduces it in 
 
 # verify-browser
 
-> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject/config.json`
 > (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
@@ -25,7 +25,7 @@ still needs a real device. A utility skill, not a cycle stage — it does not ti
 ## Inputs
 
 - The bug description and the affected URL or route.
-- `e2e_port` from `.metaproject.json` (the port the preview/dev server uses for e2e).
+- `e2e_port` from `.metaproject/config.json` (the port the preview/dev server uses for e2e).
 - The project's Playwright config (`playwright.config.*`) and its projects.
 - The quality gate as `AGENTS.md` / the `Makefile` define it (`make help` for targets).
 

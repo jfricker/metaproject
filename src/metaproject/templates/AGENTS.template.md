@@ -76,10 +76,10 @@ questions, or send the cycle back to `implement-plan` because it isn't actually
 finished. A single "return to implement-plan" halts the whole wrapup before anything is
 archived or reset.
 
-### .metaproject.json and `metaproject backfill`
+### .metaproject/config.json and `metaproject backfill`
 This project's governance and cycle documents are scaffolded and kept in sync by the
 `metaproject` CLI from its central template store, identified by the nearest
-`.metaproject.json` (this directory or an ancestor). If a document a skill needs is missing (a
+`.metaproject/config.json` (this directory or an ancestor). If a document a skill needs is missing (a
 fresh `.metaproject/docs/TECH-DESIGN.md`, a `.metaproject/docs/HANDOFF.md` on interruption), run
 `metaproject backfill .metaproject/docs/<file>`
 to create it from the template store rather than writing it from scratch — it never

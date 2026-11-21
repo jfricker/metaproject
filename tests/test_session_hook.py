@@ -29,6 +29,7 @@ from metaproject.hooks import (
     project_hook_entries,
     session_script_state,
 )
+from metaproject.identity import IDENTITY_FILE
 from metaproject.review import backfill_missing, deploy_entry, review_project
 from metaproject.templates import get_bundled_templates_dir
 
@@ -186,7 +187,8 @@ def add_uv(sandbox: dict, succeed: bool = True, version: str = "1.2.3") -> None:
 
 
 def set_pin(sandbox: dict, version: str) -> None:
-    (sandbox["project"] / ".metaproject.json").write_text(
+    (sandbox["project"] / ".metaproject").mkdir(parents=True, exist_ok=True)
+    (sandbox["project"] / IDENTITY_FILE).write_text(
         json.dumps({"title": "P", "metaproject_version": version}), encoding="utf-8"
     )
 
@@ -236,6 +238,19 @@ def test_script_installs_the_pinned_version_then_syncs(sandbox: dict) -> None:
     ]
     env_file = (sandbox["tmp"] / "env-file").read_text(encoding="utf-8")
     assert ".local/bin" in env_file
+
+
+def test_script_reads_the_pin_from_a_legacy_config(sandbox: dict) -> None:
+    """R-HOOK-1: an unmigrated project's pin still installs the pinned version."""
+    add_uv(sandbox)
+    (sandbox["project"] / ".metaproject.json").write_text(
+        json.dumps({"title": "P", "metaproject_version": "1.2.3"}), encoding="utf-8"
+    )
+    result, calls = run_script(sandbox)
+    assert result.returncode == 0
+    assert (
+        calls[0] == "uv tool install --force --quiet git+https://example.invalid/metaproject@v1.2.3"
+    )
 
 
 def test_script_is_idempotent(sandbox: dict) -> None:

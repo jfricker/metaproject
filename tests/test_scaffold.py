@@ -11,6 +11,7 @@ from metaproject import cli
 from metaproject.cli import app
 from metaproject.config import Config
 from metaproject.exceptions import CollisionError, MetaProjectError
+from metaproject.identity import IDENTITY_FILE
 from metaproject.scaffold import (
     TransactionalTracker,
     is_directory_empty,
@@ -118,7 +119,7 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
         ".metaproject/docs/DESIGN-INVARIANTS.md",
         ".metaproject/docs/VERIFIED-FACTS.md",
         ".metaproject/docs/archive",
-        ".metaproject.json",
+        ".metaproject/config.json",
     ]
     for expected in expected_files:
         assert (target / expected).exists(), f"Missing expected deliverable: {expected}"
@@ -145,18 +146,19 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
     )
     assert "chore: initial scaffold from metaproject" in git_log.stdout
 
-    # The initial commit includes .metaproject.json (spec.md R-ID-1).
+    # The initial commit includes .metaproject/config.json (spec.md R-ID-1).
     committed_files = subprocess.run(
-        ["git", "-C", str(target), "show", "--stat", "--oneline", "HEAD"],
+        ["git", "-C", str(target), "show", "--name-only", "--format=", "HEAD"],
         capture_output=True,
         text=True,
         check=True,
-    ).stdout
-    assert ".metaproject.json" in committed_files
+    ).stdout.split()
+    assert ".metaproject/config.json" in committed_files
+    assert ".metaproject.json" not in committed_files
 
 
 def test_scaffold_writes_identity_file(tmp_path: Path) -> None:
-    """A fresh scaffold writes `.metaproject.json` with the five required fields."""
+    """A fresh scaffold writes `.metaproject/config.json` with the five required fields."""
     target = tmp_path / "identity_proj"
     cfg = Config(author="Jane Dev", default_branch="main")
 
@@ -170,7 +172,7 @@ def test_scaffold_writes_identity_file(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    identity_path = target / ".metaproject.json"
+    identity_path = target / IDENTITY_FILE
     assert res["identity_file"] == identity_path
     assert "warnings" in res
 
@@ -191,10 +193,10 @@ def test_scaffold_writes_identity_file(tmp_path: Path) -> None:
 
 
 def test_scaffold_backfill_keeps_existing_identity(tmp_path: Path) -> None:
-    """Backfill never overwrites an existing `.metaproject.json` (spec.md R-ID-1)."""
+    """Backfill never overwrites an existing project config (spec.md R-ID-1)."""
     target = tmp_path / "has_identity"
-    target.mkdir()
-    identity_path = target / ".metaproject.json"
+    (target / ".metaproject").mkdir(parents=True)
+    identity_path = target / IDENTITY_FILE
     original = (
         json.dumps(
             {
@@ -234,7 +236,7 @@ def test_scaffold_dry_run_lists_identity_file(tmp_path: Path) -> None:
         interactive=False,
     )
 
-    identity_path = target / ".metaproject.json"
+    identity_path = target / IDENTITY_FILE
     assert identity_path in res["rendered_files"]
     assert res["identity_file"] == identity_path
     assert not target.exists()
@@ -260,7 +262,7 @@ def test_scaffold_rollback_removes_identity_file(
             no_git=False,
         )
 
-    assert not (target / ".metaproject.json").exists()
+    assert not (target / IDENTITY_FILE).exists()
 
 
 def test_scaffold_collision_guard(tmp_path: Path) -> None:
@@ -335,22 +337,22 @@ def test_cli_init_command(runner: CliRunner, tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert "Metaproject Initialized Successfully" in result.output
-    assert (config_dir / "config.json").exists()
+    assert (config_dir / "settings.json").exists()
     assert (config_dir / "templates" / "AGENTS.template.md").exists()
 
 
 def test_cli_init_existing_config_displays_status_and_aborts(
     runner: CliRunner, tmp_path: Path
 ) -> None:
-    """Verify init does not re-initialize when config.json exists without --force."""
+    """Verify init does not re-initialize when settings.json exists without --force."""
     import json
 
     config_dir = tmp_path / ".metaproject"
     config_dir.mkdir(parents=True)
-    config_file = config_dir / "config.json"
+    config_file = config_dir / "settings.json"
     universe_db = config_dir / "universe.db"
 
-    # Pre-populate config.json
+    # Pre-populate settings.json
     config_data = {
         "version": 1,
         "author": "Alice Developer",
@@ -800,8 +802,8 @@ def test_new_prints_wrote_metaproject_json(runner: CliRunner, tmp_path: Path) ->
     )
 
     assert result.exit_code == 0, result.output
-    assert "wrote .metaproject.json" in result.output
-    assert (target / ".metaproject.json").exists()
+    assert "wrote .metaproject/config.json" in result.output
+    assert (target / IDENTITY_FILE).exists()
 
 
 def test_new_dry_run_prints_would_write_metaproject_json(runner: CliRunner, tmp_path: Path) -> None:
@@ -814,8 +816,8 @@ def test_new_dry_run_prints_would_write_metaproject_json(runner: CliRunner, tmp_
     )
 
     assert result.exit_code == 0, result.output
-    assert "would write .metaproject.json" in result.output
-    assert not target.exists() or not (target / ".metaproject.json").exists()
+    assert "would write .metaproject/config.json" in result.output
+    assert not target.exists() or not (target / IDENTITY_FILE).exists()
 
 
 def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:

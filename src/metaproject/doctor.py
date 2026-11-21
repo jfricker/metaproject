@@ -1,22 +1,25 @@
 """`metaproject doctor` — diagnose and repair a stale installed environment.
 
 Everything metaproject installs outside the package (live template store,
-``config.json`` ``learn.targets``, per-project ``.metaproject.json`` anchors, cycle
-documents and project skills) can lag behind an upgraded package. Doctor checks each
-against the installed version and repairs what's stale — behind one confirmation per
-check (per project, for the project checks), never silently. Fixes always call the
+user config name and ``learn.targets``, per-project ``.metaproject/config.json``
+anchors and their location, cycle documents, project skills and hook scripts) can lag
+behind an upgraded package. Doctor checks each against the installed version and
+repairs what's stale — behind one confirmation per check (per project, for the project
+checks), never silently. Fixes always call the
 module that owns the concern, so doctor and ``init``/``new`` cannot drift apart
 (spec R-DR-11).
 
-The checks, in order: template-store layout, template store, config, orphaned global
-skill, project identity, project docs, project skills. Layout runs first so a store
+The checks, in order: template-store layout, template store, config file name, config,
+orphaned global skill, project identity, project config, project docs, project skills,
+project hook scripts. Layout runs first so a store
 whose cycle templates are still at the root is migrated, not re-seeded beside them.
 
 `run_checks(..., project=...)` scopes the run to one operator-named project: only
-that project's identity, docs, and skills checks run, and none of the
+that project's identity, config, docs, skills and hook-script checks run, and none of the
 environment-wide ones.
 """
 
+import json
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -31,6 +34,7 @@ from metaproject import (
     db,
     deliverables,
     git,
+    hooks,
     identity,
     skills,
     templates,
@@ -159,6 +163,151 @@ def fix_config(cfg: Config, config_file: Path) -> None:
     if targets != list(cfg.learn.targets):
         cfg.learn.targets = targets
         config.save_config(cfg, config_file)
+
+
+# --------------------------------------------------------------- legacy file pairs
+
+PAIR_NONE = "none"  # no legacy file
+PAIR_LEGACY = "legacy"  # only the legacy file: move it
+PAIR_IDENTICAL = "identical"  # both, same content: remove the legacy one
+PAIR_DIFFER = "differ"  # both, different: report, change nothing
+
+
+def _parse_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+
+
+def _pair_state(legacy: Path, new: Path) -> str:
+    """How a legacy file relates to its new location (R-CFG-7, R-STORE-3).
+
+    Identical means equal parsed JSON, or equal bytes when either side is unparseable.
+    """
+    if not legacy.is_file():
+        return PAIR_NONE
+    if not new.is_file():
+        return PAIR_LEGACY
+    old_data, new_data = _parse_json(legacy), _parse_json(new)
+    if old_data is not None and new_data is not None:
+        return PAIR_IDENTICAL if old_data == new_data else PAIR_DIFFER
+    try:
+        return PAIR_IDENTICAL if legacy.read_bytes() == new.read_bytes() else PAIR_DIFFER
+    except OSError:
+        return PAIR_DIFFER
+
+
+def _differing_keys(legacy: Path, new: Path) -> List[str]:
+    old_data, new_data = _parse_json(legacy), _parse_json(new)
+    if not (isinstance(old_data, dict) and isinstance(new_data, dict)):
+        return []
+    keys = set(old_data) | set(new_data)
+    return sorted(k for k in keys if old_data.get(k, ...) != new_data.get(k, ...))
+
+
+def _pair_findings(
+    state: str, legacy_label: str, new_label: str, legacy: Path, new: Path
+) -> tuple[List[str], List[str]]:
+    """(findings, report_only) for one legacy/new file pair."""
+    if state == PAIR_LEGACY:
+        return [f"move {legacy_label} → {new_label}"], []
+    if state == PAIR_IDENTICAL:
+        return [f"remove redundant {legacy_label} (identical to {new_label})"], []
+    if state == PAIR_DIFFER:
+        keys = _differing_keys(legacy, new)
+        detail = f" (keys: {', '.join(keys)})" if keys else ""
+        conflict = (
+            f"conflict: {legacy_label} and {new_label} differ{detail}; "
+            f"merge by hand and delete {legacy_label}"
+        )
+        return [conflict], [conflict]
+    return [], []
+
+
+def check_store_file(config_dir: Path) -> tuple[List[str], List[str], str]:
+    """The user config still under its legacy name `config.json` (R-STORE-3)."""
+    legacy = config_dir / config.LEGACY_CONFIG_FILENAME
+    new = config_dir / config.CONFIG_FILENAME
+    state = _pair_state(legacy, new)
+    findings, report_only = _pair_findings(state, str(legacy), str(new), legacy, new)
+    action = "remove the legacy file" if state == PAIR_IDENTICAL else "rename"
+    fix_summary = f"{action}: {config.LEGACY_CONFIG_FILENAME} → {config.CONFIG_FILENAME}"
+    return findings, report_only, fix_summary
+
+
+def fix_store_file(config_dir: Path) -> None:
+    legacy = config_dir / config.LEGACY_CONFIG_FILENAME
+    new = config_dir / config.CONFIG_FILENAME
+    state = _pair_state(legacy, new)
+    if state == PAIR_LEGACY:
+        os.rename(legacy, new)
+    elif state == PAIR_IDENTICAL:
+        legacy.unlink()
+
+
+def check_project_config(project_dir: Path) -> tuple[List[str], List[str], str]:
+    """A legacy root `.metaproject.json` (R-CFG-7)."""
+    root = Path(project_dir)
+    legacy = root / identity.LEGACY_IDENTITY_FILE
+    new = root / identity.IDENTITY_FILE
+    state = _pair_state(legacy, new)
+    findings, report_only = _pair_findings(
+        state, identity.LEGACY_IDENTITY_FILE, identity.IDENTITY_FILE, legacy, new
+    )
+    if state == PAIR_IDENTICAL:
+        fix_summary = f"remove {identity.LEGACY_IDENTITY_FILE} (git rm when tracked; never commits)"
+    else:
+        fix_summary = (
+            f"move {identity.LEGACY_IDENTITY_FILE} → {identity.IDENTITY_FILE} "
+            "(git mv when tracked; never commits)"
+        )
+    return findings, report_only, fix_summary
+
+
+def fix_project_config(project_dir: Path) -> None:
+    root = Path(project_dir)
+    legacy = root / identity.LEGACY_IDENTITY_FILE
+    new = root / identity.IDENTITY_FILE
+    state = _pair_state(legacy, new)
+    git_repo = git.is_git_repository(root)
+    if state == PAIR_LEGACY:
+        _relocate(root, identity.LEGACY_IDENTITY_FILE, identity.IDENTITY_FILE, git_repo)
+    elif state == PAIR_IDENTICAL:
+        _remove_file(root, identity.LEGACY_IDENTITY_FILE, git_repo)
+
+
+def _stale_hook_scripts(project_dir: Path) -> List[Tuple[str, Path]]:
+    """Installed hook scripts that predate `.metaproject/config.json` (R-HOOK-2).
+
+    A copy that does not mention the new path cannot find a migrated project's config.
+    Missing scripts, and copies that already know the path, are not findings.
+    """
+    stale: List[Tuple[str, Path]] = []
+    for rel_path, bundled in hooks._script_pairs():
+        dest = Path(project_dir) / rel_path
+        if not dest.is_file() or dest.is_symlink():
+            continue
+        try:
+            text = dest.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if ".metaproject/config.json" not in text:
+            stale.append((rel_path, bundled))
+    return stale
+
+
+def check_project_hooks(project_dir: Path) -> tuple[List[str], List[str], str]:
+    stale = _stale_hook_scripts(project_dir)
+    findings = [f"{rel} predates .metaproject/config.json" for rel, _ in stale]
+    fix_summary = f"replace {len(stale)} hook script(s) with the bundled copy (overwrites edits)"
+    return findings, [], fix_summary
+
+
+def fix_project_hooks(project_dir: Path) -> None:
+    root = Path(project_dir)
+    for rel_path, bundled in _stale_hook_scripts(root):
+        hooks._copy_script(root, rel_path, bundled, None)
 
 
 # ------------------------------------------------------------------------ moves
@@ -403,13 +552,13 @@ def fix_global_skill() -> None:
 
 
 def _identity_findings(anchorless: Sequence[Path]) -> tuple[List[str], str]:
-    findings = [f"no .metaproject.json anchor: {p}" for p in anchorless]
+    findings = [f"no {identity.IDENTITY_FILE} anchor: {p}" for p in anchorless]
     fix_summary = f"backfill identity for {len(anchorless)} project(s)"
     return findings, fix_summary
 
 
 def check_identity(cfg: Config) -> tuple[List[str], str, List[Path]]:
-    """Cataloged projects whose `.metaproject.json` anchor is absent."""
+    """Cataloged projects with no readable project config."""
     database = db.get_db(cfg.universe_db)
     projects = db.query_projects(database)  # non-missing rows only
     anchorless: List[Path] = []
@@ -637,6 +786,18 @@ def fix_project_skills(project_dir: Path) -> None:
 # --------------------------------------------------------------------- running
 
 
+# Per-project checks after identity, in order. The config check runs first so later
+# checks see a migrated layout.
+_PROJECT_CHECKS: Tuple[
+    Tuple[str, Callable[[Path], tuple[List[str], List[str], str]], Callable[[Path], None]], ...
+] = (
+    ("project config", check_project_config, fix_project_config),
+    ("project docs", check_project_docs, fix_project_docs),
+    ("project skills", check_project_skills, fix_project_skills),
+    ("project hook scripts", check_project_hooks, fix_project_hooks),
+)
+
+
 def _confirm_with_questionary(message: str) -> bool:
     return bool(questionary.confirm(message, default=False).ask())
 
@@ -651,8 +812,8 @@ def _project_checks(
 
     Every check reports even when healthy — one project, so the board is small and
     the operator sees what was looked at. Identity runs first: accepting its backfill
-    puts an anchorless project in scope for the docs and skills checks, which need a
-    `.metaproject.json` anchor exactly as the full run's project checks do (R-DRX-3/4).
+    puts an anchorless project in scope for the config, docs, skills and hook checks,
+    which need a project config exactly as the full run's project checks do (R-DRX-3/4).
     """
     results: List[CheckResult] = []
     findings, fix_summary, anchorless = check_project_identity(project_dir)
@@ -668,10 +829,7 @@ def _project_checks(
     )
     if not _is_managed(project_dir):
         return results
-    for name, check, fix in (
-        ("project docs", check_project_docs, fix_project_docs),
-        ("project skills", check_project_skills, fix_project_skills),
-    ):
+    for name, check, fix in _PROJECT_CHECKS:
         findings, report_only, fix_summary = check(project_dir)
         results.append(
             _apply(
@@ -734,26 +892,41 @@ def run_checks(
         )
     )
 
-    # 3. Config
+    # 3. Config file name — before learn.targets, which then writes the resolved file.
+    config_dir = Path(config_file).parent
+    findings, report_only, fix_summary = check_store_file(config_dir)
+    results.append(
+        _apply(
+            "config file name",
+            findings,
+            fix_summary,
+            lambda: fix_store_file(config_dir),
+            dry_run,
+            confirm,
+            report_only,
+        )
+    )
+
+    # 4. Config (learn.targets)
     findings, fix_summary = check_config(cfg)
     results.append(
         _apply(
             "config (learn.targets)",
             findings,
             fix_summary,
-            lambda: fix_config(cfg, config_file),
+            lambda: fix_config(cfg, config.get_config_file_path(config_dir)),
             dry_run,
             confirm,
         )
     )
 
-    # 4. Orphaned global skill
+    # 5. Orphaned global skill
     findings, fix_summary = check_global_skill()
     results.append(
         _apply("orphaned global skill", findings, fix_summary, fix_global_skill, dry_run, confirm)
     )
 
-    # 5. Project identity
+    # 6. Project identity
     findings, fix_summary, anchorless = check_identity(cfg)
     results.append(
         _apply(
@@ -766,36 +939,23 @@ def run_checks(
         )
     )
 
-    # 6–7. Per project, one confirmation each: declining one project never blocks the next.
+    # 7–10. Per project, one confirmation each: declining one project never blocks the next.
     projects = _managed_projects(cfg)
-    for project_dir in projects:
-        findings, report_only, fix_summary = check_project_docs(project_dir)
-        if findings:
-            results.append(
-                _apply(
-                    f"project docs: {project_dir}",
-                    findings,
-                    fix_summary,
-                    lambda p=project_dir: fix_project_docs(p),
-                    dry_run,
-                    confirm,
-                    report_only,
+    for name, check, fix in _PROJECT_CHECKS:
+        for project_dir in projects:
+            findings, report_only, fix_summary = check(project_dir)
+            if findings:
+                results.append(
+                    _apply(
+                        f"{name}: {project_dir}",
+                        findings,
+                        fix_summary,
+                        lambda fix=fix, p=project_dir: fix(p),
+                        dry_run,
+                        confirm,
+                        report_only,
+                    )
                 )
-            )
-    for project_dir in projects:
-        findings, report_only, fix_summary = check_project_skills(project_dir)
-        if findings:
-            results.append(
-                _apply(
-                    f"project skills: {project_dir}",
-                    findings,
-                    fix_summary,
-                    lambda p=project_dir: fix_project_skills(p),
-                    dry_run,
-                    confirm,
-                    report_only,
-                )
-            )
 
     return results
 

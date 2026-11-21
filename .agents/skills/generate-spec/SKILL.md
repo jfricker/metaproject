@@ -5,7 +5,7 @@ description: Turns an approved INTENT.md into a requirements/design SPEC.md, app
 
 # generate-spec
 
-> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject/config.json`
 > (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 

@@ -3,7 +3,7 @@
 A Claude Code on the web container starts with no `~/.metaproject/templates`, so
 without help every web session renders the bundled defaults and `review` then reports
 drift against the operator's customised store that is not real. A project can declare
-where its store lives in `.metaproject.json`:
+where its store lives in `.metaproject/config.json`:
 
     {"templates": {"source": "https://github.com/me/templates.git"}}
     {"templates": {"source": {"url": "git@github.com:me/templates.git", "ref": "v3",
@@ -48,7 +48,7 @@ ORIGIN_BUNDLED = "bundled"
 GIT_TIMEOUT_SECONDS = 120
 
 # Git transports a declared source may use. `ext::` (runs a command) and anything else
-# exotic is refused: `.metaproject.json` arrives with the repository, so its contents
+# exotic is refused: `.metaproject/config.json` arrives with the repository, so its contents
 # are data, never a way to run something.
 # Authenticated or local transports only: http:// and git:// are unauthenticated and
 # MITM-able, and what they fetch is rendered into the repository.
@@ -182,16 +182,16 @@ def parse_template_source(value: Any) -> TemplateSource:
 def read_template_source(project_dir: Path) -> Optional[TemplateSource]:
     """The project's declared `templates.source`, or None when it declares none.
 
-    A missing or unparseable `.metaproject.json` is "none" (identity handling reports
+    A missing or unparseable `.metaproject/config.json` is "none" (identity handling reports
     that elsewhere); a present but malformed `templates.source` raises
     `TemplateSourceError`, so the caller can say why it fell back.
     """
     import json
 
-    from metaproject.identity import IDENTITY_FILE
+    from metaproject.identity import config_path
 
     try:
-        data = json.loads((Path(project_dir) / IDENTITY_FILE).read_text(encoding="utf-8"))
+        data = json.loads(config_path(project_dir).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     if not isinstance(data, dict):
@@ -200,7 +200,7 @@ def read_template_source(project_dir: Path) -> Optional[TemplateSource]:
     if templates is None:
         return None
     if not isinstance(templates, dict):
-        raise TemplateSourceError('"templates" in .metaproject.json is not an object')
+        raise TemplateSourceError('"templates" in .metaproject/config.json is not an object')
     if templates.get("source") is None:
         return None
     return parse_template_source(templates["source"])
@@ -225,7 +225,7 @@ def cache_dir(source: TemplateSource, config_dir: Optional[Path] = None) -> Path
 def confined_path(project: Path, location: str) -> Optional[Path]:
     """Resolve a path-kind `templates.source` inside `project`, or None if it escapes.
 
-    `.metaproject.json` is data an agent can edit, so an absolute path, a `~` path, or a
+    `.metaproject/config.json` is data an agent can edit, so an absolute path, a `~` path, or a
     `..`/symlink route out of the repository is refused rather than used as a store.
     """
     raw = Path(location)

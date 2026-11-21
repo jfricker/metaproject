@@ -17,6 +17,10 @@
       {
         "digest": "109f92e2a1eedaf89a230916560bbe787531c20696eeeeb45d4af72267fbed48",
         "release": "0.9.1"
+      },
+      {
+        "digest": "b1511794fc643100d531e9a85243956bd30236ef99c54b36590645bd6587d96b",
+        "release": "0.10.0"
       }
     ],
     "backlog-new": [
@@ -35,6 +39,10 @@
       {
         "digest": "23469546d336e73015111d830244b34ad4552b53bdcd0fb940309525d95bde44",
         "release": "0.9.1"
+      },
+      {
+        "digest": "044b089de290410869114636e255f01fb4400efb27fe254e949bb9a60292ad74",
+        "release": "0.10.0"
       }
     ],
     "execute-tests": [
@@ -65,6 +73,10 @@
       {
         "digest": "7f355d74858642994647c44a727e1bae859fbac2d1f5594eeaef7e2cc78ecb86",
         "release": "0.9.1"
+      },
+      {
+        "digest": "9f0daea438b81d79e9ffce02f79db92f18d7b871d517cc5981be16162cd75298",
+        "release": "0.10.0"
       }
     ],
     "generate-design": [
@@ -83,6 +95,10 @@
       {
         "digest": "3efb851da22612378aa4d6ce4d4ecdf4c279af1f90b5c4feb162ab95d7b15767",
         "release": "0.9.1"
+      },
+      {
+        "digest": "771ebd6565e2597093cad875f161da735ab031532e83995363ae22da5f70ea46",
+        "release": "0.10.0"
       }
     ],
     "generate-plan": [
@@ -105,6 +121,10 @@
       {
         "digest": "ec8d91b5ff0e01eec973baffa74e521be9a16b1961f43883ae75ef8ed4c8ce6a",
         "release": "0.9.1"
+      },
+      {
+        "digest": "47df03b7cb528f490220db925034cfa21a28ad99f3ef3e7d92350d969dd27275",
+        "release": "0.10.0"
       }
     ],
     "generate-spec": [
@@ -123,6 +143,10 @@
       {
         "digest": "d04f310d2fbac42d8666a84eb55f5389d8edc5e74cc624a1b9650505e01681e5",
         "release": "0.9.1"
+      },
+      {
+        "digest": "caca74065b464d65f045df9c967cbb2e6e93a3689f5ae3fe2a83f497681ec702",
+        "release": "0.10.0"
       }
     ],
     "implement-plan": [
@@ -145,6 +169,10 @@
       {
         "digest": "8b0714656f0d9cf8b0bd89e1457fd8adfd744d2dfc1659b36471fa87d036572c",
         "release": "0.9.1"
+      },
+      {
+        "digest": "0ab6f709e1f9edd12a8f5782b84b4f856c906d4d43934c20531665e9d740d9cd",
+        "release": "0.10.0"
       }
     ],
     "metaproject": [
@@ -199,6 +227,10 @@
       {
         "digest": "93b1afee1df90fcdb669bcc55f559ac659dca9ee694c019aabb3655c7e0b5434",
         "release": "0.9.1"
+      },
+      {
+        "digest": "9b959b679220c0ea471a14d6aef3b7fb6a56c275b09219461f7f12f4bf8385f7",
+        "release": "0.10.0"
       }
     ],
     "shipit": [
@@ -221,6 +253,10 @@
       {
         "digest": "5e513429222f58f32c7198831d392d2fcaa04ea901b60e86fcb39898d0379be0",
         "release": "0.9.1"
+      },
+      {
+        "digest": "e8df25fde95b056a1e738998afeab63459699ea81b2a47501fe7136cbfc16ad2",
+        "release": "0.10.0"
       }
     ],
     "verify-browser": [
@@ -235,6 +271,10 @@
       {
         "digest": "d3c6f91d451573bf35d9f5a5e891d1b3847edba37fbe1604e96814dfbb4c013c",
         "release": "0.9.1"
+      },
+      {
+        "digest": "4cf5dddcf7fb78039d31211e701f3922889fe7bd243e5902737ae83aa0c3ceac",
+        "release": "0.10.0"
       }
     ],
     "wrapup": [
@@ -261,6 +301,10 @@
       {
         "digest": "1304a5d8ff05a1a14924aebb1fbd909cda8b2a42daf2d2a979435af467963c10",
         "release": "0.9.1"
+      },
+      {
+        "digest": "8b4f40a9a57917627c3f22638da87c98103af7e3d57e9cd55909dff0834da967",
+        "release": "0.10.0"
       }
     ],
     "write-intent": [
@@ -279,6 +323,10 @@
       {
         "digest": "de4120cf83d77893ab2bb86806dfe4e4dcfc049f83a24f4ae2a3583a6f9316de",
         "release": "0.9.1"
+      },
+      {
+        "digest": "c6b11c09d253050b06e560709bc9844211429e7377ec3fcee569878d3d2e03bc",
+        "release": "0.10.0"
       }
     ]
   }

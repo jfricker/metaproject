@@ -126,7 +126,7 @@ def _resolved_author(config_author: str) -> str:
 def project_variables(project_dir: Path, config: Optional[Config] = None) -> Dict[str, Any]:
     """Resolve the template variables a project would have been scaffolded with.
 
-    Identity comes from `.metaproject.json` when present (R-ID-2): title, description,
+    Identity comes from `.metaproject/config.json` when present (R-ID-2): title, description,
     author, and `created` (so `{Date}`/`{Year}` render from the scaffold date, not
     today). Otherwise title/description fall back to `identity.fallback_identity` and
     `created` is left unset so `collect_variables` uses today.

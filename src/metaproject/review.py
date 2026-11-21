@@ -367,7 +367,12 @@ def review_project(
     directory deliverables are a presence check. See `ReviewResult` for what the derived verdicts
     mean.
     """
-    from metaproject.identity import read_identity
+    from metaproject.identity import (
+        IDENTITY_FILE,
+        LEGACY_IDENTITY_FILE,
+        read_identity,
+    )
+    from metaproject.identity import legacy_config as legacy_identity
     from metaproject.template_source import ORIGIN_EXPLICIT, resolve_templates
 
     resolved_proj = project_dir.expanduser().resolve()
@@ -390,11 +395,14 @@ def review_project(
         notes.append(resolution.describe())
 
     if read_identity(resolved_proj) is None:
-        # Informational only (R-ID-4): `.metaproject.json` is not itself reviewable, and
+        # Informational only (R-ID-4): the project config is not itself reviewable, and
         # its absence is never a reason to call a project INCOMPLETE.
         notes.append(
-            "No .metaproject.json; identity resolved from README/pyproject/package.json fallback."
+            f"No {IDENTITY_FILE}; identity resolved from README/pyproject/package.json fallback."
         )
+    if legacy_identity(resolved_proj) is not None:
+        # R-CFG-8: a root `.metaproject.json` is a legacy location doctor migrates.
+        legacy[IDENTITY_FILE] = LEGACY_IDENTITY_FILE
 
     for deliverable in DELIVERABLES:
         if deliverable.cls is DeliverableClass.ON_DEMAND:
@@ -530,7 +538,7 @@ def resolve_variables(project_dir: Path, config: Optional[Config] = None) -> Dic
     """The variable set a whole remediation batch should render with.
 
     Resolved **once per batch, before the first write**. `variables.project_variables`
-    reads the project's own `.metaproject.json` (or its manifest fallback), so resolving
+    reads the project's own `.metaproject/config.json` (or its manifest fallback), so resolving
     per file would let a file written early in a batch change how the next one renders —
     and the board would then report the files it had just written as drifted.
     """

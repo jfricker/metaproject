@@ -4,9 +4,9 @@ Every command accepts `--help`. Paths default to the current directory unless no
 Anything marked **interactive** prompts or opens a TUI and needs a human at the keyboard.
 
 **Nested projects.** The project a command acts on is the nearest directory at or above
-the current one that holds `.metaproject.json`, stopping at the git root — not the git
+the current one that holds `.metaproject/config.json`, stopping at the git root — not the git
 root itself. Run from `packages/a/src` of a monorepo whose `packages/a` carries its own
-`.metaproject.json`, `backfill`, `adopt`, `review`, `skills status|sync`, `templates
+`.metaproject/config.json`, `backfill`, `adopt`, `review`, `skills status|sync`, `templates
 fetch` and web-profile `doctor` all act on `packages/a`, and print a dim
 `project: <root>` line when that differs from the current directory. An explicit
 `--dir`/`PROJECT` always wins; with no anchor at all the current directory is used, as
@@ -38,7 +38,7 @@ a managed one needs `metaproject adopt --dir .`.
 `metaproject init [SOURCE_TEMPLATES] [PROJECT_HOME]` — **interactive**. `metaproject install`
 is an alias with the same arguments and flags.
 
-Creates `~/.metaproject/`: `config.json`, the template store (git-backed, so every
+Creates `~/.metaproject/`: `settings.json`, the template store (git-backed, so every
 `learn apply` is a revertible commit), and `universe.db`. It installs no skill: project
 skills are copied into each project by `new` and `backfill`.
 
@@ -51,7 +51,7 @@ skills are copied into each project by `new` and `backfill`.
 | `--author`, `-a <str>` | Default author (default: `git config user.name`, then `$USER`; a detected container identity such as `Claude` or `root` is skipped for `Developer`) |
 
 In the [web profile](#web-profile-claude-code-on-the-web) `init` writes a minimal
-`config.json` recording `"profile": "web"`, never prompts, and skips seeding the template
+`settings.json` recording `"profile": "web"`, never prompts, and skips seeding the template
 store and the workspace scan.
 
 Run without `--force` when config already exists and it prints the current settings and
@@ -73,7 +73,7 @@ catalog summary instead of changing anything — a safe way to inspect the envir
 | `--dry-run` | Print what would be written; touches nothing |
 | `--no-git` | Skip `git init` and the initial commit |
 
-Also writes `.metaproject.json` (`title`, `description`, `author`, `created`,
+Also writes `.metaproject/config.json` (`title`, `description`, `author`, `created`,
 `metaproject_version`) and copies the project skills (this one plus the eleven SDLC
 skills) into `.agents/skills/<name>/`, reachable as `.claude/skills/<name>/`; both are
 tracked in the initial commit. Also installs the Claude Code hooks: the scripts
@@ -109,7 +109,7 @@ reports missing, without `new .`'s confirmations.
 | Flag | Effect |
 |---|---|
 | `FILE...` (positional, optional) | Specific deliverables to create, e.g. `.metaproject/docs/SPEC.md .metaproject/docs/HANDOFF.md`. Old names (`spec.md`, `design.md`, `docs/SPEC.md`) and bare new names (`SPEC.md`) resolve to their `.metaproject/docs/` path. Default: every missing deliverable `new` scaffolds (skipping any found at a legacy location and pointing to `doctor`), plus missing project skills. |
-| `--dir`, `-d <path>` | Project directory to backfill (default: the nearest `.metaproject.json` at or above the current directory, else the current directory). |
+| `--dir`, `-d <path>` | Project directory to backfill (default: the nearest `.metaproject/config.json` at or above the current directory, else the current directory). |
 | `--templates <path>` | Template directory to create from (default `~/.metaproject/templates`). |
 | `--dry-run` | Preview what would be created; writes nothing. |
 
@@ -157,14 +157,14 @@ interactive, operator-confirmed semantics and is refused in an agent session.
 
 | Flag | Effect |
 |---|---|
-| `--dir`, `-d <path>` | Repository to adopt (default: the nearest `.metaproject.json` at or above the current directory, else the current directory; use `--dir .` to adopt a new sub-project inside a managed one) |
+| `--dir`, `-d <path>` | Repository to adopt (default: the nearest `.metaproject/config.json` at or above the current directory, else the current directory; use `--dir .` to adopt a new sub-project inside a managed one) |
 | `--title <str>` | Title (default: `README.md` heading, `pyproject.toml`/`package.json` name, then the directory name) |
 | `--description <str>` | One-line summary (default: the paragraph under the README heading) |
 | `--author`, `-a <str>` | Author (default: config, then `git config user.name`, then `$USER`; never a container identity). When none yields a real name — a web container with no config — adopt refuses before writing anything and asks for `--author` |
 | `--templates <path>` | Template directory to create from |
 | `--dry-run` | Preview; writes nothing |
 
-It writes `.metaproject.json` (kept as written if one exists; an unreadable one stops
+It writes `.metaproject/config.json` (kept as written if one exists; an unreadable one stops
 the command with exit 1 rather than being replaced), the `.agents/skills` directory with
 its `.claude/skills` link, then everything `backfill` with no `FILE` would: every missing
 scaffolded deliverable and every missing project skill. Re-running it is a no-op.
@@ -204,7 +204,7 @@ body-for-body. Working deliverables (`.metaproject/docs/INTENT.md`, `.metaprojec
 `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`) are
 checked for heading structure only — a per-file list of template headings the project
 file is missing, shown as notes on the detail screen — and are never offered for Update;
-`.metaproject.json`'s absence is reported as an informational note rather than
+`.metaproject/config.json`'s absence is reported as an informational note rather than
 `! INCOMPLETE`. A store template containing an unwhitelisted `{placeholder}` prints a
 warning naming the file and placeholder rather than failing the review.
 
@@ -283,13 +283,16 @@ left behind by an upgrade, and repairs each finding behind its own confirmation.
 |---|---|
 | Template-store layout | Moves root cycle templates and `docs.template/` (plus `.gitkeep`s) into `.metaproject.template/docs.template/` with their new names while keeping custom `docs.template/` files; `git mv` plus one commit of only the moved/removed paths |
 | Template store | Seeds templates missing from the store; extras are kept and only listed |
+| Config file name | Renames a legacy `~/.metaproject/config.json` to `settings.json`; an identical leftover is removed, a differing pair is reported and left alone |
 | Config | Rewrites legacy `learn.targets` paths (`intent.md`, `docs/INTENT.md`, `docs/` → `.metaproject/docs/...`) in place, order kept, deduplicated, and appends missing core targets |
 | Orphaned global skill | Removes `~/.claude/skills/metaproject/` from older releases; nothing else under `~/.claude` |
-| Project identity | Backfills a missing `.metaproject.json` in cataloged projects |
+| Project identity | Backfills a missing `.metaproject/config.json` in cataloged projects |
+| Project config (per project) | Moves a legacy root `.metaproject.json` to `.metaproject/config.json` (`git mv` when tracked); removes an identical leftover; reports a differing pair (and the differing keys) without changing either |
 | Project docs (per project) | Moves legacy root or `docs/` cycle documents (plus `docs/{archive,backlog,discovery}/` and `.gitkeep`) into `.metaproject/docs/` (`git mv` when tracked), cleans emptied/junk-only `docs/` while keeping non-empty project `docs/`; never overwrites conflicts and never commits |
 | Project skills (per project) | Installs missing project skills and updates outdated, unmodified ones (same classification as `skills status`); modified ones are reported, never overwritten |
+| Project hook scripts (per project) | Replaces an installed `.claude/hooks/metaproject_hook.py` or `scripts/metaproject-session.sh` that predates `.metaproject/config.json` with the bundled copy |
 
-The project checks cover `universe`-cataloged projects that have `.metaproject.json`, one
+The project checks cover `universe`-cataloged projects that have `.metaproject/config.json`, one
 confirmation per project. Declining one fix never blocks the rest. A second run after a
 full migration is clean (a modified skill stays reported until
 `metaproject skills sync --force NAME` replaces it). In an agent session only `--dry-run` runs; it writes nothing.
@@ -307,7 +310,7 @@ directory is refused.
 `metaproject skills status [--dir PATH] [--format table|json]` and
 `metaproject skills sync [--dir PATH] [--dry-run] [--force NAME]... [--format table|json]`
 — agent-safe: no prompt, no config or template store, permitted in agent sessions and in
-the web profile. Both need `.metaproject.json` in the project (else exit 1: run `adopt`).
+the web profile. Both need `.metaproject/config.json` in the project (else exit 1: run `adopt`).
 
 Each bundled skill is in one of four states:
 
@@ -333,7 +336,7 @@ is left untouched. A refusal (`.claude/skills` a real directory, or a symlink el
 writes nothing and exits 1. `sync` does not create the `.claude/skills` link; it points
 at `adopt` when the link is absent.
 
-**One copy per monorepo: `skills.location`.** A sub-project's `.metaproject.json` may
+**One copy per monorepo: `skills.location`.** A sub-project's `.metaproject/config.json` may
 declare `"skills": {"location": "root"}` (an enum, never a path; absent or `"project"`
 is the default, and an invalid value is a notice, not an error). Its skills then live
 in the nearest ancestor project that does not itself declare `"root"` — or, failing
@@ -357,7 +360,7 @@ notices on stderr.
 
 `metaproject skills status --all [--format table|json]` and
 `metaproject skills sync --all [--dry-run] [--yes] [--format table|json]` act on every
-cataloged project in `universe.db` that still exists and carries `.metaproject.json` —
+cataloged project in `universe.db` that still exists and carries `.metaproject/config.json` —
 the same set `doctor` checks. Each project goes through the single-project code path;
 `sync --all` prints one line per project (`updated N  installed N  kept-modified N`, or
 `refused <reason>`) and a totals line. It never runs git and never commits.
@@ -408,7 +411,7 @@ around one is not.
 
 A Claude Code on the web session runs in a fresh container: no `~/.metaproject`, no
 projects home, no operator. metaproject treats it as the **web profile** when
-`METAPROJECT_PROFILE=web`, or when `CLAUDE_CODE_REMOTE=true` and no `config.json`
+`METAPROJECT_PROFILE=web`, or when `CLAUDE_CODE_REMOTE=true` and no `settings.json`
 exists. Once `init` has written a config it records `"profile": "web"`, so the profile
 holds; a config without that key is a local machine whatever the environment says, and
 `METAPROJECT_PROFILE=local` forces the local profile.
@@ -427,19 +430,19 @@ holds; a config without that key is a local machine whatever the environment say
 `new` and `backfill` merge a session-start hook entry into `.claude/settings.json` and copy
 `scripts/metaproject-session.sh` create-only. The entry runs the script only when the
 file exists **and** `CLAUDE_CODE_REMOTE=true`, and always exits 0. The script installs
-the CLI at `.metaproject.json`'s `metaproject_version`
+the CLI at `.metaproject/config.json`'s `metaproject_version`
 (`uv tool install git+https://github.com/jfricker/metaproject@v<version>`, then pipx,
 then `pip --user`, then the default branch; skipped when that version is already
 installed; if the installed CLI has no `skills` command — a pin of 0.9.1 or earlier —
 it reinstalls from the default branch), appends `~/.local/bin` to `PATH` via `$CLAUDE_ENV_FILE`, then runs
 `metaproject skills sync` and `metaproject templates fetch` against the nearest
-`.metaproject.json` at or above `CLAUDE_PROJECT_DIR` (stopping at the git root). Output goes to
+`.metaproject/config.json` at or above `CLAUDE_PROJECT_DIR` (stopping at the git root). Output goes to
 `$METAPROJECT_SESSION_LOG` (default `$TMPDIR/metaproject-session.log`); offline or
 without `uv` it still exits 0. `METAPROJECT_REPO_URL` overrides the repository.
 
 ### `templates.source`
 
-Optional, in `.metaproject.json`: `"templates": {"source": ...}` — a git URL, an object
+Optional, in `.metaproject/config.json`: `"templates": {"source": ...}` — a git URL, an object
 `{"url", "ref", "subdir"}`, or a repository path (`"tools/templates"` /
 `{"path": ...}`). Only consulted when `~/.metaproject/templates` is missing or empty
 (`--templates` and a local store always win). A git source is shallow-fetched
@@ -508,14 +511,14 @@ metaproject universe --list --all --format json
 
 | Path | Contents |
 |---|---|
-| `~/.metaproject/config.json` | Author, default branch, projects home, template path, db path, profile (`local`/`web`) |
+| `~/.metaproject/settings.json` | Author, default branch, projects home, template path, db path, profile (`local`/`web`) |
 | `~/.metaproject/templates/` | The template store — a git repository |
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
 | `~/.metaproject/cache/templates/` | Shallow checkouts of projects' git `templates.source` |
 | `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`/`adopt`, updated by `skills sync`, committed with the project (`.claude/skills` links here) |
 | `<project>/.agents/skills/.metaproject-skills.json` | Skills install manifest: release and per-file sha256 for each installed skill; committed |
-| `<project>/.metaproject.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. The nearest one at or above the current directory marks the project root. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, `templates.source`, and `skills.location` (`"root"` keeps a sub-project's skills in an ancestor) |
+| `<project>/.metaproject/config.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. The nearest one at or above the current directory marks the project root. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, `templates.source`, and `skills.location` (`"root"` keeps a sub-project's skills in an ancestor) |
 | `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
 | `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`; `pre-bash` also advises a worktree-local `PLAYWRIGHT_BROWSERS_PATH` when the Playwright install lock is held), copied create-only |
 | `<project>/scripts/metaproject-session.sh` | The web session-start bootstrap script, copied create-only |

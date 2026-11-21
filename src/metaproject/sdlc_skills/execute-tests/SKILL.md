@@ -5,7 +5,7 @@ description: Runs the project's test/build/lint feedback loop (via make, per AGE
 
 # execute-tests
 
-> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject.json`
+> **Precondition.** This project must be metaproject-managed: the nearest `.metaproject/config.json`
 > (this directory or an ancestor) and `metaproject` on `PATH`. If either is missing, stop and tell the
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
@@ -49,7 +49,7 @@ look — tests, build, and (for UI work) screenshots.
 1. Run `make help` if you haven't already this session, to confirm the actual available
    targets — don't assume target names.
 2. **Before any e2e run**, clear the way (skip when the project has no Playwright e2e):
-   - Stop stale preview/dev servers on the e2e port (`e2e_port` in `.metaproject.json`;
+   - Stop stale preview/dev servers on the e2e port (`e2e_port` in `.metaproject/config.json`;
      `lsof -nP -iTCP:<port> -sTCP:LISTEN`). The bundled pre-Bash hook already does this
      for commands that mention playwright.
    - Check whether a Playwright install lock is held: a `__dirlock` directory under the

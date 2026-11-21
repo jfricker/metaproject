@@ -4,7 +4,7 @@
 # Runs only in Claude Code on the web (CLAUDE_CODE_REMOTE=true), where every session is
 # a fresh container with no metaproject CLI on PATH. It:
 #
-#   1. installs the CLI at the version pinned in .metaproject.json (`metaproject_version`)
+#   1. installs the CLI at the version pinned in .metaproject/config.json (`metaproject_version`)
 #      with `uv tool install git+<repo>@v<version>`, falling back to pipx, then pip --user
 #      (and to the default branch if the pinned tag cannot be installed); skipped when
 #      `metaproject --version` already reports that version;
@@ -13,14 +13,14 @@
 #   2. runs `metaproject skills sync` (installs missing skills, updates outdated,
 #      unmodified ones, never touches a locally edited skill);
 #   3. runs `metaproject templates fetch`, which refreshes the `templates.source` cache
-#      when .metaproject.json declares one and is a no-op otherwise.
+#      when the project config declares one and is a no-op otherwise.
 #
-# The project is the nearest .metaproject.json at or above CLAUDE_PROJECT_DIR, stopping
+# The project is the nearest project config at or above CLAUDE_PROJECT_DIR, stopping
 # at the git root, so a session opened inside a monorepo sub-project acts on it.
 #
 # Idempotent and quiet: all output goes to a log file ($METAPROJECT_SESSION_LOG, default
 # ${TMPDIR:-/tmp}/metaproject-session.log). It ALWAYS exits 0 — offline, no uv, no
-# python3, a malformed .metaproject.json: none of these may block a session.
+# python3, a malformed project config: none of these may block a session.
 #
 # Environment overrides: METAPROJECT_REPO_URL (default the upstream repository).
 #
@@ -51,11 +51,22 @@ main() {
   local project_dir="${CLAUDE_PROJECT_DIR:-$PWD}"
   cd "$project_dir" || return 0
 
-  # The project is the nearest .metaproject.json at or above this directory, stopping
-  # at the git root (a sub-project in a monorepo). None found: this directory, as before.
+  # The project is the nearest project config (.metaproject/config.json, else a legacy
+  # .metaproject.json) at or above this directory, stopping at the git root (a
+  # sub-project in a monorepo). None found: this directory, as before. The user store
+  # (~/.metaproject or METAPROJECT_CONFIG_DIR) is never a project.
+  local store="${METAPROJECT_CONFIG_DIR:-$HOME/.metaproject}"
+  store="$(cd "$store" 2>/dev/null && pwd -P)"
+  local config_file=""
   local probe="$PWD"
   while :; do
-    if [ -f "$probe/.metaproject.json" ]; then
+    if [ -f "$probe/.metaproject/config.json" ] \
+      && [ "$(cd "$probe/.metaproject" 2>/dev/null && pwd -P)" != "$store" ]; then
+      config_file=".metaproject/config.json"
+    elif [ -f "$probe/.metaproject.json" ]; then
+      config_file=".metaproject.json"
+    fi
+    if [ -n "$config_file" ]; then
       project_dir="$probe"
       cd "$project_dir" || return 0
       break
@@ -73,11 +84,11 @@ main() {
 
   # The pinned version, validated so it can only ever be a version string.
   local version=""
-  if command -v python3 >/dev/null 2>&1 && [ -f .metaproject.json ]; then
-    version="$(python3 -c '
-import json, re, sys
+  if command -v python3 >/dev/null 2>&1 && [ -n "$config_file" ] && [ -f "$config_file" ]; then
+    version="$(METAPROJECT_CONFIG_FILE="$config_file" python3 -c '
+import json, os, re, sys
 try:
-    v = json.load(open(".metaproject.json", encoding="utf-8")).get("metaproject_version", "")
+    v = json.load(open(os.environ["METAPROJECT_CONFIG_FILE"], encoding="utf-8")).get("metaproject_version", "")
 except Exception:
     v = ""
 v = v.strip() if isinstance(v, str) else ""

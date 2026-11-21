@@ -15,6 +15,7 @@ import pytest
 
 from metaproject.exceptions import MissingExtraError
 from metaproject.extras import LazyModule, require
+from metaproject.identity import IDENTITY_FILE
 
 BLOCKED = ("textual", "questionary", "sqlite_utils")
 
@@ -77,7 +78,7 @@ def test_adopt_backfill_review_without_extra(tmp_path: Path) -> None:
 
     adopt = run_core(["adopt", "--dir", str(repo)], tmp_path)
     assert adopt.returncode == 0, adopt.stdout + adopt.stderr
-    assert (repo / ".metaproject.json").is_file()
+    assert (repo / IDENTITY_FILE).is_file()
     assert (repo / ".agents" / "skills" / "metaproject" / "SKILL.md").is_file()
 
     (repo / ".metaproject" / "docs" / "SPEC.md").unlink()

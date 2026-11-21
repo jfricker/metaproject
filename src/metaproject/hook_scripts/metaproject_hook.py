@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Claude Code hook installed by metaproject. Stdlib only; reads `.metaproject.json`.
+"""Claude Code hook installed by metaproject. Stdlib only; reads `.metaproject/config.json`
+(falling back to a legacy root `.metaproject.json`).
 
     python3 .claude/hooks/metaproject_hook.py post-edit   # PostToolUse, Edit|Write
     python3 .claude/hooks/metaproject_hook.py pre-bash    # PreToolUse, Bash
 
-The `.metaproject.json` used is the nearest one at or above the edited file (post-edit) or
+The project config used is the nearest one at or above the edited file (post-edit) or
 the session's working directory (pre-bash), stopping at a `.git` and never outside
 `CLAUDE_PROJECT_DIR`; in a monorepo, a sub-project's own commands run, from its directory.
 
-post-edit runs `commands.lint` then `commands.typecheck` from `.metaproject.json`. Silent,
+post-edit runs `commands.lint` then `commands.typecheck` from the project config. Silent,
 exit 0, when neither is set or every command passes. When one fails, its output
 (truncated) goes to stderr and the exit code is 2, which Claude Code feeds back to the
 agent; the edit itself has already happened and is not undone.
@@ -35,7 +36,8 @@ import subprocess
 import sys
 import time
 
-CONFIG_FILE = ".metaproject.json"
+CONFIG_FILE = os.path.join(".metaproject", "config.json")
+LEGACY_CONFIG_FILE = ".metaproject.json"
 COMMAND_KEYS = ("lint", "typecheck")
 COMMAND_TIMEOUT = 60  # seconds per configured command
 MAX_LINES = 20
@@ -53,11 +55,30 @@ def read_payload():
     return data if isinstance(data, dict) else {}
 
 
+def _store_dir():
+    """The user-global store, whose `config.json` is never a project's."""
+    configured = os.environ.get("METAPROJECT_CONFIG_DIR")
+    base = configured or os.path.join(os.path.expanduser("~"), ".metaproject")
+    return os.path.realpath(os.path.expanduser(base))
+
+
+def config_file(root):
+    """The project config under `root`: CONFIG_FILE, else LEGACY_CONFIG_FILE, else None."""
+    new = os.path.join(root, CONFIG_FILE)
+    if os.path.isfile(new) and os.path.realpath(os.path.join(root, ".metaproject")) != (
+        _store_dir()
+    ):
+        return new
+    legacy = os.path.join(root, LEGACY_CONFIG_FILE)
+    return legacy if os.path.isfile(legacy) else None
+
+
 def _nearest_anchor(start):
-    """The nearest ancestor-or-self of `start` holding CONFIG_FILE, stopping at a `.git`."""
+    """The nearest ancestor-or-self of `start` holding a project config, stopping at a
+    `.git`."""
     current = os.path.realpath(start)
     while True:
-        if os.path.isfile(os.path.join(current, CONFIG_FILE)):
+        if config_file(current) is not None:
             return current
         if os.path.lexists(os.path.join(current, ".git")):
             return None
@@ -73,7 +94,7 @@ def _within(path, root):
 
 
 def project_dir(payload, edited=False):
-    """The project whose `.metaproject.json` applies: the nearest one to the edited file
+    """The project whose config applies: the nearest one to the edited file
     (post-edit) or to the session's cwd, confined to CLAUDE_PROJECT_DIR when that is
     set. Anything unusable falls back to CLAUDE_PROJECT_DIR, the payload cwd, or cwd."""
     session = os.environ.get("CLAUDE_PROJECT_DIR")
@@ -101,8 +122,11 @@ def project_dir(payload, edited=False):
 
 
 def load_config(root):
+    path = config_file(root)
+    if path is None:
+        return {}
     try:
-        with open(os.path.join(root, CONFIG_FILE), encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except Exception:
         return {}

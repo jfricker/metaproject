@@ -13,7 +13,7 @@ hook (e.g. a `SessionStart` entry) is added by passing one more `HookEntry` thro
 
 The hooks themselves run the bundled script `.claude/hooks/metaproject_hook.py`, copied
 into the project create-only (an existing copy is never written into, only compared,
-like the project skills). It is stdlib-only Python and reads `.metaproject.json` at run
+like the project skills). It is stdlib-only Python and reads `.metaproject/config.json` at run
 time, so a project's lint command can change without re-running metaproject:
 
 - `post-edit` (PostToolUse, `Edit|Write`) runs `commands.lint` then
@@ -24,7 +24,7 @@ time, so a project's lint command can change without re-running metaproject:
 A third entry, `SessionStart`, runs the bundled shell script
 `scripts/metaproject-session.sh` (also copied create-only) only when
 `CLAUDE_CODE_REMOTE=true`: in a Claude Code on the web container it installs the CLI at
-the version `.metaproject.json` pins, runs `metaproject skills sync` and refreshes the
+the version `.metaproject/config.json` pins, runs `metaproject skills sync` and refreshes the
 `templates.source` cache. It always exits 0, so it never blocks a session.
 """
 
@@ -211,7 +211,7 @@ def merge_hooks(
 
 @dataclass(frozen=True)
 class HookConfig:
-    """The hook settings a project declares in `.metaproject.json` (all optional).
+    """The hook settings a project declares in `.metaproject/config.json` (all optional).
 
     `{"commands": {"lint": "make lint", "typecheck": "..."}, "e2e_port": 4173}`. The hook
     script reads the same keys itself at run time; this is metaproject's own view of them.
@@ -228,10 +228,10 @@ class HookConfig:
 
 def read_hook_config(project_dir: Path) -> HookConfig:
     """Read `commands.lint`, `commands.typecheck` and `e2e_port`. Tolerant: never raises."""
-    from metaproject.identity import IDENTITY_FILE
+    from metaproject.identity import config_path
 
     try:
-        data = json.loads((Path(project_dir) / IDENTITY_FILE).read_text(encoding="utf-8"))
+        data = json.loads(config_path(project_dir).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return HookConfig()
     if not isinstance(data, dict):

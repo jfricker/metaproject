@@ -58,7 +58,7 @@ INTENT.md   SPEC.md    TECH-DESIGN.md  PLAN.md   code + tests    STATE.md      a
   other key. `review` reports it missing until both entries are merged; it is never
   diffed or offered for Update. Invalid JSON there is refused and reported, not fixed.
 
-## `.metaproject.json`
+## `.metaproject/config.json`
 
 `new` writes this at the project root — `title`, `description`, `author`, `created`,
 `metaproject_version` — and it is tracked in git as part of the initial commit. Every
@@ -84,10 +84,10 @@ With no `commands.lint`/`commands.typecheck` the post-edit hook does nothing; wi
 `e2e_port` the pre-Bash hook does nothing. To lint after edits, set `commands.lint` to the
 project's own lint command (the one AGENTS.md names).
 
-The hooks read the nearest `.metaproject.json` at or above the edited file (post-edit)
+The hooks read the nearest `.metaproject/config.json` at or above the edited file (post-edit)
 or the session's directory (pre-Bash), never outside `CLAUDE_PROJECT_DIR`, and run the
 commands from that directory — in a monorepo, an edit in a sub-project runs that
-sub-project's lint. Nothing is inherited from an outer `.metaproject.json`.
+sub-project's lint. Nothing is inherited from an outer `.metaproject/config.json`.
 
 A sub-project may also set `"skills": {"location": "root"}` to keep its skills in the
 nearest ancestor project (or the git root) instead of its own `.agents/skills`; see

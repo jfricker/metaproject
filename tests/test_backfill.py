@@ -523,6 +523,7 @@ def test_backfill_no_args_skips_v09_docs_layout_into_legacy(tmp_path: Path) -> N
     """R-LOC-5 (FC-2): no-args backfill on an unmigrated `docs/` project skips legacy items."""
     proj, templates = scaffolded_project(tmp_path)
     (proj / ".metaproject" / "docs").rename(proj / "docs")
+    (proj / ".metaproject" / "config.json").rename(proj / ".metaproject.json")
     (proj / ".metaproject").rmdir()
 
     result = backfill_missing(proj, templates_dir=templates)
@@ -540,6 +541,7 @@ def test_cli_backfill_no_args_on_v09_docs_exits_zero_and_points_to_doctor(tmp_pa
     """R-LOC-5 CLI: prints legacy table pointing to `metaproject doctor` and exits 0."""
     proj, templates = scaffolded_project(tmp_path)
     (proj / ".metaproject" / "docs").rename(proj / "docs")
+    (proj / ".metaproject" / "config.json").rename(proj / ".metaproject.json")
     (proj / ".metaproject").rmdir()
 
     res = CliRunner().invoke(
