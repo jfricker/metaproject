@@ -135,3 +135,22 @@ invariant established in one cycle isn't accidentally violated in the next.
 - `backfill`/`adopt`/`review` resolve the store once per command and pass it on as an
   explicit path; the `Templates: ...` line is printed only when the project declares a
   source, so output for every other project is unchanged.
+
+## 2026-11-21 — [move-docs-to-metaproject-docs](archive/2026-11-21-move-docs-to-metaproject-docs/)
+
+- All metaproject-owned working, on-demand, and directory deliverables live under
+  `.metaproject/docs/` (`deliverables.DELIVERABLES`); `new`, `backfill`, `adopt`, `review`,
+  and `learn` never write into project `docs/` (`R-LOC-1..4`).
+- The bundled template store uses `.metaproject.template/docs.template/` (`R-TPL-1..4`),
+  matching `deliverables.template_path` and `learn/apply.py`'s `template_destination` 1:1
+  while leaving custom operator `docs.template/` trees intact.
+- No-args `backfill_missing` skips deliverables found via `legacy_locations` into
+  `BackfillResult.legacy` (pointing to `metaproject doctor`), and `deploy_entry` excludes
+  legacy child paths during directory deploys so duplicates never block `doctor` (`R-LOC-5`).
+- `universe` and `learn.collect` skip descending into `.metaproject` during project-root
+  discovery walks while leaving `.metaproject` out of `universe.IGNORED_DIRECTORIES` so
+  `.metaproject/docs/` edits still update activity mtime (`R-LEG-3`).
+- `doctor` migrates root and `docs/` layouts (including `docs/{archive,backlog,discovery}/`
+  per-file, `.gitkeep`, and `docs.template/` `.gitkeep`s) via `exact_exists` + conflict-safe
+  `git mv`/`git rm` and prunes `docs/` only when empty or untracked-junk-only, never
+  committing inside projects (`R-DRX-1..5`).
