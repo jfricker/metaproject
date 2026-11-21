@@ -139,7 +139,7 @@
 - `src/metaproject/review_tui.py`: The `rich` compliance board and its per-project detail screen.
 - `src/metaproject/learn/`: Corroborated-proposal pipeline (`collect`, `guard`, `score`, `store`, `synth`, `apply`, `drift`, `api`, `tui`).
 - `src/metaproject/identity.py`: `.metaproject.json` identity, plus the one project-root resolver — `find_project_root` (nearest anchor, stopping at the git boundary), `find_repo_root`, and `resolve_project_dir` (explicit `--dir`/`PROJECT` wins, else the nearest anchor, else cwd) that every cwd-defaulting command (`backfill`, `adopt`, `review`, `skills status|sync`, web `doctor`, `templates fetch`) uses. The hook and session scripts carry their own stdlib copy of the walk.
-- `src/metaproject/deliverables.py`: The single declaration of deliverable paths and classes, plus the legacy-name mapping (`LEGACY_NAMES`, `canonical_path`, `legacy_locations`, `exact_exists`) behind the `docs/` relocation.
+- `src/metaproject/deliverables.py`: The single declaration of deliverable paths and classes, plus the legacy-name mapping (`LEGACY_NAMES`, `LEGACY_LEARN_TARGETS`, `MIGRATABLE_SUBDIRS`, `canonical_path`, `legacy_locations`, `exact_exists`) behind the root/`docs/` → `.metaproject/docs/` relocation.
 - `src/metaproject/skill/`: The bundled metaproject skill (`SKILL.md` plus `references/`), shipped as package data.
 - `src/metaproject/extras.py`: `require`/`LazyModule` — the only way core code reaches `textual`, `questionary` or `sqlite-utils` (the optional `tui` extra), so `--version`, `backfill`, `adopt` and `review --no-tui` import none of them.
 - `src/metaproject/hooks.py`: The `.claude/settings.json` deliverable (class `SETTINGS`): `merge_hooks(settings_path, entries)` adds hook entries keyed by command string and preserves every other key (merge, never overwrite; invalid JSON is refused with `SettingsError`); `install_hooks` also copies the bundled `hook_scripts/metaproject_hook.py` to `.claude/hooks/` create-only. The web-only `SessionStart` entry is one more `HookEntry` through the same function: guarded to run `scripts/metaproject-session.sh` (bundled `hook_scripts/metaproject-session.sh`, also copied create-only) only when it exists and `CLAUDE_CODE_REMOTE=true`; the script installs the pinned CLI, runs `skills sync` and `templates fetch`, and always exits 0.
@@ -177,27 +177,27 @@
 ## Process
 This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook with modifications. This document adds to the playbook and merges ideas. It doesn't supercede the playbook unless explicitly stated.
 
-The cycle documents live in `docs/`; the cycle skills are this project's own copies in `.agents/skills/` (reachable as `.claude/skills/`), invoked by bare name (`/write-intent`, …, `/wrapup`).
+The cycle documents live in `.metaproject/docs/` (note: `.metaproject/` is a hidden dot-directory, so `rg`/`fd` searches targeting `.metaproject/docs/` need `--hidden` or an explicit path); the cycle skills are this project's own copies in `.agents/skills/` (reachable as `.claude/skills/`), invoked by bare name (`/write-intent`, …, `/wrapup`).
 
-### docs/TODO.md
- On-demand (`metaproject backfill docs/TODO.md`). `wrapup` appends a dated "Needs manual verification" entry listing what the agent could not verify itself, with exact steps for the operator. Never archived.
+### .metaproject/docs/TODO.md
+ On-demand (`metaproject backfill .metaproject/docs/TODO.md`). `wrapup` appends a dated "Needs manual verification" entry listing what the agent could not verify itself, with exact steps for the operator. Never archived.
 
-### docs/HANDOFF.md
- When work is interrupted before completion, create `docs/HANDOFF.md` (`metaproject backfill docs/HANDOFF.md`) to capture the state of the work and any other information needed to resume the work or hand it off to another agent at another time.
+### .metaproject/docs/HANDOFF.md
+ When work is interrupted before completion, create `.metaproject/docs/HANDOFF.md` (`metaproject backfill .metaproject/docs/HANDOFF.md`) to capture the state of the work and any other information needed to resume the work or hand it off to another agent at another time.
 
-### docs/STATE.md
+### .metaproject/docs/STATE.md
  Maintain a running list of all tasks and their status. Update it as tasks are completed. Format the list as a checklist with a box, task number and a task description.
 
-### docs/INTENT.md
- `docs/INTENT.md` is a source of truth for proposed changes to the system. Read it when instructed to and mark it complete after all work is tested and merged.
+### .metaproject/docs/INTENT.md
+ `.metaproject/docs/INTENT.md` is a source of truth for proposed changes to the system. Read it when instructed to and mark it complete after all work is tested and merged.
 
-### docs/SPEC.md
- The agent will be instructed to create a requirements spec from `docs/INTENT.md`.
+### .metaproject/docs/SPEC.md
+ The agent will be instructed to create a requirements spec from `.metaproject/docs/INTENT.md`.
 
-### docs/TECH-DESIGN.md
- The agent will be instructed to create a technical design from an approved `docs/SPEC.md`.
+### .metaproject/docs/TECH-DESIGN.md
+ The agent will be instructed to create a technical design from an approved `.metaproject/docs/SPEC.md`.
 
-### docs/PLAN.md
- The agent will be instructed by the operator to create an implementation plan based upon `docs/SPEC.md` and `docs/TECH-DESIGN.md`.
+### .metaproject/docs/PLAN.md
+ The agent will be instructed by the operator to create an implementation plan based upon `.metaproject/docs/SPEC.md` and `.metaproject/docs/TECH-DESIGN.md`.
 
 

@@ -219,15 +219,20 @@ Notes:
   the way to force content back to the bundled defaults.
 - `learn.targets` migration is additive — newly declared deliverables are appended;
   your own pinned targets are never removed or reordered.
-- Cycle documents moved into `docs/` with new names (`intent.md` → `docs/INTENT.md`,
-  `spec.md` → `docs/SPEC.md`, `design.md` → `docs/TECH-DESIGN.md`, `plan.md` →
-  `docs/PLAN.md`, and `STATE.md`, `HANDOFF.md`, `ARCHITECTURE.md` into `docs/`). Doctor
-  moves the store's templates into `docs.template/` (one commit in the store, of only the
-  moved paths), rewrites old `learn.targets` paths in place, and moves each project's
-  documents with `git mv` when they are tracked. It never overwrites — a document already
-  at its new path is reported and both copies are kept — and it never commits inside a
-  project; review and commit the moves yourself. `review` shows an unmigrated project as
-  `↻ OUTOFDATE` until then.
+- Cycle documents moved from the project root (v0.8) and `docs/` (v0.9) into
+  `.metaproject/docs/` (`intent.md` → `.metaproject/docs/INTENT.md`, `spec.md` →
+  `.metaproject/docs/SPEC.md`, `design.md` → `.metaproject/docs/TECH-DESIGN.md`,
+  `plan.md` → `.metaproject/docs/PLAN.md`, plus `STATE.md`, `ARCHITECTURE.md`,
+  `DESIGN-INVARIANTS.md`, `VERIFIED-FACTS.md`, `HANDOFF.md`, `TODO.md`, `.gitkeep`, and
+  `docs/{archive,backlog,discovery}/`). In v0.10.0, `metaproject doctor` relocates the
+  store's templates and placeholders into `.metaproject.template/docs.template/` (keeping
+  any operator-added `docs.template/` files, in one store commit), rewrites legacy
+  `learn.targets` paths including `"docs/"` → `".metaproject/docs/"`, moves each
+  project's metaproject files with `git mv` when tracked, and removes `docs/` when empty
+  (preserving any non-empty project-owned `docs/`). It never overwrites — a collision is
+  reported and both copies are kept — and never commits inside a project; review and
+  commit the moves yourself. `review` shows an unmigrated project as `↻ OUTOFDATE`, and
+  no-args `backfill` skips legacy-located deliverables cleanly until `doctor` runs.
 - Project skills from an earlier release are updated by `metaproject skills sync` (or
   doctor's project-skills fix) — but only when unmodified. A skill you edited is reported
   and never overwritten unless you name it: `metaproject skills sync --force NAME`.
@@ -291,7 +296,7 @@ with the project like any other file:
   `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, `/shipit` (merge, push, deploy and
   clean up a finished branch; production deploys wait for a five-line zero-downtime plan and your OK), `/backlog-new` for parking ideas,
   `/verify-browser` (reproduce a browser bug in WebKit with a failing Playwright test, then fix
-  it until webkit, chromium and mobile-safari all pass; real-device checks go to `docs/TODO.md`),
+  it until webkit, chromium and mobile-safari all pass; real-device checks go to `.metaproject/docs/TODO.md`),
   and `/backlog-factory` (work the top N independent backlog items in parallel, one worktree,
   subagent and PR each; merges only with your OK and deploys to preview only) — invoked by bare name;
 - the `metaproject` skill, which teaches an agent when to reach for each command, which
@@ -404,7 +409,7 @@ take their author from the project's `.metaproject.json` first, then config, the
 
 ### 2. Scaffolding a New Project (`metaproject new`)
 
-`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`), the long-lived docs (`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`), `docs/archive/`, `.metaproject.json`, and the project skills in `.agents/skills/` — and initializes git with an initial commit in under a second. The project root keeps only `README.md`, `AGENTS.md`, `CLAUDE.md` and `.gitignore`. (`docs/HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill docs/HANDOFF.md` only when work is interrupted.)
+`metaproject new` generates a complete repository with the full SDLC cycle template set — governance files (`README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitignore`), the cycle documents in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`), the long-lived docs (`.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`), `.metaproject/docs/archive/`, `.metaproject.json`, and the project skills in `.agents/skills/` — and initializes git with an initial commit in under a second. The project root keeps only `README.md`, `AGENTS.md`, `CLAUDE.md` and `.gitignore`, leaving `docs/` free for your project's own documentation. (`.metaproject/docs/HANDOFF.md` is on-demand and not scaffolded; create it with `metaproject backfill .metaproject/docs/HANDOFF.md` only when work is interrupted. Note: `.metaproject/` is a hidden dot-directory, so `rg`/`fd` searches targeting `.metaproject/docs/` need `--hidden` or an explicit path.)
 
 #### Guided Wizard
 ```bash
@@ -477,10 +482,10 @@ and never touches git — it is safe to run from an agent session or a hook:
 # Create every deliverable `new` scaffolds that is currently missing, plus missing skills
 metaproject backfill
 
-# Create specific documents by name, including the on-demand docs/HANDOFF.md and docs/TODO.md
-metaproject backfill docs/SPEC.md docs/HANDOFF.md docs/TODO.md
+# Create specific documents by name, including on-demand .metaproject/docs/HANDOFF.md and TODO.md
+metaproject backfill .metaproject/docs/SPEC.md .metaproject/docs/HANDOFF.md .metaproject/docs/TODO.md
 
-# Old names still resolve to docs/ — this creates docs/TECH-DESIGN.md
+# Old names (`design.md`, `docs/TECH-DESIGN.md`) resolve to `.metaproject/docs/TECH-DESIGN.md`
 metaproject backfill design.md
 
 # Preview without writing
@@ -491,8 +496,10 @@ metaproject backfill --dir ~/Projects/other-project
 ```
 
 With no file argument, every missing scaffolded deliverable is created in one call
-(on-demand deliverables excluded) and any that already exist are listed under "Skipped
-(already exists)". Naming files creates exactly those — including on-demand ones — but if
+(on-demand deliverables excluded); existing files are listed under "Skipped (already
+exists)", and deliverables found at a legacy root or `docs/` location are skipped with a
+reminder to run `metaproject doctor`. Naming files creates exactly those — including
+on-demand ones — but if
 *any* named file already exists, nothing at all is written and the command exits non-zero,
 listing the file(s) under "Refused — already exists, nothing written".
 
@@ -612,13 +619,14 @@ project's own name and description are never mistaken for drift.
 |---|---|
 | `✓ CLEAN` | Nothing missing, nothing drifted, and no working document has lost a heading. |
 | `~ DRIFTED` | Every deliverable exists, but a governance file's content has diverged, or a working document is missing a heading its template expects. |
-| `↻ OUTOFDATE` | Nothing is missing, but a cycle document is still at its old location (a root `intent.md`, a lowercase `docs/design.md`). It is listed on the detail screen under "Legacy location — run `metaproject doctor`" and is never offered for Deploy. Wins over `DRIFTED`. |
+| `↻ OUTOFDATE` | Nothing is missing, but a cycle document is still at its old location (a root `intent.md`, or unmigrated `docs/INTENT.md` / `docs/design.md`). It is listed on the detail screen under "Legacy location — run `metaproject doctor`" and is never offered for Deploy. Wins over `DRIFTED`. |
 | `! INCOMPLETE` | At least one standard deliverable is missing. Wins over every other state. |
 
 Governance deliverables (`AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) are diffed
 body-for-body and are the only files `u`/`update` can act on. Working deliverables
-(`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,
-`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`) are checked
+(`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`,
+`.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`,
+`.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`) are checked
 for heading structure
 only — their body text is never diffed, and they are never offered for Update; the fix
 for a missing heading is filling it in yourself, not an automatic overwrite.

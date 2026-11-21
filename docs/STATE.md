@@ -19,7 +19,7 @@
 - [x] 3. universe and learn compatibility
 - [x] 4. doctor migrations and git.git_rm
 - [x] 5. Bundled skills, skill_history.json, and skill/wheel tests
-- [ ] 6. Root governance docs (README.md, AGENTS.md) and grep sweep
+- [x] 6. Root governance docs (README.md, AGENTS.md) and grep sweep
 - [ ] 7. Self-migrate this repo and sync .agents/skills/
 
 ## Design invariants (regression guards)
