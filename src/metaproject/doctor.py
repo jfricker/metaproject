@@ -110,16 +110,18 @@ def fix_templates(cfg: Config) -> None:
 
 
 def _migrated_targets(targets: Sequence[str]) -> List[str]:
-    """`targets` with legacy root paths rewritten to `docs/`, order kept, de-duplicated."""
-    return list(dict.fromkeys(deliverables.LEGACY_NAMES.get(t, t) for t in targets))
+    """`targets` with legacy paths rewritten to `.metaproject/docs/`, order kept, de-duplicated."""
+    return list(dict.fromkeys(deliverables.LEGACY_LEARN_TARGETS.get(t, t) for t in targets))
 
 
 def check_config(cfg: Config) -> tuple[List[str], str]:
     """Legacy cycle-doc paths in learn.targets, and core targets missing from it (R-DRX-2)."""
-    legacy = [t for t in cfg.learn.targets if t in deliverables.LEGACY_NAMES]
+    legacy = [t for t in cfg.learn.targets if t in deliverables.LEGACY_LEARN_TARGETS]
     migrated = _migrated_targets(cfg.learn.targets)
     missing = [t for t in deliverables.learn_targets() if t not in migrated]
-    findings = [f"learn.targets legacy path: {t} → {deliverables.LEGACY_NAMES[t]}" for t in legacy]
+    findings = [
+        f"learn.targets legacy path: {t} → {deliverables.LEGACY_LEARN_TARGETS[t]}" for t in legacy
+    ]
     findings += [f"learn.targets missing core target: {t}" for t in missing]
     fix_summary = (
         f"rewrite {len(legacy)} legacy path(s) in place and append {len(missing)} missing "
@@ -179,7 +181,7 @@ def _planned_moves(
     """
     moves: List[Tuple[str, str]] = []
     conflicts: List[str] = []
-    for new in deliverables.LEGACY_NAMES.values():
+    for new in deliverables.RELOCATED_FILES:
         dest = deliverables.template_path(new) if template_suffix else new
         candidates = deliverables.legacy_candidates(root, new, template_suffix=template_suffix)
         if not candidates:

@@ -132,19 +132,19 @@ def test_review_missing_files_and_drift(tmp_path: Path) -> None:
 
     review = review_project(proj)
     assert review.is_compliant is False
-    # docs/HANDOFF.md is on-demand (R-CLS-5): never scaffolded, never reported missing.
-    assert "docs/HANDOFF.md" not in review.missing_files
-    assert "docs/TODO.md" not in review.missing_files
-    assert "docs/STATE.md" in review.missing_files
+    # .metaproject/docs/HANDOFF.md is on-demand (R-CLS-5): never scaffolded, never reported missing.
+    assert ".metaproject/docs/HANDOFF.md" not in review.missing_files
+    assert ".metaproject/docs/TODO.md" not in review.missing_files
+    assert ".metaproject/docs/STATE.md" in review.missing_files
     assert "CLAUDE.md" in review.missing_files
     assert ".gitignore" in review.missing_files
-    assert "docs" in review.missing_files
+    assert ".metaproject/docs" in review.missing_files
 
     # AGENTS.md should report content drift, and be offered for Update rather than Deploy
     assert "AGENTS.md" in review.diffs
     assert "AGENTS.md" in review.updatable
     assert "AGENTS.md" not in review.deployable
-    assert "docs/STATE.md" in review.deployable
+    assert ".metaproject/docs/STATE.md" in review.deployable
 
 
 def test_review_workspace_and_cli(runner: CliRunner, tmp_path: Path) -> None:
@@ -243,11 +243,11 @@ def test_ac1_filled_working_docs_keeping_headings_review_clean(tmp_path: Path) -
     )
 
     for name in (
-        "docs/INTENT.md",
-        "docs/SPEC.md",
-        "docs/TECH-DESIGN.md",
-        "docs/PLAN.md",
-        "docs/STATE.md",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/PLAN.md",
+        ".metaproject/docs/STATE.md",
     ):
         path = proj / name
         text = path.read_text(encoding="utf-8")
@@ -270,8 +270,8 @@ def test_ac1_filled_working_docs_keeping_headings_review_clean(tmp_path: Path) -
 def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_clean(
     tmp_path: Path,
 ) -> None:
-    """AC-2: dropping `## Verified facts...` from docs/STATE.md drifts it; a `— 2026` suffix
-    on the same heading still satisfies the template."""
+    """AC-2: dropping `## Verified facts...` from `.metaproject/docs/STATE.md` drifts it;
+    a `— 2026` suffix on the same heading still satisfies the template."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "ac2_proj"
     scaffold_project(
@@ -281,7 +281,7 @@ def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_cl
         interactive=False,
         no_git=True,
     )
-    state_path = proj / "docs/STATE.md"
+    state_path = proj / ".metaproject/docs/STATE.md"
     original = state_path.read_text(encoding="utf-8")
 
     heading = "## Verified facts (do not re-investigate)"
@@ -289,13 +289,13 @@ def test_ac2_removing_a_heading_drifts_structure_renaming_with_a_suffix_stays_cl
     state_path.write_text(original.replace(heading, ""), encoding="utf-8")
 
     drifted = review_project(proj, templates_dir=templates)
-    assert "docs/STATE.md" in drifted.structure
-    assert any("Verified facts" in line for line in drifted.structure["docs/STATE.md"])
+    assert ".metaproject/docs/STATE.md" in drifted.structure
+    assert any("Verified facts" in line for line in drifted.structure[".metaproject/docs/STATE.md"])
     assert drifted.is_clean is False
 
     state_path.write_text(original.replace(heading, f"{heading} — 2026"), encoding="utf-8")
     renamed = review_project(proj, templates_dir=templates)
-    assert "docs/STATE.md" not in renamed.structure
+    assert ".metaproject/docs/STATE.md" not in renamed.structure
     assert renamed.is_clean is True
 
 
@@ -311,7 +311,7 @@ def test_ac3_a_drifted_working_deliverable_is_never_updatable(tmp_path: Path) ->
         interactive=False,
         no_git=True,
     )
-    state_path = proj / "docs/STATE.md"
+    state_path = proj / ".metaproject/docs/STATE.md"
     state_path.write_text(
         state_path.read_text(encoding="utf-8").replace(
             "## Verified facts (do not re-investigate)", ""
@@ -320,15 +320,15 @@ def test_ac3_a_drifted_working_deliverable_is_never_updatable(tmp_path: Path) ->
     )
 
     result = review_project(proj, templates_dir=templates)
-    assert "docs/STATE.md" in result.structure
-    assert "docs/STATE.md" not in result.updatable
+    assert ".metaproject/docs/STATE.md" in result.structure
+    assert ".metaproject/docs/STATE.md" not in result.updatable
 
     with pytest.raises(MetaProjectError, match="working document"):
-        update_entry(proj, "docs/STATE.md", templates_dir=templates)
+        update_entry(proj, ".metaproject/docs/STATE.md", templates_dir=templates)
 
 
 def test_ac4_missing_handoff_is_never_incomplete(tmp_path: Path) -> None:
-    """AC-4: `new` does not create docs/HANDOFF.md; review of a project without it is not
+    """AC-4: `new` does not create `.metaproject/docs/HANDOFF.md`; review without it is not
     INCOMPLETE."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "ac4_proj"
@@ -340,13 +340,13 @@ def test_ac4_missing_handoff_is_never_incomplete(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    assert not (proj / "docs/HANDOFF.md").exists()
+    assert not (proj / ".metaproject/docs/HANDOFF.md").exists()
     review = review_project(proj, templates_dir=templates)
-    assert "docs/HANDOFF.md" not in review.missing_files
-    assert "docs/HANDOFF.md" not in review.deployable
-    assert not (proj / "docs/TODO.md").exists()
-    assert "docs/TODO.md" not in review.missing_files
-    assert "docs/TODO.md" not in review.deployable
+    assert ".metaproject/docs/HANDOFF.md" not in review.missing_files
+    assert ".metaproject/docs/HANDOFF.md" not in review.deployable
+    assert not (proj / ".metaproject/docs/TODO.md").exists()
+    assert ".metaproject/docs/TODO.md" not in review.missing_files
+    assert ".metaproject/docs/TODO.md" not in review.deployable
     assert review.is_compliant is True
     assert review.is_clean is True
 
@@ -496,20 +496,20 @@ def test_deploy_entry_writes_missing_file_and_refuses_to_overwrite(tmp_path: Pat
     """Deploy creates a missing deliverable; it never clobbers one that exists."""
     proj = make_drifting_project(tmp_path)
 
-    written = deploy_entry(proj, "docs/STATE.md")
-    assert (proj / "docs/STATE.md").exists()
-    assert written == [proj / "docs/STATE.md"]
+    written = deploy_entry(proj, ".metaproject/docs/STATE.md")
+    assert (proj / ".metaproject/docs/STATE.md").exists()
+    assert written == [proj / ".metaproject/docs/STATE.md"]
 
     with pytest.raises(MetaProjectError, match="already exists"):
-        deploy_entry(proj, "docs/STATE.md")
+        deploy_entry(proj, ".metaproject/docs/STATE.md")
 
 
 def test_deploy_entry_renders_a_directory_deliverable(tmp_path: Path) -> None:
-    """`docs` is a template directory, so deploying it renders a tree, not a file."""
+    """`.metaproject/docs` is a template directory, so deploying it renders a tree, not a file."""
     proj = make_drifting_project(tmp_path)
 
-    deploy_entry(proj, "docs")
-    assert (proj / "docs").is_dir()
+    deploy_entry(proj, ".metaproject/docs")
+    assert (proj / ".metaproject/docs").is_dir()
 
 
 def test_update_entry_overwrites_drift_and_refuses_a_missing_file(tmp_path: Path) -> None:
@@ -524,9 +524,9 @@ def test_update_entry_overwrites_drift_and_refuses_a_missing_file(tmp_path: Path
     with pytest.raises(MetaProjectError, match="does not exist"):
         update_entry(proj, "CLAUDE.md")
 
-    # docs/HANDOFF.md is on-demand, not governance: refused for its class, not its absence.
+    # .metaproject/docs/HANDOFF.md is on-demand: refused for its class, not its absence.
     with pytest.raises(MetaProjectError, match="working document"):
-        update_entry(proj, "docs/HANDOFF.md")
+        update_entry(proj, ".metaproject/docs/HANDOFF.md")
 
 
 def test_deployed_files_do_not_immediately_report_as_drifted(tmp_path: Path) -> None:
@@ -689,7 +689,7 @@ def test_board_columns_count_rather_than_list(tmp_path: Path) -> None:
 
     assert "Missing" in rendered and "Drifted" in rendered
     # The counts stand in for the names, which live on the detail screen.
-    assert "docs/HANDOFF.md" not in rendered
+    assert ".metaproject/docs/HANDOFF.md" not in rendered
     assert "Actions" not in rendered
     assert str(missing_count) in rendered
 
@@ -822,7 +822,7 @@ def test_detail_entries_list_missing_then_drifted(tmp_path: Path) -> None:
 
 
 def structurally_drifted_project(tmp_path: Path) -> "tuple[Path, Path]":
-    """A scaffolded project whose docs/STATE.md has lost a template heading (R-CLS-3)."""
+    """A scaffolded project whose `.metaproject/docs/STATE.md` lost a template heading."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "structure_drift_proj"
     scaffold_project(
@@ -832,7 +832,7 @@ def structurally_drifted_project(tmp_path: Path) -> "tuple[Path, Path]":
         interactive=False,
         no_git=True,
     )
-    state_path = proj / "docs/STATE.md"
+    state_path = proj / ".metaproject/docs/STATE.md"
     original = state_path.read_text(encoding="utf-8")
     heading = "## Verified facts (do not re-investigate)"
     assert heading in original
@@ -847,9 +847,9 @@ def test_detail_entries_lists_structure_drifted_working_docs(tmp_path: Path) -> 
     result = review_project(proj, templates_dir=templates)
 
     entries = detail_entries(result)
-    assert "docs/STATE.md" in entries
-    assert "docs/STATE.md" not in result.updatable
-    assert "docs/STATE.md" in result.structure
+    assert ".metaproject/docs/STATE.md" in entries
+    assert ".metaproject/docs/STATE.md" not in result.updatable
+    assert ".metaproject/docs/STATE.md" in result.structure
 
 
 def test_board_detail_shows_missing_headings_instead_of_a_diff(
@@ -865,7 +865,9 @@ def test_board_detail_shows_missing_headings_instead_of_a_diff(
 
     assert "missing headings:" in rendered
     assert "Verified facts" in rendered
-    state_line = next(line for line in rendered.splitlines() if "docs/STATE.md" in line)
+    state_line = next(
+        line for line in rendered.splitlines() if ".metaproject/docs/STATE.md" in line
+    )
     assert "Update" not in state_line
 
 
@@ -876,8 +878,8 @@ def test_u_on_a_working_doc_refuses_without_writing(
     instead of calling `update_entry` (R-CLS-4)."""
     proj, templates = structurally_drifted_project(tmp_path)
     result = review_project(proj, templates_dir=templates)
-    row = detail_entries(result).index("docs/STATE.md") + 1
-    original = (proj / "docs/STATE.md").read_text(encoding="utf-8")
+    row = detail_entries(result).index(".metaproject/docs/STATE.md") + 1
+    original = (proj / ".metaproject/docs/STATE.md").read_text(encoding="utf-8")
     outcome = BoardResult()
 
     run_detail(
@@ -893,7 +895,7 @@ def test_u_on_a_working_doc_refuses_without_writing(
     assert "working documents are never updated" in rendered
     assert outcome.updated == []
     assert outcome.errors == []
-    assert (proj / "docs/STATE.md").read_text(encoding="utf-8") == original
+    assert (proj / ".metaproject/docs/STATE.md").read_text(encoding="utf-8") == original
 
 
 def test_u_all_pool_stays_governance_only_with_structure_drift_present(tmp_path: Path) -> None:
@@ -902,9 +904,9 @@ def test_u_all_pool_stays_governance_only_with_structure_drift_present(tmp_path:
     (proj / "AGENTS.md").write_text("# local rules\nNever use make!\n", encoding="utf-8")
     result = review_project(proj, templates_dir=templates)
 
-    assert "docs/STATE.md" in result.structure
+    assert ".metaproject/docs/STATE.md" in result.structure
     assert "AGENTS.md" in result.updatable
-    assert "docs/STATE.md" not in result.updatable
+    assert ".metaproject/docs/STATE.md" not in result.updatable
 
 
 def test_board_renders_notes_dim_and_warnings_yellow(tmp_path: Path) -> None:
@@ -1045,25 +1047,25 @@ def test_board_deploy_action_writes_missing_files(tmp_path: Path, quiet_console:
     )
 
     assert outcome.errors == []
-    # docs/HANDOFF.md is on-demand (R-CLS-5): never listed as missing, never deployed here.
+    # .metaproject/docs/HANDOFF.md is on-demand (R-CLS-5): never missing, never deployed here.
     # Since D1 the bundled store templates every other deliverable, so `d all` deploys
     # everything that was missing.
     assert {name for _, name in outcome.deployed} == {
-        "docs/INTENT.md",
-        "docs/SPEC.md",
-        "docs/TECH-DESIGN.md",
-        "docs/PLAN.md",
-        "docs/STATE.md",
-        "docs/ARCHITECTURE.md",
-        "docs/DESIGN-INVARIANTS.md",
-        "docs/VERIFIED-FACTS.md",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/PLAN.md",
+        ".metaproject/docs/STATE.md",
+        ".metaproject/docs/ARCHITECTURE.md",
+        ".metaproject/docs/DESIGN-INVARIANTS.md",
+        ".metaproject/docs/VERIFIED-FACTS.md",
         "CLAUDE.md",
         ".gitignore",
-        "docs",
-        "docs/archive",
+        ".metaproject/docs",
+        ".metaproject/docs/archive",
         ".claude/settings.json",
     }
-    assert not (proj / "docs/HANDOFF.md").exists()
+    assert not (proj / ".metaproject/docs/HANDOFF.md").exists()
     assert set(review_project(proj).missing_files) == set()
 
 
@@ -1210,7 +1212,7 @@ def test_bare_update_refuses_to_write_anything(tmp_path: Path, quiet_console: Co
     assert outcome.updated == []
     assert outcome.deployed == []
     assert (proj / "AGENTS.md").read_text(encoding="utf-8") == before
-    assert not (proj / "docs/HANDOFF.md").exists()
+    assert not (proj / ".metaproject/docs/HANDOFF.md").exists()
 
 
 def test_update_all_is_gated_on_a_typed_confirmation(
@@ -1300,7 +1302,7 @@ def test_board_quits_without_acting(tmp_path: Path, quiet_console: Console) -> N
 
     assert outcome.actioned == 0
     assert outcome.quit_early is True
-    assert not (proj / "docs/HANDOFF.md").exists()
+    assert not (proj / ".metaproject/docs/HANDOFF.md").exists()
 
 
 # ---------------------------------------------------------------------------------- CLI
@@ -1356,12 +1358,62 @@ def test_cli_hides_ignored_projects_unless_asked(runner: CliRunner, tmp_path: Pa
 # ------------------------------------------------------------- legacy locations (R-DOC-5)
 
 
+def test_ac3_compliant_v09_docs_project_reports_outofdate(tmp_path: Path) -> None:
+    """AC-3: a compliant v0.9 `docs/` project reports OUTOFDATE (`legacy` populated),
+    never missing/deployable."""
+    templates = get_bundled_templates_dir()
+    proj = tmp_path / "v09_proj"
+    scaffold_project(
+        project_name="v09_proj",
+        output=proj,
+        templates_dir=templates,
+        interactive=False,
+        no_git=True,
+    )
+    docs_root = proj / ".metaproject" / "docs"
+    v09_docs = proj / "docs"
+    docs_root.rename(v09_docs)
+    (proj / ".metaproject").rmdir()
+
+    result = review_project(proj, templates_dir=templates)
+    assert result.is_compliant is True
+    assert result.is_current is False
+    assert result.is_clean is False
+    assert result.missing_files == []
+    assert result.deployable == []
+    assert result.legacy[".metaproject/docs"] == "docs"
+    assert result.legacy[".metaproject/docs/archive"] == "docs/archive"
+    assert result.legacy[".metaproject/docs/INTENT.md"] == "docs/INTENT.md"
+    assert result.legacy[".metaproject/docs/STATE.md"] == "docs/STATE.md"
+
+
+def test_ac4_migrated_project_with_user_docs_is_clean(tmp_path: Path) -> None:
+    """AC-4: a project with `.metaproject/docs/` and user `docs/` reviews clean."""
+    templates = get_bundled_templates_dir()
+    proj = tmp_path / "migrated_with_user_docs"
+    scaffold_project(
+        project_name="migrated_with_user_docs",
+        output=proj,
+        templates_dir=templates,
+        interactive=False,
+        no_git=True,
+    )
+    user_docs = proj / "docs"
+    user_docs.mkdir()
+    (user_docs / "index.md").write_text("# User documentation\n", encoding="utf-8")
+
+    result = review_project(proj, templates_dir=templates)
+    assert result.is_clean is True
+    assert result.legacy == {}
+    assert result.missing_files == []
+
+
 def _legacy_project(tmp_path: Path, name: str = "legacy_proj") -> Path:
-    """A freshly scaffolded project whose `docs/INTENT.md` has been put back at the root
+    """A freshly scaffolded project whose `.metaproject/docs/INTENT.md` was put back at the root
     under its old name, as an unmigrated project would have it."""
     proj = tmp_path / name
     scaffold_project(project_name=name, output=proj, interactive=False, no_git=True)
-    (proj / "docs" / "INTENT.md").rename(proj / "intent.md")
+    (proj / ".metaproject" / "docs" / "INTENT.md").rename(proj / "intent.md")
     return proj
 
 
@@ -1371,29 +1423,33 @@ def test_ac8_root_intent_is_legacy_not_missing(tmp_path: Path) -> None:
     proj = _legacy_project(tmp_path)
     result = review_project(proj, templates_dir=get_bundled_templates_dir())
 
-    assert result.legacy == {"docs/INTENT.md": "intent.md"}
-    assert "docs/INTENT.md" not in result.missing_files
-    assert "docs/INTENT.md" not in result.deployable
+    assert result.legacy == {".metaproject/docs/INTENT.md": "intent.md"}
+    assert ".metaproject/docs/INTENT.md" not in result.missing_files
+    assert ".metaproject/docs/INTENT.md" not in result.deployable
     assert result.is_compliant is True
     assert result.is_current is False
     assert result.is_clean is False
     assert compliance_cell(result) == STATE_OUTOFDATE
-    assert "docs/INTENT.md" not in detail_entries(result)
+    assert ".metaproject/docs/INTENT.md" not in detail_entries(result)
 
 
 def test_lowercase_docs_intent_is_legacy_on_a_case_insensitive_filesystem(
     tmp_path: Path,
 ) -> None:
-    """R-NFR-6: `docs/intent.md` is legacy even where `Path.exists()` would find
-    `docs/INTENT.md` through it."""
+    """R-NFR-6: `.metaproject/docs/intent.md` is legacy even where `Path.exists()` would find
+    `.metaproject/docs/INTENT.md` through it."""
     proj = tmp_path / "lower_proj"
     scaffold_project(project_name="lower_proj", output=proj, interactive=False, no_git=True)
-    (proj / "docs" / "INTENT.md").rename(proj / "docs" / "intent.tmp")
-    (proj / "docs" / "intent.tmp").rename(proj / "docs" / "intent.md")
+    (proj / ".metaproject" / "docs" / "INTENT.md").rename(
+        proj / ".metaproject" / "docs" / "intent.tmp"
+    )
+    (proj / ".metaproject" / "docs" / "intent.tmp").rename(
+        proj / ".metaproject" / "docs" / "intent.md"
+    )
 
     result = review_project(proj, templates_dir=get_bundled_templates_dir())
 
-    assert result.legacy == {"docs/INTENT.md": "docs/intent.md"}
+    assert result.legacy == {".metaproject/docs/INTENT.md": ".metaproject/docs/intent.md"}
     assert compliance_cell(result) == STATE_OUTOFDATE
 
 
@@ -1405,7 +1461,7 @@ def test_verdict_precedence_incomplete_over_outofdate_over_drifted(tmp_path: Pat
     assert both.diffs and both.legacy
     assert compliance_cell(both) == STATE_OUTOFDATE
 
-    (proj / "docs" / "SPEC.md").unlink()
+    (proj / ".metaproject" / "docs" / "SPEC.md").unlink()
     worst = review_project(proj, templates_dir=get_bundled_templates_dir())
     assert worst.missing_files and worst.legacy
     assert compliance_cell(worst) == STATE_INCOMPLETE
@@ -1414,9 +1470,9 @@ def test_verdict_precedence_incomplete_over_outofdate_over_drifted(tmp_path: Pat
 def test_legacy_survives_from_mapping() -> None:
     """A caller-injected mapping keeps its legacy entries."""
     result = ReviewResult.from_mapping(
-        {"project_name": "p", "legacy": {"docs/INTENT.md": "intent.md"}}
+        {"project_name": "p", "legacy": {".metaproject/docs/INTENT.md": "intent.md"}}
     )
-    assert result.legacy == {"docs/INTENT.md": "intent.md"}
+    assert result.legacy == {".metaproject/docs/INTENT.md": "intent.md"}
     assert result.is_current is False
 
 
@@ -1446,7 +1502,7 @@ def test_detail_screen_lists_legacy_without_an_action(
 
     assert "Legacy location" in screen and "metaproject doctor" in screen
     assert LEGACY_SECTION_TITLE.startswith("Legacy location")
-    assert "intent.md → docs/INTENT.md" in screen
+    assert "intent.md → .metaproject/docs/INTENT.md" in screen
     assert "CLEAN — nothing missing" not in screen
     assert "Deploy" not in screen
 

@@ -29,15 +29,15 @@ def test_default_learn_config() -> None:
         "CLAUDE.md",
         "README.md",
         ".gitignore",
-        "docs/INTENT.md",
-        "docs/SPEC.md",
-        "docs/TECH-DESIGN.md",
-        "docs/PLAN.md",
-        "docs/STATE.md",
-        "docs/ARCHITECTURE.md",
-        "docs/DESIGN-INVARIANTS.md",
-        "docs/VERIFIED-FACTS.md",
-        "docs/",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/PLAN.md",
+        ".metaproject/docs/STATE.md",
+        ".metaproject/docs/ARCHITECTURE.md",
+        ".metaproject/docs/DESIGN-INVARIANTS.md",
+        ".metaproject/docs/VERIFIED-FACTS.md",
+        ".metaproject/docs/",
         "Makefile",
         "pyproject.toml",
     ]
@@ -58,8 +58,9 @@ def test_default_learn_targets_cover_declared_and_untemplated_targets() -> None:
     """DEFAULT_LEARN_TARGETS = every learn_targets() deliverable, plus the untemplated
     and directory targets kept from the prior default (spec.md R-LRN-3)."""
     assert set(deliverables.learn_targets()) <= set(DEFAULT_LEARN_TARGETS)
-    assert "docs/HANDOFF.md" not in DEFAULT_LEARN_TARGETS
-    assert "docs/" in DEFAULT_LEARN_TARGETS
+    assert ".metaproject/docs/HANDOFF.md" not in DEFAULT_LEARN_TARGETS
+    assert ".metaproject/docs/" in DEFAULT_LEARN_TARGETS
+    assert "docs/" not in DEFAULT_LEARN_TARGETS
     assert "Makefile" in DEFAULT_LEARN_TARGETS
     assert "pyproject.toml" in DEFAULT_LEARN_TARGETS
 
@@ -146,10 +147,10 @@ def test_bundled_templates_exist() -> None:
     expected_files = [
         "AGENTS.template.md",
         "README.template.md",
-        "docs.template/INTENT.template.md",
-        "docs.template/STATE.template.md",
-        "docs.template/HANDOFF.template.md",
-        "docs.template/TODO.template.md",
+        ".metaproject.template/docs.template/INTENT.template.md",
+        ".metaproject.template/docs.template/STATE.template.md",
+        ".metaproject.template/docs.template/HANDOFF.template.md",
+        ".metaproject.template/docs.template/TODO.template.md",
         "CLAUDE.template.md",
         ".gitignore.template",
     ]
@@ -166,4 +167,4 @@ def test_seed_templates(tmp_path: Path) -> None:
     assert (target_templates / "AGENTS.template.md").exists()
     assert (target_templates / "README.template.md").exists()
     assert (target_templates / ".gitignore.template").exists()
-    assert (target_templates / "docs.template").exists()
+    assert (target_templates / ".metaproject.template" / "docs.template").exists()

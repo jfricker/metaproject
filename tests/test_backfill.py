@@ -50,22 +50,26 @@ def store_missing_a_template(tmp_path: Path, missing: str) -> Path:
 def test_ac10_backfill_recreates_deleted_files_and_lists_skipped(tmp_path: Path) -> None:
     """AC-10: deleting spec/design/STATE and backfilling recreates all three in one call."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
-    (proj / "docs/TECH-DESIGN.md").unlink()
-    (proj / "docs/STATE.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
+    (proj / ".metaproject/docs/STATE.md").unlink()
 
     result = backfill_missing(proj, templates_dir=templates)
 
     assert isinstance(result, BackfillResult)
-    assert set(result.created) == {"docs/SPEC.md", "docs/TECH-DESIGN.md", "docs/STATE.md"}
-    assert (proj / "docs/SPEC.md").exists()
-    assert (proj / "docs/TECH-DESIGN.md").exists()
-    assert (proj / "docs/STATE.md").exists()
+    assert set(result.created) == {
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/STATE.md",
+    }
+    assert (proj / ".metaproject/docs/SPEC.md").exists()
+    assert (proj / ".metaproject/docs/TECH-DESIGN.md").exists()
+    assert (proj / ".metaproject/docs/STATE.md").exists()
     # Everything else scaffolded was already present, and is reported skipped rather than
     # silently ignored.
     assert "AGENTS.md" in result.skipped
     assert "README.md" in result.skipped
-    assert "docs/INTENT.md" in result.skipped
+    assert ".metaproject/docs/INTENT.md" in result.skipped
     assert result.refused == []
     assert result.missing_template == []
 
@@ -73,12 +77,12 @@ def test_ac10_backfill_recreates_deleted_files_and_lists_skipped(tmp_path: Path)
 def test_backfill_by_name_creates_on_demand_handoff(tmp_path: Path) -> None:
     """`backfill HANDOFF.md` creates the on-demand file `new` never scaffolds."""
     proj, templates = scaffolded_project(tmp_path)
-    assert not (proj / "docs/HANDOFF.md").exists()
+    assert not (proj / ".metaproject/docs/HANDOFF.md").exists()
 
-    result = backfill_missing(proj, files=["docs/HANDOFF.md"], templates_dir=templates)
+    result = backfill_missing(proj, files=[".metaproject/docs/HANDOFF.md"], templates_dir=templates)
 
-    assert result.created == ["docs/HANDOFF.md"]
-    assert (proj / "docs/HANDOFF.md").exists()
+    assert result.created == [".metaproject/docs/HANDOFF.md"]
+    assert (proj / ".metaproject/docs/HANDOFF.md").exists()
     assert result.refused == []
     assert result.skipped == []
     assert result.missing_template == []
@@ -87,16 +91,16 @@ def test_backfill_by_name_creates_on_demand_handoff(tmp_path: Path) -> None:
 def test_backfill_named_existing_file_refuses_and_writes_nothing(tmp_path: Path) -> None:
     """A named file that already exists is refused; nothing at all is written."""
     proj, templates = scaffolded_project(tmp_path)
-    before = (proj / "docs/SPEC.md").read_bytes()
+    before = (proj / ".metaproject/docs/SPEC.md").read_bytes()
 
-    other_missing = proj / "docs/STATE.md"
+    other_missing = proj / ".metaproject/docs/STATE.md"
     other_missing.unlink()
 
-    result = backfill_missing(proj, files=["docs/SPEC.md"], templates_dir=templates)
+    result = backfill_missing(proj, files=[".metaproject/docs/SPEC.md"], templates_dir=templates)
 
-    assert result.refused == ["docs/SPEC.md"]
+    assert result.refused == [".metaproject/docs/SPEC.md"]
     assert result.created == []
-    assert (proj / "docs/SPEC.md").read_bytes() == before
+    assert (proj / ".metaproject/docs/SPEC.md").read_bytes() == before
     # Nothing else got written either, even though STATE.md was itself missing.
     assert not other_missing.exists()
 
@@ -104,15 +108,15 @@ def test_backfill_named_existing_file_refuses_and_writes_nothing(tmp_path: Path)
 def test_backfill_missing_template_named_file_writes_nothing(tmp_path: Path) -> None:
     """A named file with no template anywhere in the store is reported, nothing written."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/STATE.md").unlink()
+    (proj / ".metaproject/docs/STATE.md").unlink()
 
     result = backfill_missing(
-        proj, files=["docs/STATE.md", "no-such-template.md"], templates_dir=templates
+        proj, files=[".metaproject/docs/STATE.md", "no-such-template.md"], templates_dir=templates
     )
 
     assert result.missing_template == ["no-such-template.md"]
     assert result.created == []
-    assert not (proj / "docs/STATE.md").exists()
+    assert not (proj / ".metaproject/docs/STATE.md").exists()
 
 
 def test_backfill_no_files_missing_template_lists_it_others_still_created(
@@ -124,55 +128,59 @@ def test_backfill_no_files_missing_template_lists_it_others_still_created(
     uses a store missing one (`spec.template.md`) to exercise the `missing_template`
     path.
     """
-    templates = store_missing_a_template(tmp_path, "docs.template/SPEC.template.md")
+    templates = store_missing_a_template(
+        tmp_path, ".metaproject.template/docs.template/SPEC.template.md"
+    )
     proj = tmp_path / "incomplete_proj"
     proj.mkdir()
     (proj / "README.md").write_text("# incomplete_proj\n", encoding="utf-8")
 
     result = backfill_missing(proj, templates_dir=templates)
 
-    assert "docs/SPEC.md" in result.missing_template
+    assert ".metaproject/docs/SPEC.md" in result.missing_template
     # Deliverables the store *does* template are still created.
     assert "AGENTS.md" in result.created
     assert (proj / "AGENTS.md").exists()
-    assert "docs/TECH-DESIGN.md" in result.created
-    assert (proj / "docs/TECH-DESIGN.md").exists()
+    assert ".metaproject/docs/TECH-DESIGN.md" in result.created
+    assert (proj / ".metaproject/docs/TECH-DESIGN.md").exists()
 
 
 def test_backfill_dry_run_writes_nothing(tmp_path: Path) -> None:
     """`--dry-run` computes the same lists but writes nothing to disk."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
-    (proj / "docs/TECH-DESIGN.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
 
     before_listing = sorted(p.relative_to(proj) for p in proj.rglob("*"))
 
     result = backfill_missing(proj, templates_dir=templates, dry_run=True)
 
-    assert set(result.created) == {"docs/SPEC.md", "docs/TECH-DESIGN.md"}
+    assert set(result.created) == {".metaproject/docs/SPEC.md", ".metaproject/docs/TECH-DESIGN.md"}
     after_listing = sorted(p.relative_to(proj) for p in proj.rglob("*"))
     assert before_listing == after_listing
-    assert not (proj / "docs/SPEC.md").exists()
-    assert not (proj / "docs/TECH-DESIGN.md").exists()
+    assert not (proj / ".metaproject/docs/SPEC.md").exists()
+    assert not (proj / ".metaproject/docs/TECH-DESIGN.md").exists()
 
 
 def test_backfill_dry_run_named_refusal_writes_nothing(tmp_path: Path) -> None:
     """`--dry-run` on a named, already-existing file still reports refused and writes nothing."""
     proj, templates = scaffolded_project(tmp_path)
-    before = (proj / "docs/SPEC.md").read_bytes()
+    before = (proj / ".metaproject/docs/SPEC.md").read_bytes()
 
-    result = backfill_missing(proj, files=["docs/SPEC.md"], templates_dir=templates, dry_run=True)
+    result = backfill_missing(
+        proj, files=[".metaproject/docs/SPEC.md"], templates_dir=templates, dry_run=True
+    )
 
-    assert result.refused == ["docs/SPEC.md"]
-    assert (proj / "docs/SPEC.md").read_bytes() == before
+    assert result.refused == [".metaproject/docs/SPEC.md"]
+    assert (proj / ".metaproject/docs/SPEC.md").read_bytes() == before
 
 
 def test_backfill_never_runs_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`backfill_missing` never shells out to git, in any mode."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
-    (proj / "docs/TECH-DESIGN.md").unlink()
-    (proj / "docs/STATE.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
+    (proj / ".metaproject/docs/STATE.md").unlink()
 
     import subprocess
 
@@ -182,18 +190,24 @@ def test_backfill_never_runs_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(subprocess, "run", _forbidden)
 
     result = backfill_missing(proj, templates_dir=templates)
-    assert set(result.created) == {"docs/SPEC.md", "docs/TECH-DESIGN.md", "docs/STATE.md"}
+    assert set(result.created) == {
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/STATE.md",
+    }
 
-    result_named = backfill_missing(proj, files=["docs/HANDOFF.md"], templates_dir=templates)
-    assert result_named.created == ["docs/HANDOFF.md"]
+    result_named = backfill_missing(
+        proj, files=[".metaproject/docs/HANDOFF.md"], templates_dir=templates
+    )
+    assert result_named.created == [".metaproject/docs/HANDOFF.md"]
 
 
 def test_backfill_resolves_variables_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """One `resolve_variables` call per batch, before the first write."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
-    (proj / "docs/TECH-DESIGN.md").unlink()
-    (proj / "docs/STATE.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
+    (proj / ".metaproject/docs/STATE.md").unlink()
 
     from metaproject import review as review_module
 
@@ -208,7 +222,11 @@ def test_backfill_resolves_variables_once(tmp_path: Path, monkeypatch: pytest.Mo
 
     result = backfill_missing(proj, templates_dir=templates)
 
-    assert set(result.created) == {"docs/SPEC.md", "docs/TECH-DESIGN.md", "docs/STATE.md"}
+    assert set(result.created) == {
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/STATE.md",
+    }
     assert calls["count"] == 1
 
 
@@ -217,9 +235,9 @@ def test_backfill_resolves_variables_once(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_cli_backfill_ac10_all_missing_in_one_call(runner: CliRunner, tmp_path: Path) -> None:
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
-    (proj / "docs/TECH-DESIGN.md").unlink()
-    (proj / "docs/STATE.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
+    (proj / ".metaproject/docs/STATE.md").unlink()
 
     result = runner.invoke(
         app,
@@ -227,25 +245,25 @@ def test_cli_backfill_ac10_all_missing_in_one_call(runner: CliRunner, tmp_path: 
     )
 
     assert result.exit_code == 0, result.output
-    assert "docs/SPEC.md" in result.output
-    assert "docs/TECH-DESIGN.md" in result.output
-    assert "docs/STATE.md" in result.output
-    assert (proj / "docs/SPEC.md").exists()
-    assert (proj / "docs/TECH-DESIGN.md").exists()
-    assert (proj / "docs/STATE.md").exists()
+    assert ".metaproject/docs/SPEC.md" in result.output
+    assert ".metaproject/docs/TECH-DESIGN.md" in result.output
+    assert ".metaproject/docs/STATE.md" in result.output
+    assert (proj / ".metaproject/docs/SPEC.md").exists()
+    assert (proj / ".metaproject/docs/TECH-DESIGN.md").exists()
+    assert (proj / ".metaproject/docs/STATE.md").exists()
     # Skipped (already-present) files are listed too.
     assert "AGENTS.md" in result.output
 
 
 def test_backfill_by_name_creates_on_demand_todo(tmp_path: Path) -> None:
-    """`backfill docs/TODO.md` creates the on-demand file `new` never scaffolds."""
+    """`backfill .metaproject/docs/TODO.md` creates the on-demand file `new` never scaffolds."""
     proj, templates = scaffolded_project(tmp_path)
-    assert not (proj / "docs/TODO.md").exists()
+    assert not (proj / ".metaproject/docs/TODO.md").exists()
 
-    result = backfill_missing(proj, files=["docs/TODO.md"], templates_dir=templates)
+    result = backfill_missing(proj, files=[".metaproject/docs/TODO.md"], templates_dir=templates)
 
-    assert result.created == ["docs/TODO.md"]
-    assert (proj / "docs/TODO.md").exists()
+    assert result.created == [".metaproject/docs/TODO.md"]
+    assert (proj / ".metaproject/docs/TODO.md").exists()
     assert result.refused == []
 
 
@@ -254,11 +272,18 @@ def test_cli_backfill_by_name_creates_todo(runner: CliRunner, tmp_path: Path) ->
 
     result = runner.invoke(
         app,
-        ["backfill", "docs/TODO.md", "--dir", str(proj), "--templates", str(templates)],
+        [
+            "backfill",
+            ".metaproject/docs/TODO.md",
+            "--dir",
+            str(proj),
+            "--templates",
+            str(templates),
+        ],
     )
 
     assert result.exit_code == 0, result.output
-    assert (proj / "docs/TODO.md").exists()
+    assert (proj / ".metaproject/docs/TODO.md").exists()
 
 
 def test_cli_backfill_by_name_creates_handoff(runner: CliRunner, tmp_path: Path) -> None:
@@ -266,26 +291,40 @@ def test_cli_backfill_by_name_creates_handoff(runner: CliRunner, tmp_path: Path)
 
     result = runner.invoke(
         app,
-        ["backfill", "docs/HANDOFF.md", "--dir", str(proj), "--templates", str(templates)],
+        [
+            "backfill",
+            ".metaproject/docs/HANDOFF.md",
+            "--dir",
+            str(proj),
+            "--templates",
+            str(templates),
+        ],
     )
 
     assert result.exit_code == 0, result.output
-    assert (proj / "docs/HANDOFF.md").exists()
+    assert (proj / ".metaproject/docs/HANDOFF.md").exists()
 
 
 def test_cli_backfill_named_existing_exits_nonzero_and_writes_nothing(
     runner: CliRunner, tmp_path: Path
 ) -> None:
     proj, templates = scaffolded_project(tmp_path)
-    before = (proj / "docs/SPEC.md").read_bytes()
+    before = (proj / ".metaproject/docs/SPEC.md").read_bytes()
 
     result = runner.invoke(
         app,
-        ["backfill", "docs/SPEC.md", "--dir", str(proj), "--templates", str(templates)],
+        [
+            "backfill",
+            ".metaproject/docs/SPEC.md",
+            "--dir",
+            str(proj),
+            "--templates",
+            str(templates),
+        ],
     )
 
     assert result.exit_code == 1
-    assert (proj / "docs/SPEC.md").read_bytes() == before
+    assert (proj / ".metaproject/docs/SPEC.md").read_bytes() == before
 
 
 def test_cli_backfill_runs_in_agent_session(
@@ -293,7 +332,7 @@ def test_cli_backfill_runs_in_agent_session(
 ) -> None:
     """`backfill` is not agent-guarded (unlike the TUI/scan guards)."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
 
     monkeypatch.setenv("METAPROJECT_AGENT", "1")
     monkeypatch.setenv("CLAUDECODE", "1")
@@ -304,13 +343,13 @@ def test_cli_backfill_runs_in_agent_session(
     )
 
     assert result.exit_code == 0, result.output
-    assert (proj / "docs/SPEC.md").exists()
+    assert (proj / ".metaproject/docs/SPEC.md").exists()
 
 
 def test_cli_backfill_dry_run_writes_nothing(runner: CliRunner, tmp_path: Path) -> None:
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
-    (proj / "docs/TECH-DESIGN.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
 
     before_listing: List[Path] = sorted(p.relative_to(proj) for p in proj.rglob("*"))
 
@@ -322,15 +361,15 @@ def test_cli_backfill_dry_run_writes_nothing(runner: CliRunner, tmp_path: Path) 
     assert result.exit_code == 0, result.output
     after_listing = sorted(p.relative_to(proj) for p in proj.rglob("*"))
     assert before_listing == after_listing
-    assert not (proj / "docs/SPEC.md").exists()
-    assert not (proj / "docs/TECH-DESIGN.md").exists()
+    assert not (proj / ".metaproject/docs/SPEC.md").exists()
+    assert not (proj / ".metaproject/docs/TECH-DESIGN.md").exists()
 
 
 def test_cli_backfill_no_git_ever(
     runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs/SPEC.md").unlink()
+    (proj / ".metaproject/docs/SPEC.md").unlink()
 
     import subprocess
 
@@ -345,7 +384,7 @@ def test_cli_backfill_no_git_ever(
     )
 
     assert result.exit_code == 0, result.output
-    assert (proj / "docs/SPEC.md").exists()
+    assert (proj / ".metaproject/docs/SPEC.md").exists()
 
 
 def test_cli_backfill_missing_template_named_file(runner: CliRunner, tmp_path: Path) -> None:
@@ -367,7 +406,9 @@ def test_cli_backfill_missing_template_no_files_mode_lists_and_creates_others(
     """Since D1 the real bundled store templates every deliverable, so this deliberately
     uses a store missing one (`spec.template.md`) to exercise the `missing_template`
     path."""
-    templates = store_missing_a_template(tmp_path, "docs.template/SPEC.template.md")
+    templates = store_missing_a_template(
+        tmp_path, ".metaproject.template/docs.template/SPEC.template.md"
+    )
     proj = tmp_path / "incomplete_proj"
     proj.mkdir()
     (proj / "README.md").write_text("# incomplete_proj\n", encoding="utf-8")
@@ -375,36 +416,66 @@ def test_cli_backfill_missing_template_no_files_mode_lists_and_creates_others(
     result = runner.invoke(app, ["backfill", "--dir", str(proj), "--templates", str(templates)])
 
     assert result.exit_code == 1
-    assert "docs/SPEC.md" in result.output
+    assert ".metaproject/docs/SPEC.md" in result.output
     assert (proj / "AGENTS.md").exists()
 
 
 # ----------------------------------------------------------------- relocated doc aliases
 
 
-@pytest.mark.parametrize("name", ["intent.md", "INTENT.md", "docs/INTENT.md", "Intent.md"])
+@pytest.mark.parametrize(
+    "name",
+    ["intent.md", "INTENT.md", "docs/INTENT.md", ".metaproject/docs/INTENT.md", "Intent.md"],
+)
 def test_backfill_alias_creates_docs_intent_only(tmp_path: Path, name: str) -> None:
-    """AC-7 (R-DOC-4): every spelling creates `docs/INTENT.md` and never a root file."""
+    """AC-2 (R-LOC-4): every spelling creates `.metaproject/docs/INTENT.md`, never root/docs."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs" / "INTENT.md").unlink()
+    (proj / ".metaproject" / "docs" / "INTENT.md").unlink()
 
     result = backfill_missing(proj, files=[name], templates_dir=templates)
 
-    assert result.created == ["docs/INTENT.md"]
-    assert "INTENT.md" in os.listdir(proj / "docs")
+    assert result.created == [".metaproject/docs/INTENT.md"]
+    assert "INTENT.md" in os.listdir(proj / ".metaproject" / "docs")
     root_md = {p.name for p in proj.iterdir() if p.suffix == ".md"}
     assert root_md == {"AGENTS.md", "CLAUDE.md", "README.md"}
+    assert not (proj / "docs").exists()
+
+
+@pytest.mark.parametrize(
+    ("alias", "canonical"),
+    [
+        ("design.md", ".metaproject/docs/TECH-DESIGN.md"),
+        ("docs/design.md", ".metaproject/docs/TECH-DESIGN.md"),
+        ("TODO.md", ".metaproject/docs/TODO.md"),
+        ("docs/TODO.md", ".metaproject/docs/TODO.md"),
+        ("docs/DESIGN-INVARIANTS.md", ".metaproject/docs/DESIGN-INVARIANTS.md"),
+    ],
+)
+def test_backfill_legacy_aliases_map_to_dot_metaproject_docs(
+    tmp_path: Path, alias: str, canonical: str
+) -> None:
+    """AC-2: legacy v0.8 and v0.9 spellings map to `.metaproject/docs/` without writing `docs/`."""
+    proj, templates = scaffolded_project(tmp_path)
+    target = proj / canonical
+    if target.exists():
+        target.unlink()
+
+    result = backfill_missing(proj, files=[alias], templates_dir=templates)
+
+    assert result.created == [canonical]
+    assert target.is_file()
+    assert not (proj / "docs").exists()
 
 
 def test_backfill_design_md_creates_tech_design(tmp_path: Path) -> None:
-    """AC-7: the old `design.md` name creates `docs/TECH-DESIGN.md`."""
+    """AC-7: the old `design.md` name creates `.metaproject/docs/TECH-DESIGN.md`."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs" / "TECH-DESIGN.md").unlink()
+    (proj / ".metaproject" / "docs" / "TECH-DESIGN.md").unlink()
 
     result = backfill_missing(proj, files=["design.md"], templates_dir=templates)
 
-    assert result.created == ["docs/TECH-DESIGN.md"]
-    assert (proj / "docs" / "TECH-DESIGN.md").is_file()
+    assert result.created == [".metaproject/docs/TECH-DESIGN.md"]
+    assert (proj / ".metaproject" / "docs" / "TECH-DESIGN.md").is_file()
     assert not (proj / "design.md").exists()
 
 
@@ -412,31 +483,36 @@ def test_backfill_alias_refuses_when_the_new_path_exists(tmp_path: Path) -> None
     """An alias for an existing document is refused under its declared path."""
     proj, templates = scaffolded_project(tmp_path)
     result = backfill_missing(proj, files=["intent.md"], templates_dir=templates)
-    assert result.refused == ["docs/INTENT.md"]
+    assert result.refused == [".metaproject/docs/INTENT.md"]
 
 
 def test_backfill_lowercase_docs_file_does_not_count_as_present(tmp_path: Path) -> None:
-    """R-NFR-6: on APFS a lowercase `docs/intent.md` must not mask a missing
-    `docs/INTENT.md` — presence is decided on exact directory entries."""
+    """R-NFR-6: on APFS a lowercase `.metaproject/docs/intent.md` must not mask a missing
+    `.metaproject/docs/INTENT.md` — presence is decided on exact directory entries."""
     proj, templates = scaffolded_project(tmp_path)
-    (proj / "docs" / "INTENT.md").unlink()
-    (proj / "docs" / "intent.md").write_text("legacy\n", encoding="utf-8")
+    (proj / ".metaproject" / "docs" / "INTENT.md").unlink()
+    (proj / ".metaproject" / "docs" / "intent.md").write_text("legacy\n", encoding="utf-8")
 
     result = backfill_missing(proj, templates_dir=templates, dry_run=True)
 
-    assert "docs/INTENT.md" in result.created
+    assert ".metaproject/docs/INTENT.md" in result.created
 
 
 def test_docs_directory_deploy_never_creates_handoff(tmp_path: Path) -> None:
-    """Deploying the `docs` directory excludes on-demand documents (R-CLS-5)."""
+    """Deploying the `.metaproject/docs` directory excludes on-demand documents (R-CLS-5)."""
     templates = get_bundled_templates_dir()
     proj = tmp_path / "bare"
     proj.mkdir()
 
     result = backfill_missing(proj, templates_dir=templates)
 
-    assert not (proj / "docs" / "HANDOFF.md").exists()
-    assert "docs/HANDOFF.md" not in result.created
-    for path in ("docs/INTENT.md", "docs/SPEC.md", "docs/TECH-DESIGN.md", "docs/STATE.md"):
+    assert not (proj / ".metaproject" / "docs" / "HANDOFF.md").exists()
+    assert ".metaproject/docs/HANDOFF.md" not in result.created
+    for path in (
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/STATE.md",
+    ):
         assert path in result.created
         assert (proj / path).is_file()

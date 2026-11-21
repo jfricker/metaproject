@@ -260,10 +260,10 @@ def test_a_single_oversized_record_is_split_rather_than_truncated():
 
 
 def test_c25_oversized_target_forces_chunk_and_reduce(tmp_path: Path):
-    """C25: spire/docs/reference.md is far past any budget; it chunks and reduces."""
+    """C25: spire/.metaproject/docs/reference.md is far past any budget; it chunks and reduces."""
     ws = build_workspace(tmp_path, only=["spire"])
     records = guard_evidence(collect_workspace(ws.projects, ws.templates)).records
-    docs = [r for r in records if r.target_file == "docs/reference.md"]
+    docs = [r for r in records if r.target_file == ".metaproject/docs/reference.md"]
     assert docs, "fixture must produce evidence for the oversized target"
 
     fake = FakeClaude(
@@ -271,7 +271,7 @@ def test_c25_oversized_target_forces_chunk_and_reduce(tmp_path: Path):
     )
     result = synthesize(docs, runner=fake)
 
-    assert result.calls_by_target["docs/reference.md"] > 1
+    assert result.calls_by_target[".metaproject/docs/reference.md"] > 1
     assert sum(1 for p in fake.prompts if "REDUCE" in p) == 1
     assert result.status == RUN_OK
     # One coherent set of proposals out, not one set per chunk.
@@ -729,8 +729,8 @@ def _api_scan_project(root: Path, name: str, agents_extra_line: str, state_text:
     (project_dir / "AGENTS.md").write_text(
         _AGENTS_GOVERNANCE_TEMPLATE.rstrip("\n") + f"\n{agents_extra_line}\n", encoding="utf-8"
     )
-    (project_dir / "docs").mkdir()
-    (project_dir / "docs" / "STATE.md").write_text(state_text, encoding="utf-8")
+    (project_dir / ".metaproject" / "docs").mkdir(parents=True)
+    (project_dir / ".metaproject" / "docs" / "STATE.md").write_text(state_text, encoding="utf-8")
 
 
 def test_structural_evidence_never_reaches_the_guard_manifest_or_a_prompt(tmp_path: Path):
@@ -743,8 +743,8 @@ def test_structural_evidence_never_reaches_the_guard_manifest_or_a_prompt(tmp_pa
     templates_dir = tmp_path / "templates"
     templates_dir.mkdir()
     (templates_dir / "AGENTS.template.md").write_text(_AGENTS_GOVERNANCE_TEMPLATE, encoding="utf-8")
-    (templates_dir / "docs.template").mkdir()
-    (templates_dir / "docs.template" / "STATE.template.md").write_text(
+    (templates_dir / ".metaproject.template" / "docs.template").mkdir(parents=True)
+    (templates_dir / ".metaproject.template" / "docs.template" / "STATE.template.md").write_text(
         _STATE_STRUCTURE_TEMPLATE, encoding="utf-8"
     )
 
@@ -787,8 +787,8 @@ def test_all_structural_scan_makes_zero_runner_calls_and_requests_no_confirmatio
     root.mkdir()
     templates_dir = tmp_path / "templates"
     templates_dir.mkdir()
-    (templates_dir / "docs.template").mkdir()
-    (templates_dir / "docs.template" / "STATE.template.md").write_text(
+    (templates_dir / ".metaproject.template" / "docs.template").mkdir(parents=True)
+    (templates_dir / ".metaproject.template" / "docs.template" / "STATE.template.md").write_text(
         _STATE_STRUCTURE_TEMPLATE, encoding="utf-8"
     )
 
@@ -801,8 +801,10 @@ def test_all_structural_scan_makes_zero_runner_calls_and_requests_no_confirmatio
         project_dir = root / name
         project_dir.mkdir()
         (project_dir / "pyproject.toml").write_text("", encoding="utf-8")
-        (project_dir / "docs").mkdir()
-        (project_dir / "docs" / "STATE.md").write_text(state_with_extra_heading, encoding="utf-8")
+        (project_dir / ".metaproject" / "docs").mkdir(parents=True)
+        (project_dir / ".metaproject" / "docs" / "STATE.md").write_text(
+            state_with_extra_heading, encoding="utf-8"
+        )
 
     db = get_db(tmp_path / "universe.db")
     fake = FakeClaude()

@@ -17,7 +17,7 @@
 
 ## Design invariants (regression guards)
 
-<!-- written by implement-plan/execute-tests; appended to docs/DESIGN-INVARIANTS.md by wrapup -->
+<!-- written by implement-plan/execute-tests; appended to .metaproject/docs/DESIGN-INVARIANTS.md by wrapup -->
 
 ## Open items carried into PLAN.md
 
@@ -25,4 +25,4 @@
 
 ## Verified facts (do not re-investigate)
 
-<!-- written by implement-plan/execute-tests; appended to docs/VERIFIED-FACTS.md by wrapup -->
+<!-- written by implement-plan/execute-tests; appended to .metaproject/docs/VERIFIED-FACTS.md by wrapup -->

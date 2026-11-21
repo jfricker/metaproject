@@ -11,9 +11,10 @@ This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook wit
 
 The cycle runs through seven stages, each a project skill in `.agents/skills/`
 (reachable as `.claude/skills/`), copied in by `metaproject new`/`backfill`. All cycle
-documents live in `docs/`:
+documents live in `.metaproject/docs/` (a hidden dot-directory: tools like `rg` and `fd`
+skip it by default unless passed `--hidden` or an explicit `.metaproject/docs/` path):
 
-1. **write-intent** — brainstorm a raw problem statement into `docs/INTENT.md`.
+1. **write-intent** — brainstorm a raw problem statement into `.metaproject/docs/INTENT.md`.
 2. **generate-spec** — turn an approved `INTENT.md` into `SPEC.md` (requirements and
    acceptance criteria).
 3. **generate-design** — turn an approved `SPEC.md` into `TECH-DESIGN.md` (affected
@@ -25,22 +26,22 @@ documents live in `docs/`:
 6. **execute-tests** — run and confirm the quality gate for the cycle's changes.
 7. **wrapup** — archive the cycle and reset the working documents for the next one.
 
-### docs/HANDOFF.md
+### .metaproject/docs/HANDOFF.md
 On-demand: created only when work is interrupted before completion, to capture the
 state of the work and anything needed to resume it or hand it off to another agent at
 another time.
 
-### docs/TODO.md
+### .metaproject/docs/TODO.md
 On-demand: the operator's standing list of manual checks. `wrapup` appends a dated
 "Needs manual verification" entry (what the agent could not verify, with exact steps)
 and commits it with the cycle; it is never archived.
 
-### docs/STATE.md
+### .metaproject/docs/STATE.md
 A running record of the current cycle. Its `## Process` section is a checklist of the
 seven stages above; each stage ticks its own item as it completes. Update it as tasks
 are completed.
 
-### docs/INTENT.md, docs/SPEC.md, docs/TECH-DESIGN.md, docs/PLAN.md
+### .metaproject/docs/INTENT.md, .metaproject/docs/SPEC.md, .metaproject/docs/TECH-DESIGN.md, .metaproject/docs/PLAN.md
 The working documents of one cycle, produced in that order by the stages above and read
 by the stages that follow. `wrapup` archives them once the cycle is complete.
 
@@ -50,7 +51,7 @@ choice. `wrapup` asks the operator which happened for the cycle it's closing rat
 than assuming either way, and won't archive or reset until the operator confirms the
 work is actually complete and committed.
 
-### docs/ARCHITECTURE.md
+### .metaproject/docs/ARCHITECTURE.md
 A long-lived index that never resets between cycles. `wrapup` updates it at
 the end of every cycle: an entry in its cycle index linking to that cycle's archived
 `SPEC.md`/`TECH-DESIGN.md`, a one-line summary, and (when the cycle changed structure) an
@@ -58,7 +59,7 @@ update to its diagram. Over time `ARCHITECTURE.md` becomes the sum of every cycl
 specifications plus the decisions made along the way — read it before `generate-design`
 to avoid re-deriving context that's already settled.
 
-### docs/DESIGN-INVARIANTS.md and docs/VERIFIED-FACTS.md
+### .metaproject/docs/DESIGN-INVARIANTS.md and .metaproject/docs/VERIFIED-FACTS.md
 Long-lived, append-only companions to `STATE.md`'s "Design invariants (regression
 guards)" and "Verified facts (do not re-investigate)" sections. `STATE.md` itself resets
 to blank at the end of every cycle (`wrapup`), so before it does, `wrapup` appends
@@ -79,13 +80,13 @@ archived or reset.
 This project's governance and cycle documents are scaffolded and kept in sync by the
 `metaproject` CLI from its central template store, identified by the nearest
 `.metaproject.json` (this directory or an ancestor). If a document a skill needs is missing (a
-fresh `docs/TECH-DESIGN.md`, a `docs/HANDOFF.md` on interruption), run
-`metaproject backfill docs/<file>`
+fresh `.metaproject/docs/TECH-DESIGN.md`, a `.metaproject/docs/HANDOFF.md` on interruption), run
+`metaproject backfill .metaproject/docs/<file>`
 to create it from the template store rather than writing it from scratch — it never
 overwrites an existing file.
 
 ### Archive layout
 `wrapup` moves a completed cycle's `INTENT.md`, `SPEC.md`, `TECH-DESIGN.md`, `PLAN.md`,
-`STATE.md` and (if present) `HANDOFF.md` from `docs/` into `docs/archive/YYYY-MM-DD-<slug>/`, after
+`STATE.md` and (if present) `HANDOFF.md` from `.metaproject/docs/` into `.metaproject/docs/archive/YYYY-MM-DD-<slug>/`, after
 appending `STATE.md`'s Design invariants and Verified facts to the long-lived docs
 above.

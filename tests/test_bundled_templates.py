@@ -22,10 +22,10 @@ from metaproject.templates import (
 TEMPLATES_DIR = get_bundled_templates_dir()
 
 CYCLE_TEMPLATES = (
-    "docs.template/INTENT.template.md",
-    "docs.template/SPEC.template.md",
-    "docs.template/TECH-DESIGN.template.md",
-    "docs.template/PLAN.template.md",
+    ".metaproject.template/docs.template/INTENT.template.md",
+    ".metaproject.template/docs.template/SPEC.template.md",
+    ".metaproject.template/docs.template/TECH-DESIGN.template.md",
+    ".metaproject.template/docs.template/PLAN.template.md",
 )
 
 
@@ -68,14 +68,14 @@ def test_every_scaffolded_deliverable_has_a_bundled_template() -> None:
 def test_handoff_has_a_bundled_template_despite_being_on_demand() -> None:
     """R-CLS-5: HANDOFF.md is never scaffolded by `new`, but its template still lives
     in the store so `backfill HANDOFF.md` can create it by name."""
-    entry = resolve_template_entry("docs/HANDOFF.md", TEMPLATES_DIR)
+    entry = resolve_template_entry(".metaproject/docs/HANDOFF.md", TEMPLATES_DIR)
     assert entry is not None
     assert entry.is_file()
 
 
 def test_todo_has_a_bundled_template_and_is_on_demand() -> None:
-    """D6: docs/TODO.md is on-demand, created by name, with a bundled template."""
-    entry = resolve_template_entry("docs/TODO.md", TEMPLATES_DIR)
+    """D6: .metaproject/docs/TODO.md is on-demand, created by name, with a bundled template."""
+    entry = resolve_template_entry(".metaproject/docs/TODO.md", TEMPLATES_DIR)
     assert entry is not None
     assert entry.is_file()
 
@@ -89,7 +89,7 @@ def test_cycle_templates_share_the_header(template_name: str) -> None:
     assert "**Last updated**: {Date}." in text
     assert "**Status**: Draft." in text
     assert "**Approved by**: —" in text
-    if template_name != "docs.template/INTENT.template.md":
+    if template_name != ".metaproject.template/docs.template/INTENT.template.md":
         assert "**Derived from**:" in text
 
 
@@ -103,7 +103,9 @@ def test_cycle_templates_are_blank_by_the_title_rule(template_name: str) -> None
 
 def test_state_template_has_exactly_seven_process_items() -> None:
     """R-TPL-7: STATE.md's Process list is the 7-stage cycle, no more, no less."""
-    text = (TEMPLATES_DIR / "docs.template" / "STATE.template.md").read_text(encoding="utf-8")
+    text = (
+        TEMPLATES_DIR / ".metaproject.template" / "docs.template" / "STATE.template.md"
+    ).read_text(encoding="utf-8")
     items = [line for line in text.splitlines() if line.strip().startswith("- [ ]")]
     assert len(items) == 7
     for stage in (
@@ -121,7 +123,9 @@ def test_state_template_has_exactly_seven_process_items() -> None:
 def test_state_template_sections_each_carry_a_stage_comment() -> None:
     """R-TPL-7: each STATE.md section names, in a one-line HTML comment, which stage
     writes it."""
-    text = (TEMPLATES_DIR / "docs.template" / "STATE.template.md").read_text(encoding="utf-8")
+    text = (
+        TEMPLATES_DIR / ".metaproject.template" / "docs.template" / "STATE.template.md"
+    ).read_text(encoding="utf-8")
     lines = text.splitlines()
     # `## ` sections only — the top-level `# {ProjectTitle} — State` title isn't one.
     headings = [i for i, line in enumerate(lines) if line.startswith("## ")]
@@ -167,20 +171,21 @@ def test_new_dry_run_lists_every_r_tpl_4_file_and_not_handoff(tmp_path: Path) ->
     rendered = {path.relative_to(target).as_posix() for path in res["rendered_files"]}
 
     for expected in (
-        "docs/INTENT.md",
-        "docs/SPEC.md",
-        "docs/TECH-DESIGN.md",
-        "docs/PLAN.md",
-        "docs/STATE.md",
-        "docs/ARCHITECTURE.md",
-        "docs/DESIGN-INVARIANTS.md",
-        "docs/VERIFIED-FACTS.md",
-        "docs/archive/.gitkeep",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/PLAN.md",
+        ".metaproject/docs/STATE.md",
+        ".metaproject/docs/ARCHITECTURE.md",
+        ".metaproject/docs/DESIGN-INVARIANTS.md",
+        ".metaproject/docs/VERIFIED-FACTS.md",
+        ".metaproject/docs/archive/.gitkeep",
     ):
         assert expected in rendered, f"{expected} missing from dry-run listing"
 
-    assert "docs/HANDOFF.md" not in rendered
-    assert "docs/TODO.md" not in rendered
+    assert ".metaproject/docs/HANDOFF.md" not in rendered
+    assert ".metaproject/docs/TODO.md" not in rendered
+    assert not any(p == "docs" or p.startswith("docs/") for p in rendered)
     assert not any(
         "/" not in p and p.endswith(".md") and p not in ("AGENTS.md", "CLAUDE.md", "README.md")
         for p in rendered
@@ -189,6 +194,8 @@ def test_new_dry_run_lists_every_r_tpl_4_file_and_not_handoff(tmp_path: Path) ->
 
 def test_todo_template_has_carry_over_above_the_verification_log() -> None:
     """#27: Carry over section first, the append-only verification log after it."""
-    text = (TEMPLATES_DIR / "docs.template/TODO.template.md").read_text(encoding="utf-8")
+    text = (
+        TEMPLATES_DIR / ".metaproject.template" / "docs.template" / "TODO.template.md"
+    ).read_text(encoding="utf-8")
     assert "## Carry over" in text
     assert text.index("## Carry over") < text.index("Needs manual verification")

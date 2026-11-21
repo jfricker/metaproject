@@ -16,11 +16,16 @@ DEFAULT_TEMPLATES_DIR = DEFAULT_CONFIG_DIR / "templates"
 DEFAULT_UNIVERSE_DB = DEFAULT_CONFIG_DIR / "universe.db"
 
 # Governance + working deliverables (spec.md R-LRN-3), plus three targets kept from the
-# prior default that are not declared deliverables: `docs/` (directory-target
+# prior default that are not declared deliverables: `.metaproject/docs/` (directory-target
 # expansion), `Makefile` and `pyproject.toml` (untemplated/config-shaped targets). On-
-# demand deliverables (docs/HANDOFF.md) are excluded. A `config.json` that already pins
-# `learn.targets` is left untouched by this change (deferred `doctor`, FC-3).
-DEFAULT_LEARN_TARGETS = [*deliverables.learn_targets(), "docs/", "Makefile", "pyproject.toml"]
+# demand deliverables (.metaproject/docs/HANDOFF.md) are excluded. A `config.json` that
+# already pins `learn.targets` is migrated via `doctor` (`R-DRX-2`).
+DEFAULT_LEARN_TARGETS = [
+    *deliverables.learn_targets(),
+    ".metaproject/docs/",
+    "Makefile",
+    "pyproject.toml",
+]
 
 DEFAULT_ACTIVITY_WEIGHTS = {
     "Active Now": 1.0,

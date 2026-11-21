@@ -143,7 +143,7 @@ def test_wheel_contains_every_skill(tmp_path: Path) -> None:
         assert f"metaproject/sdlc_skills/{name}/SKILL.md" in names
     assert "metaproject/skill/SKILL.md" in names
     assert "metaproject/skill/references/commands.md" in names
-    assert "metaproject/templates/docs.template/INTENT.template.md" in names
+    assert "metaproject/templates/.metaproject.template/docs.template/INTENT.template.md" in names
 
 
 def test_import_staging_and_plugin_scaffolding_are_gone() -> None:

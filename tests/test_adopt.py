@@ -74,14 +74,16 @@ def test_adopt_in_agent_session_creates_identity_docs_and_skills(
     assert identity.title == "Game Workshop"
     assert identity.description == "Board games."
     assert identity.author != "Claude"
-    assert "Claude" not in (repo / "docs" / "INTENT.md").read_text(encoding="utf-8")
+    assert "Claude" not in (repo / ".metaproject" / "docs" / "INTENT.md").read_text(
+        encoding="utf-8"
+    )
 
     # Never overwrites.
     assert (repo / "README.md").read_text(encoding="utf-8") == "# Game Workshop\n\nBoard games.\n"
     assert (repo / "AGENTS.md").read_text(encoding="utf-8") == "# My own agent notes\n"
 
     # Every missing deliverable and skill, plus the .claude/skills link.
-    assert (repo / "docs" / "INTENT.md").is_file()
+    assert (repo / ".metaproject" / "docs" / "INTENT.md").is_file()
     assert (repo / "CLAUDE.md").is_file()
     for skill in bundled_skills():
         assert (repo / ".agents" / "skills" / skill.name / "SKILL.md").is_file()
@@ -149,7 +151,7 @@ def test_adopt_keeps_existing_identity_and_renders_its_author(
 
     assert result.exit_code == 0, result.output
     assert (repo / IDENTITY_FILE).read_text(encoding="utf-8") == before
-    intent = (repo / "docs" / "INTENT.md").read_text(encoding="utf-8")
+    intent = (repo / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8")
     assert "Identity Author" in intent
     assert "Config Author" not in intent
 
@@ -203,9 +205,9 @@ def test_adopt_with_author_flag_in_a_web_container(
     assert result.exit_code == 0, result.output
     data = json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))
     assert data["author"] == "Jo F"
-    assert config_module.FALLBACK_AUTHOR not in (repo / "docs" / "SPEC.md").read_text(
-        encoding="utf-8"
-    )
+    assert config_module.FALLBACK_AUTHOR not in (
+        repo / ".metaproject" / "docs" / "SPEC.md"
+    ).read_text(encoding="utf-8")
 
 
 def test_adopt_refuses_to_overwrite_an_invalid_identity_file(
@@ -219,7 +221,7 @@ def test_adopt_refuses_to_overwrite_an_invalid_identity_file(
 
     assert result.exit_code == 1
     assert (repo / IDENTITY_FILE).read_text(encoding="utf-8") == "{not json"
-    assert not (repo / "docs").exists()
+    assert not (repo / ".metaproject" / "docs").exists()
 
 
 def test_adopt_dry_run_writes_nothing(runner: CliRunner, tmp_path: Path) -> None:
@@ -304,7 +306,7 @@ def test_backfill_author_comes_from_identity_before_config_and_git(
     result = runner.invoke(app, ["backfill", "--dir", str(repo)])
 
     assert result.exit_code == 0, result.output
-    intent = (repo / "docs" / "INTENT.md").read_text(encoding="utf-8")
+    intent = (repo / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8")
     assert "Identity Author" in intent
     assert "Config Author" not in intent
     assert "Claude" not in intent
@@ -323,6 +325,6 @@ def test_backfill_author_falls_back_to_config_not_container_git(
     result = runner.invoke(app, ["backfill", "--dir", str(repo)])
 
     assert result.exit_code == 0, result.output
-    intent = (repo / "docs" / "INTENT.md").read_text(encoding="utf-8")
+    intent = (repo / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8")
     assert "Config Author" in intent
     assert "Claude" not in intent

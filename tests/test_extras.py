@@ -80,10 +80,10 @@ def test_adopt_backfill_review_without_extra(tmp_path: Path) -> None:
     assert (repo / ".metaproject.json").is_file()
     assert (repo / ".agents" / "skills" / "metaproject" / "SKILL.md").is_file()
 
-    (repo / "docs" / "SPEC.md").unlink()
+    (repo / ".metaproject" / "docs" / "SPEC.md").unlink()
     backfill = run_core(["backfill", "--dir", str(repo)], tmp_path)
     assert backfill.returncode == 0, backfill.stdout + backfill.stderr
-    assert (repo / "docs" / "SPEC.md").is_file()
+    assert (repo / ".metaproject" / "docs" / "SPEC.md").is_file()
 
     for args in (["review", str(repo), "--no-tui"], ["review", str(repo)]):
         review = run_core(args, tmp_path)

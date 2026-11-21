@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 # Argument forms that mean "scaffold into this directory" rather than naming a project.
 CWD_ALIASES = {".", "./", ".\\", "..", "../", "..\\"}
 
-# On-demand deliverables (e.g. docs/HANDOFF.md) are never scaffolded by `new` (R-CLS-5).
+# On-demand deliverables (`.metaproject/docs/{HANDOFF,TODO}.md`) are never scaffolded (R-CLS-5).
 _ON_DEMAND_PATHS = tuple(d.path for d in DELIVERABLES if d.cls is DeliverableClass.ON_DEMAND)
 
 

@@ -106,26 +106,27 @@ def test_scaffold_project_success(tmp_path: Path) -> None:
     expected_files = [
         "README.md",
         "AGENTS.md",
-        "docs/INTENT.md",
-        "docs/SPEC.md",
-        "docs/TECH-DESIGN.md",
-        "docs/PLAN.md",
-        "docs/STATE.md",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/PLAN.md",
+        ".metaproject/docs/STATE.md",
         "CLAUDE.md",
-        "docs/ARCHITECTURE.md",
+        ".metaproject/docs/ARCHITECTURE.md",
         ".gitignore",
-        "docs",
-        "docs/DESIGN-INVARIANTS.md",
-        "docs/VERIFIED-FACTS.md",
-        "docs/archive",
+        ".metaproject/docs",
+        ".metaproject/docs/DESIGN-INVARIANTS.md",
+        ".metaproject/docs/VERIFIED-FACTS.md",
+        ".metaproject/docs/archive",
         ".metaproject.json",
     ]
     for expected in expected_files:
         assert (target / expected).exists(), f"Missing expected deliverable: {expected}"
 
     # HANDOFF.md is on-demand: `new` never scaffolds it (spec.md R-CLS-5, AC-4).
-    assert not (target / "docs" / "HANDOFF.md").exists()
-    assert not (target / "docs" / "TODO.md").exists()
+    assert not (target / ".metaproject" / "docs" / "HANDOFF.md").exists()
+    assert not (target / ".metaproject" / "docs" / "TODO.md").exists()
+    assert not (target / "docs").exists()
     root_md = {p.name for p in target.iterdir() if p.suffix == ".md"}
     assert root_md == {"AGENTS.md", "CLAUDE.md", "README.md"}
 
@@ -560,7 +561,7 @@ def test_scaffold_backfill_preserves_existing_files(tmp_path: Path) -> None:
     assert (target / "README.md") not in res["rendered_files"]
     # Missing templates are still backfilled.
     assert (target / "AGENTS.md").exists()
-    assert (target / "docs" / "STATE.md").exists()
+    assert (target / ".metaproject" / "docs" / "STATE.md").exists()
     # The directory name supplies the project title.
     assert res["variables"]["ProjectTitle"] == "Existing Work"
 

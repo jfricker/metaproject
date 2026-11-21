@@ -39,12 +39,16 @@ _STATE_TEMPLATE = (
 def _structure_workspace(tmp_path: Path, project_state_md: str, template: str = _STATE_TEMPLATE):
     """A minimal project + template store scoped to STATE.md, for structure-evidence tests."""
     project_dir = tmp_path / "proj"
-    (project_dir / "docs").mkdir(parents=True)
-    (project_dir / "docs" / "STATE.md").write_text(project_state_md, encoding="utf-8")
+    (project_dir / ".metaproject" / "docs").mkdir(parents=True)
+    (project_dir / ".metaproject" / "docs" / "STATE.md").write_text(
+        project_state_md, encoding="utf-8"
+    )
 
     templates_dir = tmp_path / "templates"
-    (templates_dir / "docs.template").mkdir(parents=True)
-    (templates_dir / "docs.template" / "STATE.template.md").write_text(template, encoding="utf-8")
+    (templates_dir / ".metaproject.template" / "docs.template").mkdir(parents=True)
+    (templates_dir / ".metaproject.template" / "docs.template" / "STATE.template.md").write_text(
+        template, encoding="utf-8"
+    )
 
     return project_dir, templates_dir
 
@@ -53,11 +57,11 @@ def _collect_state(project_dir: Path, templates_dir: Path):
     records = collect_project(
         project_dir,
         templates_dir,
-        targets=["docs/STATE.md"],
+        targets=[".metaproject/docs/STATE.md"],
         config=Config(),
         classification="Active",
     )
-    return [r for r in records if r.target_file == "docs/STATE.md"]
+    return [r for r in records if r.target_file == ".metaproject/docs/STATE.md"]
 
 
 @pytest.fixture
@@ -215,11 +219,11 @@ def test_symlinked_directory_is_not_traversed(tmp_path: Path) -> None:
 
 
 def test_directory_target_is_not_read_as_a_file(workspace) -> None:
-    """C28: `docs/` is a directory target; it expands rather than being opened."""
+    """C28: `.metaproject/docs/` is a directory target; it expands rather than being opened."""
     records = collect_project(workspace.project("spire"), workspace.templates)
     targets = {rec.target_file for rec in records}
-    assert "docs/" not in targets
-    assert "docs/architecture.md" in targets
+    assert ".metaproject/docs/" not in targets
+    assert ".metaproject/docs/architecture.md" in targets
 
 
 def test_config_shaped_target_collected(workspace) -> None:
@@ -362,8 +366,8 @@ def test_missing_working_file_is_never_removal_evidence(tmp_path: Path) -> None:
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
     templates_dir = tmp_path / "templates"
-    (templates_dir / "docs.template").mkdir(parents=True)
-    (templates_dir / "docs.template" / "STATE.template.md").write_text(
+    (templates_dir / ".metaproject.template" / "docs.template").mkdir(parents=True)
+    (templates_dir / ".metaproject.template" / "docs.template" / "STATE.template.md").write_text(
         _STATE_TEMPLATE, encoding="utf-8"
     )
 
@@ -391,8 +395,8 @@ def test_working_target_with_no_template_in_store_yields_no_record(tmp_path: Pat
     """A working target the store has no template for contributes no structural record
     (and is never treated as a `new_template` candidate)."""
     project_dir = tmp_path / "proj"
-    (project_dir / "docs").mkdir(parents=True)
-    (project_dir / "docs" / "STATE.md").write_text(
+    (project_dir / ".metaproject" / "docs").mkdir(parents=True)
+    (project_dir / ".metaproject" / "docs" / "STATE.md").write_text(
         f"# STATE.md\n\n## Risks\n{_LOTS_OF_BODY_TEXT}\n", encoding="utf-8"
     )
     templates_dir = tmp_path / "templates"
@@ -414,20 +418,20 @@ def test_handoff_is_never_collected_even_when_configured(tmp_path: Path) -> None
     """R-LRN-3/design.md: HANDOFF.md (on-demand) is never collected, even if a config
     explicitly lists it as a learn target."""
     project_dir = tmp_path / "proj"
-    (project_dir / "docs").mkdir(parents=True)
-    (project_dir / "docs" / "HANDOFF.md").write_text(
+    (project_dir / ".metaproject" / "docs").mkdir(parents=True)
+    (project_dir / ".metaproject" / "docs" / "HANDOFF.md").write_text(
         "# Handoff\n\n## Extra section\nSome text.\n", encoding="utf-8"
     )
     templates_dir = tmp_path / "templates"
-    (templates_dir / "docs.template").mkdir(parents=True)
-    (templates_dir / "docs.template" / "HANDOFF.template.md").write_text(
+    (templates_dir / ".metaproject.template" / "docs.template").mkdir(parents=True)
+    (templates_dir / ".metaproject.template" / "docs.template" / "HANDOFF.template.md").write_text(
         "# Handoff\n", encoding="utf-8"
     )
 
     records = collect_project(
         project_dir,
         templates_dir,
-        targets=["docs/HANDOFF.md"],
+        targets=[".metaproject/docs/HANDOFF.md"],
         config=Config(),
         classification="Active",
     )

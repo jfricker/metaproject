@@ -5,15 +5,18 @@ exactly one of five classes, declared once here rather than re-decided by each c
 
 - **governance** — `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`. Rendered and
   diffed in full; offered for both Update and Deploy.
-- **working** — `docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`,
-  `docs/STATE.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`,
-  `docs/VERIFIED-FACTS.md`. Checked for heading structure only, never diffed
-  body-for-body, and never offered for Update.
-- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new` and never
-  reported missing by `review`; created only when asked for by name (`backfill HANDOFF.md`).
-  `docs/TODO.md` is the operator's standing manual-verification list, appended by `wrapup`
-  and never archived.
-- **directory** — `docs`, `docs/archive`. A presence check, nothing more.
+- **working** — `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+  `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`,
+  `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`,
+  `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`.
+  Checked for heading structure only, never diffed body-for-body, and never offered for
+  Update.
+- **on-demand** — `.metaproject/docs/HANDOFF.md`, `.metaproject/docs/TODO.md`. Never
+  scaffolded by `new` and never reported missing by `review`; created only when asked for
+  by name (`backfill HANDOFF.md`). `.metaproject/docs/TODO.md` is the operator's standing
+  manual-verification list, appended by `wrapup` and never archived.
+- **directory** — `.metaproject/docs`, `.metaproject/docs/archive`. A presence check,
+  nothing more.
 - **settings** — `.claude/settings.json`. Never rendered from the template store and
   never overwritten: metaproject *merges* its hook entries into it (`hooks.py`), keeping
   every key the operator already has. Present means "the hook script is installed and
@@ -30,6 +33,12 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Dict, List, Mapping, Optional, Tuple
+
+DOCS_DIR = ".metaproject/docs"
+
+# Metaproject-owned subdirectories relocated from `docs/` to `.metaproject/docs/` by
+# `doctor` (SPEC.md R-DRX-4).
+MIGRATABLE_SUBDIRS: Tuple[str, ...] = ("archive", "backlog", "discovery")
 
 
 class DeliverableClass(Enum):
@@ -57,25 +66,29 @@ DELIVERABLES: Tuple[Deliverable, ...] = (
     Deliverable("README.md", DeliverableClass.GOVERNANCE),
     Deliverable(".gitignore", DeliverableClass.GOVERNANCE),
     # working
-    Deliverable("docs/INTENT.md", DeliverableClass.WORKING),
-    Deliverable("docs/SPEC.md", DeliverableClass.WORKING),
-    Deliverable("docs/TECH-DESIGN.md", DeliverableClass.WORKING),
-    Deliverable("docs/PLAN.md", DeliverableClass.WORKING),
-    Deliverable("docs/STATE.md", DeliverableClass.WORKING),
-    Deliverable("docs/ARCHITECTURE.md", DeliverableClass.WORKING),
-    Deliverable("docs/DESIGN-INVARIANTS.md", DeliverableClass.WORKING),
-    Deliverable("docs/VERIFIED-FACTS.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/INTENT.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/SPEC.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/TECH-DESIGN.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/PLAN.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/STATE.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/ARCHITECTURE.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/DESIGN-INVARIANTS.md", DeliverableClass.WORKING),
+    Deliverable(".metaproject/docs/VERIFIED-FACTS.md", DeliverableClass.WORKING),
     # on-demand
-    Deliverable("docs/HANDOFF.md", DeliverableClass.ON_DEMAND),
-    Deliverable("docs/TODO.md", DeliverableClass.ON_DEMAND),
+    Deliverable(".metaproject/docs/HANDOFF.md", DeliverableClass.ON_DEMAND),
+    Deliverable(".metaproject/docs/TODO.md", DeliverableClass.ON_DEMAND),
     # directory
-    Deliverable("docs", DeliverableClass.DIRECTORY),
-    Deliverable("docs/archive", DeliverableClass.DIRECTORY),
+    Deliverable(".metaproject/docs", DeliverableClass.DIRECTORY),
+    Deliverable(".metaproject/docs/archive", DeliverableClass.DIRECTORY),
     # settings (merged, never rendered)
     Deliverable(".claude/settings.json", DeliverableClass.SETTINGS),
 )
 
 _BY_PATH = {d.path: d for d in DELIVERABLES}
+
+RELOCATED_FILES: Tuple[str, ...] = tuple(
+    d.path for d in DELIVERABLES if d.cls in (DeliverableClass.WORKING, DeliverableClass.ON_DEMAND)
+)
 
 
 def classify(path: str) -> Optional[DeliverableClass]:
@@ -103,27 +116,51 @@ def learn_targets() -> Tuple[str, ...]:
 SKILL_ROOTS: Tuple[str, ...] = (".agents", ".claude")
 
 
-# Old root-level name → declared path, for every relocated deliverable (R-DOC-0).
-LEGACY_NAMES: Mapping[str, str] = {
-    "intent.md": "docs/INTENT.md",
-    "spec.md": "docs/SPEC.md",
-    "design.md": "docs/TECH-DESIGN.md",
-    "plan.md": "docs/PLAN.md",
-    "STATE.md": "docs/STATE.md",
-    "HANDOFF.md": "docs/HANDOFF.md",
-    "ARCHITECTURE.md": "docs/ARCHITECTURE.md",
+# v0.8 root-level name → declared `.metaproject/docs/` path. Only these seven ever lived
+# at the project root (`DESIGN-INVARIANTS.md`, `VERIFIED-FACTS.md`, and `TODO.md` were
+# born in `docs/` so a project's own root `TODO.md` is never mistaken for metaproject's).
+LEGACY_ROOT_NAMES: Mapping[str, str] = {
+    "intent.md": ".metaproject/docs/INTENT.md",
+    "spec.md": ".metaproject/docs/SPEC.md",
+    "design.md": ".metaproject/docs/TECH-DESIGN.md",
+    "plan.md": ".metaproject/docs/PLAN.md",
+    "STATE.md": ".metaproject/docs/STATE.md",
+    "HANDOFF.md": ".metaproject/docs/HANDOFF.md",
+    "ARCHITECTURE.md": ".metaproject/docs/ARCHITECTURE.md",
 }
 
-_OLD_NAME_FOR = {new: old for old, new in LEGACY_NAMES.items()}
+_OLD_ROOT_FOR = {new: old for old, new in LEGACY_ROOT_NAMES.items()}
+
+# Every legacy file location (v0.8 root names, v0.9 `docs/` paths, and `docs/<old>`
+# lowercase names) → declared `.metaproject/docs/` path (R-LEG-1).
+LEGACY_NAMES: Mapping[str, str] = {
+    **LEGACY_ROOT_NAMES,
+    **{f"docs/{PurePosixPath(p).name}": p for p in RELOCATED_FILES},
+    "docs/intent.md": ".metaproject/docs/INTENT.md",
+    "docs/spec.md": ".metaproject/docs/SPEC.md",
+    "docs/design.md": ".metaproject/docs/TECH-DESIGN.md",
+    "docs/plan.md": ".metaproject/docs/PLAN.md",
+}
+
+LEGACY_DIR_NAMES: Mapping[str, str] = {
+    "docs": ".metaproject/docs",
+    "docs/archive": ".metaproject/docs/archive",
+}
+
+LEGACY_LEARN_TARGETS: Mapping[str, str] = {
+    **LEGACY_NAMES,
+    "docs/": ".metaproject/docs/",
+}
 
 
 def canonical_path(name: str) -> str:
-    """The declared path a name refers to, matched case-insensitively (R-DOC-4).
+    """The declared path a name refers to, matched case-insensitively (R-LOC-4).
 
-    A declared path (`docs/INTENT.md`), the basename of a declared *file*
-    (`INTENT.md`), or a legacy name (`intent.md`, `design.md`) all resolve to the
-    declared path. Anything else is returned unchanged, so `backfill` still accepts any
-    path the template store has a template for.
+    A declared path (`.metaproject/docs/INTENT.md`), a prior `docs/` path
+    (`docs/INTENT.md`, `docs/design.md`), the basename of a declared *file*
+    (`INTENT.md`, `TODO.md`), or a v0.8 root name (`intent.md`, `design.md`) all resolve
+    to the declared `.metaproject/docs/` path. Anything else is returned unchanged, so
+    `backfill` still accepts any path the template store has a template for.
     """
     posix = PurePosixPath(name.strip()).as_posix()
     folded = posix.casefold()
@@ -131,6 +168,9 @@ def canonical_path(name: str) -> str:
         if d.path.casefold() == folded:
             return d.path
     for old, new in LEGACY_NAMES.items():
+        if old.casefold() == folded:
+            return new
+    for old, new in LEGACY_DIR_NAMES.items():
         if old.casefold() == folded:
             return new
     for d in DELIVERABLES:
@@ -144,9 +184,9 @@ def canonical_path(name: str) -> str:
 def exact_exists(path: Path) -> bool:
     """Does `path` exist under exactly this name?
 
-    `Path.exists()` is case-insensitive on APFS, so it would call `docs/INTENT.md`
-    present when only `docs/intent.md` is (R-NFR-6). This compares the final component
-    against the parent's actual directory entries.
+    `Path.exists()` is case-insensitive on APFS, so it would call `.metaproject/docs/INTENT.md`
+    present when only `.metaproject/docs/intent.md` is (R-NFR-1). This compares the final
+    component against the parent's actual directory entries.
     """
     path = Path(path)
     try:
@@ -158,13 +198,21 @@ def exact_exists(path: Path) -> bool:
 def legacy_candidates(root: Path, new: str, template_suffix: bool = False) -> List[str]:
     """Every legacy copy of one relocated document present under `root`, in move order.
 
-    Candidates are the root under the old name, the root under the new name, and
-    `docs/` under the old name; the declared path itself is never one. With
-    `template_suffix` the same rule is applied to a template store (`intent.template.md`,
-    `docs.template/intent.template.md`). Presence is exact-name (`exact_exists`).
+    Priority order: `docs/<NAME>.md` (v0.9), `docs/<old>` / `docs/<name>.md`, root `<old>`
+    and `<NAME>.md` (for `LEGACY_ROOT_NAMES` only), then wrong-case copies under
+    `.metaproject/docs/` (for APFS case-insensitivity). With `template_suffix=True` the
+    same rule is applied to a template store. Presence is exact-name (`exact_exists`).
     """
-    old = _OLD_NAME_FOR[new]
-    names = [old, PurePosixPath(new).name, f"docs/{old}"]
+    basename = PurePosixPath(new).name
+    old_root = _OLD_ROOT_FOR.get(new)
+    names: List[str] = [f"docs/{basename}"]
+    if old_root is not None:
+        names.append(f"docs/{old_root}")
+    names.append(f"docs/{basename.lower()}")
+    if old_root is not None:
+        names.extend([old_root, basename])
+        names.append(f".metaproject/docs/{old_root}")
+    names.append(f".metaproject/docs/{basename.lower()}")
     if template_suffix:
         names = [template_path(name) for name in names]
         new = template_path(new)
@@ -179,8 +227,8 @@ def legacy_candidates(root: Path, new: str, template_suffix: bool = False) -> Li
 def template_path(path: str) -> str:
     """The template-store path that renders to project path `path`.
 
-    `docs/INTENT.md` → `docs.template/INTENT.template.md`; the inverse of
-    `templates.transform_template_name` applied per component.
+    `.metaproject/docs/INTENT.md` → `.metaproject.template/docs.template/INTENT.template.md`;
+    the inverse of `templates.transform_template_name` applied per component.
     """
     parts = PurePosixPath(path).parts
     dirs = [f"{part}.template" for part in parts[:-1]]
@@ -190,17 +238,42 @@ def template_path(path: str) -> str:
 
 
 def legacy_locations(project_dir: Path) -> Dict[str, str]:
-    """Declared path → the legacy file actually present, for unmigrated documents.
+    """Declared path → the legacy file or directory actually present, for unmigrated items.
 
-    A relocated document is legacy when it is absent at its exact declared path and
-    present at the root (under its old or new name) or in `docs/` under its old name.
+    A relocated file is legacy when absent at its exact `.metaproject/docs/` path and
+    present at any candidate in `legacy_candidates`. Directory deliverables are legacy when
+    absent at `.metaproject/docs/` and `docs/archive` exists or `docs/` holds any legacy
+    metaproject artifact (`docs/*`, `docs/archive`, `docs/backlog`, `docs/discovery`,
+    `docs/.gitkeep`). A project's own `docs/` (e.g. MkDocs) is never flagged.
     """
     root = Path(project_dir)
     found: Dict[str, str] = {}
-    for new in LEGACY_NAMES.values():
+    for new in RELOCATED_FILES:
         if exact_exists(root / new):
             continue
         candidates = legacy_candidates(root, new)
         if candidates:
             found[new] = candidates[0]
+    if (
+        not exact_exists(root / ".metaproject/docs/archive")
+        and exact_exists(root / "docs/archive")
+        and (root / "docs/archive").is_dir()
+    ):
+        found[".metaproject/docs/archive"] = "docs/archive"
+    if (
+        not exact_exists(root / ".metaproject/docs")
+        and exact_exists(root / "docs")
+        and (root / "docs").is_dir()
+    ):
+        has_legacy_docs_item = (
+            any(where.startswith("docs/") for where in found.values())
+            or ".metaproject/docs/archive" in found
+            or (exact_exists(root / "docs/.gitkeep") and (root / "docs/.gitkeep").is_file())
+            or any(
+                exact_exists(root / "docs" / sub) and (root / "docs" / sub).is_dir()
+                for sub in MIGRATABLE_SUBDIRS
+            )
+        )
+        if has_legacy_docs_item:
+            found[".metaproject/docs"] = "docs"
     return found

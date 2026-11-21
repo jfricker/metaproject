@@ -26,7 +26,6 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 from metaproject.config import Config, get_config_dir, load_config
 from metaproject.deliverables import (
     DELIVERABLES,
-    LEGACY_NAMES,
     DeliverableClass,
     canonical_path,
     exact_exists,
@@ -149,8 +148,9 @@ def resolve_templates_dir(
 def resolve_template_entry(rel_path: str, templates_dir: Path) -> Optional[Path]:
     """Find the template file *or directory* backing a project-relative path.
 
-    The directory case is why this is not `learn.collect.resolve_template`: `docs` is a
-    standard deliverable, and deploying it means rendering `docs.template/` as a tree.
+    The directory case is why this is not `learn.collect.resolve_template`: `.metaproject/docs`
+    is a standard deliverable, and deploying it renders `.metaproject.template/docs.template/`
+    as a tree.
     """
     current = Path(templates_dir)
     for part in PurePosixPath(rel_path).parts:
@@ -363,8 +363,9 @@ def review_project(
 
     Working deliverables are checked for heading structure only (`structure`) and are
     never diffed body-for-body or offered for Update (R-CLS-3/4); on-demand deliverables
-    (e.g. `docs/HANDOFF.md`) are skipped entirely (R-CLS-5); directory deliverables are a
-    presence check. See `ReviewResult` for what the derived verdicts mean.
+    (`.metaproject/docs/HANDOFF.md`, `.metaproject/docs/TODO.md`) are skipped (R-CLS-5);
+    directory deliverables are a presence check. See `ReviewResult` for what the derived verdicts
+    mean.
     """
     from metaproject.identity import read_identity
     from metaproject.template_source import ORIGIN_EXPLICIT, resolve_templates
@@ -426,7 +427,7 @@ def review_project(
 
         if not _present(resolved_proj, path):
             # A document still at its old location is not missing: Deploy would create a
-            # blank `docs/INTENT.md` beside the real root `intent.md` (R-DOC-5).
+            # blank `.metaproject/docs/INTENT.md` beside `docs/INTENT.md` or root `intent.md`.
             if path in legacy_found:
                 legacy[path] = legacy_found[path]
                 continue
@@ -435,8 +436,8 @@ def review_project(
                 deployable.append(path)
             continue
 
-        # Directory deliverables (e.g. `docs`) are a presence check only; diffing a tree
-        # against a tree is `learn`'s job, not the compliance board's. The same applies
+        # Directory deliverables (e.g. `.metaproject/docs`) are a presence check only;
+        # diffing a tree against a tree is `learn`'s job, not the compliance board's.
         # to any deliverable whose project path happens to be a directory.
         if deliverable.cls is DeliverableClass.DIRECTORY or target_path.is_dir():
             continue
@@ -564,11 +565,11 @@ def deploy_entry(
 
     entry = resolve_template_entry(deliverable, resolved_templates)
 
-    # A directory deliverable (e.g. `docs`) is a presence check, not content (R-CLS-6):
+    # A directory deliverable (e.g. `.metaproject/docs`) is a presence check, not content (R-CLS-6):
     # deploying it is idempotent-safe even if the directory already exists on disk —
-    # which happens routinely when an earlier deploy in the same batch wrote a file
-    # nested under it (e.g. `docs/DESIGN-INVARIANTS.md`), creating `docs/` as that
-    # file's parent before `docs` itself is ever reached. Only a name collision with
+    # which happens routinely when an earlier deploy in the same batch wrote a file nested
+    # under it (e.g. `.metaproject/docs/DESIGN-INVARIANTS.md`), creating `.metaproject/docs/`
+    # as that file's parent before `.metaproject/docs` itself is reached. Only a collision with
     # something that isn't a directory is refused.
     if entry is not None and entry.is_dir():
         if target.exists() and not target.is_dir():
@@ -587,18 +588,22 @@ def deploy_entry(
 
     if entry.is_dir():
         target.mkdir(parents=True, exist_ok=True)
-        # skip_existing: nested deliverables (e.g. docs/DESIGN-INVARIANTS.md) may have
-        # already been deployed individually earlier in the same batch; re-rendering the
+        # skip_existing: nested deliverables (e.g. `.metaproject/docs/DESIGN-INVARIANTS.md`) may
+        # already have been deployed individually earlier in the same batch; re-rendering the
         # whole tree must not clobber them. On-demand documents under the directory
-        # (docs/HANDOFF.md) are excluded, as `new` excludes them (R-CLS-5).
+        # (`.metaproject/docs/HANDOFF.md`) and any deliverable sitting at a legacy location are
+        # excluded so directory deploy never creates a blank duplicate beside a legacy copy.
         prefix = f"{PurePosixPath(deliverable).as_posix()}/"
         on_demand = [
             d.path[len(prefix) :]
             for d in DELIVERABLES
             if d.cls is DeliverableClass.ON_DEMAND and d.path.startswith(prefix)
         ]
+        legacy_under = [
+            p[len(prefix) :] for p in legacy_locations(resolved_proj) if p.startswith(prefix)
+        ]
         written = render_template_tree(
-            entry, target, resolved_vars, skip_existing=True, exclude=on_demand
+            entry, target, resolved_vars, skip_existing=True, exclude=[*on_demand, *legacy_under]
         ).paths
         return [target, *[p for p in written if p.is_file()]]
 
@@ -629,7 +634,11 @@ def _deploy_hooks(project_dir: Path, deliverable: str) -> List[Path]:
     return written
 
 
-_RELOCATED_PATHS = frozenset(LEGACY_NAMES.values())
+_RELOCATED_PATHS = frozenset(
+    d.path
+    for d in DELIVERABLES
+    if d.path == ".metaproject/docs" or d.path.startswith(".metaproject/docs/")
+)
 
 
 def _present(project_dir: Path, path: str) -> bool:
@@ -700,14 +709,14 @@ def backfill_missing(
     - **No `files`** — every `scaffolded()` deliverable missing from the project, in
       one call. Directory deliverables are created first (declaration order), then the
       rest, and existence is re-checked before each write: rendering a directory
-      template (e.g. `docs/`) can create files declared later in `DELIVERABLES`; those
+      template (e.g. `.metaproject/docs/`) can create files declared later in `DELIVERABLES`; those
       are reported `created` (the directory deploy wrote them) and never deployed a
       second time. A deliverable
       with no template in the store is reported in `missing_template` — never a silent
       fallback to the bundled store (design.md "Alternatives considered") — but every
       other target is still created. Missing project skills are then copied into
       `.agents/skills/` (create-only; `skills`, `skills_notice`).
-    - **`files` given** — exactly those paths, which may be on-demand (`docs/HANDOFF.md`) or
+    - **`files` given** — exactly those paths, which may be on-demand (such as `HANDOFF.md`) or
       any other path the store has a template for. If *any* named file already exists,
       every existing one is reported in `refused` and **nothing at all is written**. If
       any named file has no template, every such path is reported in `missing_template`
@@ -772,7 +781,7 @@ def backfill_missing(
     hooks_notice: Optional[str] = None
     missing_template = []
     # Files a directory deploy wrote earlier in this batch are reported created, not
-    # skipped: rendering `docs/` writes the cycle documents declared after it.
+    # skipped: rendering `.metaproject/docs/` writes the cycle documents declared after it.
     written_in_batch: set = set()
     for path in [*directory_paths, *other_paths]:
         if path in written_in_batch:

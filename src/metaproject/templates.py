@@ -189,8 +189,9 @@ def render_template_tree(
     untouched and omitted from the report. This is the backfill mode used when
     scaffolding into a directory the operator already has work in.
 
-    `exclude` names transformed, project-relative posix paths (e.g. "HANDOFF.md" or
-    "docs/archive/.gitkeep") to skip; naming a directory skips its whole subtree.
+    `exclude` names transformed, project-relative posix paths (such as
+    ".metaproject/docs/HANDOFF.md" or ".metaproject/docs/archive/.gitkeep") to skip; naming a
+    directory skips its whole subtree.
 
     Returns a `RenderReport` of paths created/written within target_dir and any
     unknown-placeholder warnings collected while rendering.

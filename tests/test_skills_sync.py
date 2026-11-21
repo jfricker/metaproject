@@ -192,7 +192,7 @@ def test_backfill_with_named_files_touches_neither_skills_nor_manifest(tmp_path:
     manifest = _skills_root(proj) / MANIFEST_NAME
     manifest.unlink()
     shutil.rmtree(_skills_root(proj) / "write-intent")
-    (proj / "docs" / "HANDOFF.md").unlink(missing_ok=True)
+    (proj / ".metaproject" / "docs" / "HANDOFF.md").unlink(missing_ok=True)
 
     result = backfill_missing(proj, files=["HANDOFF.md"])
 

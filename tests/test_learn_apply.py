@@ -960,7 +960,7 @@ def test_c9_a_recurring_untemplated_file_becomes_a_new_file_in_the_template_stor
 
 
 def test_c28_directory_and_config_shaped_targets_survive_a_scan(tmp_path: Path) -> None:
-    """C28: `docs/` and `pyproject.toml` are scanned without crashing the collector."""
+    """C28: `.metaproject/docs/` and `pyproject.toml` are scanned cleanly by the collector."""
     ws = build_workspace(tmp_path, git_init_templates=True, only=["spire"])
     db = get_db(tmp_path / "universe.db")
     before = snapshot(ws.templates)
@@ -970,7 +970,7 @@ def test_c28_directory_and_config_shaped_targets_survive_a_scan(tmp_path: Path) 
         ws.projects,
         templates_dir=ws.templates,
         db=db,
-        targets=["docs/", "pyproject.toml"],
+        targets=[".metaproject/docs/", "pyproject.toml"],
         yes=True,
         runner=fake_runner(payload),
     )

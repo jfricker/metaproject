@@ -9,7 +9,7 @@ Work found during development or discovery that belongs to a later cycle. `wrapu
 each open item the operator chose to carry forward; tick it when a cycle picks it up.
 
 <!-- Format:
-- [ ] <item> — carried from `docs/archive/YYYY-MM-DD-<slug>/` (YYYY-MM-DD)
+- [ ] <item> — carried from `.metaproject/docs/archive/YYYY-MM-DD-<slug>/` (YYYY-MM-DD)
 -->
 
 <!-- Manual verification log: wrapup appends one dated entry per cycle below, newest

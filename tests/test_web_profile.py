@@ -266,7 +266,7 @@ def test_web_profile_backfill_and_version_work(runner: CliRunner, tmp_path: Path
     proj.mkdir()
     result = runner.invoke(app, ["backfill", "--dir", str(proj)])
     assert result.exit_code == 0, result.output
-    assert (proj / "docs" / "INTENT.md").is_file()
+    assert (proj / ".metaproject" / "docs" / "INTENT.md").is_file()
 
 
 def test_web_init_writes_minimal_config_and_skips_scan(

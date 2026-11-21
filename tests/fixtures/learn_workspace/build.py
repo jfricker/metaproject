@@ -105,7 +105,7 @@ def _write_generated_files(project_dir: Path, name: str) -> None:
     """Create files that must not be committed: symlinks and oversized content."""
     if name == "spire":
         # C25 (R4): a single target far past any sane context budget.
-        big = project_dir / "docs" / "reference.md"
+        big = project_dir / ".metaproject" / "docs" / "reference.md"
         big.parent.mkdir(parents=True, exist_ok=True)
         lines = ["# Generated Reference", ""]
         for i in range(LARGE_FILE_LINES):

@@ -196,7 +196,7 @@ def test_backfill_named_files_never_implies_skills(tmp_path: Path) -> None:
 
     proj = _scaffold(tmp_path)
     shutil.rmtree(proj / ".agents" / "skills" / "write-intent")
-    (proj / "docs" / "HANDOFF.md").unlink(missing_ok=True)
+    (proj / ".metaproject" / "docs" / "HANDOFF.md").unlink(missing_ok=True)
 
     result = backfill_missing(proj, files=["HANDOFF.md"])
 
@@ -234,7 +234,7 @@ def test_ac5_real_claude_skills_directory_refuses_skills_not_deliverables(
     # mid-phrase, so match on whitespace-collapsed text.
     assert "real directory" in " ".join(result.output.split())
     assert not (proj / ".agents" / "skills").exists()
-    assert (proj / "docs" / "INTENT.md").is_file()
+    assert (proj / ".metaproject" / "docs" / "INTENT.md").is_file()
     assert list((proj / ".claude" / "skills").iterdir()) == []
 
 
@@ -251,7 +251,7 @@ def test_ac5_new_dot_with_real_claude_skills_still_scaffolds(tmp_path: Path) -> 
     assert result["skills"].states == {}
     assert "real directory" in result["skills"].notice
     assert not (proj / ".agents" / "skills" / "wrapup").exists()
-    assert (proj / "docs" / "STATE.md").is_file()
+    assert (proj / ".metaproject" / "docs" / "STATE.md").is_file()
 
 
 def test_symlink_elsewhere_is_refused(tmp_path: Path) -> None:

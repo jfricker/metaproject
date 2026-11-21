@@ -80,7 +80,7 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
     """AC-1: dry-run reports without writing; confirmed run restores; extras survive."""
     cfg, config_file = _make_env(tmp_path)
     store = Path(cfg.templates_dir)
-    victim = store / "docs.template" / "INTENT.template.md"
+    victim = store / ".metaproject.template" / "docs.template" / "INTENT.template.md"
     victim.unlink()
     extra = store / "learned-extra.template.md"
     extra.write_text("# learned content\n", encoding="utf-8")
@@ -90,7 +90,10 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
     templates_result = _check(results, "template store")
     assert templates_result.name == "template store"
     assert not templates_result.healthy
-    assert any("docs.template/INTENT.template.md" in f for f in templates_result.findings)
+    assert any(
+        ".metaproject.template/docs.template/INTENT.template.md" in f
+        for f in templates_result.findings
+    )
     assert any("learned-extra.template.md" in f for f in templates_result.findings)
     assert not victim.exists()
 
@@ -107,7 +110,7 @@ def test_missing_store_template_detected_restored_and_extra_kept(tmp_path: Path)
 
 def test_config_migration_is_additive_and_preserves_pins(tmp_path: Path) -> None:
     """AC-2: missing core targets appended; existing pins kept in order."""
-    pinned = ["AGENTS.md", "CLAUDE.md", "docs/", "Makefile", "my-custom-target"]
+    pinned = ["AGENTS.md", "CLAUDE.md", ".metaproject/docs/", "Makefile", "my-custom-target"]
     cfg, config_file = _make_env(tmp_path, learn_targets=pinned)
 
     results = run_checks(cfg, config_file, confirm=_all_yes)
@@ -118,11 +121,11 @@ def test_config_migration_is_additive_and_preserves_pins(tmp_path: Path) -> None
     targets = reloaded.learn.targets
     assert targets[:5] == pinned  # pins untouched, order preserved
     for core in (
-        "docs/INTENT.md",
-        "docs/SPEC.md",
-        "docs/STATE.md",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/SPEC.md",
+        ".metaproject/docs/STATE.md",
         "README.md",
-        "docs/ARCHITECTURE.md",
+        ".metaproject/docs/ARCHITECTURE.md",
     ):
         assert core in targets  # missing core targets appended
 
@@ -185,7 +188,9 @@ def test_identity_check_skips_vanished_project_dirs(tmp_path: Path) -> None:
 def test_declined_fix_does_not_block_other_checks(tmp_path: Path) -> None:
     """R-DR-8: saying no to one check leaves the rest runnable and applied."""
     cfg, config_file = _make_env(tmp_path)
-    (Path(cfg.templates_dir) / "docs.template" / "INTENT.template.md").unlink()
+    (
+        Path(cfg.templates_dir) / ".metaproject.template" / "docs.template" / "INTENT.template.md"
+    ).unlink()
     pinned = ["AGENTS.md"]
     cfg.learn.targets = pinned
     save_config(cfg, config_file)
@@ -235,10 +240,13 @@ def test_cli_doctor_requires_initialization(runner: CliRunner, tmp_path: Path) -
 def test_cli_doctor_dry_run_reports_and_exits_nonzero(runner: CliRunner, tmp_path: Path) -> None:
     """R-DR-1/R-DR-7: dry-run writes nothing, exit 1 when findings exist."""
     cfg, config_file = _make_env(tmp_path)
-    victim = Path(cfg.templates_dir) / "docs.template" / "INTENT.template.md"
+    victim = (
+        Path(cfg.templates_dir) / ".metaproject.template" / "docs.template" / "INTENT.template.md"
+    )
     victim.unlink()
 
-    result = runner.invoke(app, ["doctor", "--dry-run"], env=_cli_env(config_file))
+    env = {**_cli_env(config_file), "COLUMNS": "120"}
+    result = runner.invoke(app, ["doctor", "--dry-run"], env=env)
     assert result.exit_code == 1
     assert "INTENT.template.md" in result.output
     assert not victim.exists()
@@ -263,7 +271,8 @@ def test_cli_doctor_agent_session_rules(runner: CliRunner, tmp_path: Path) -> No
 
 def test_cli_doctor_healthy_exit_zero(runner: CliRunner, tmp_path: Path) -> None:
     _, config_file = _make_env(tmp_path)
-    result = runner.invoke(app, ["doctor", "--dry-run"], env=_cli_env(config_file))
+    env = {**_cli_env(config_file), "COLUMNS": "120"}
+    result = runner.invoke(app, ["doctor", "--dry-run"], env=env)
     assert result.exit_code == 0, result.output
 
 
@@ -275,12 +284,12 @@ import subprocess  # noqa: E402
 
 import pytest  # noqa: E402
 
-from metaproject.deliverables import LEGACY_NAMES, template_path  # noqa: E402
+from metaproject.deliverables import LEGACY_ROOT_NAMES, template_path  # noqa: E402
 from metaproject.doctor import _relocate  # noqa: E402
 from metaproject.git import init_repository  # noqa: E402
 from metaproject.skills import bundled_skills, install_project_skills  # noqa: E402
 
-_OLD_DOC_TEXT = {old: f"# {old} — the project's real content\n" for old in LEGACY_NAMES}
+_OLD_DOC_TEXT = {old: f"# {old} — the project's real content\n" for old in LEGACY_ROOT_NAMES}
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -293,7 +302,7 @@ def _legacy_store(cfg: Config) -> Path:
     """Put the seeded store's cycle templates back at the root under their old names, as
     a pre-docs/ store had them, and git-back it."""
     store = Path(cfg.templates_dir)
-    for old, new in LEGACY_NAMES.items():
+    for old, new in LEGACY_ROOT_NAMES.items():
         (store / template_path(new)).rename(store / template_path(old))
     init_repository(store, commit_message="chore: legacy store")
     return store
@@ -385,19 +394,26 @@ def test_ac9_dry_run_reports_every_finding_and_writes_nothing(tmp_path: Path, ho
     by_name = {r.name: r for r in results}
 
     layout = by_name["template store layout"]
-    assert "move intent.template.md → docs.template/INTENT.template.md" in layout.findings
-    assert "move design.template.md → docs.template/TECH-DESIGN.template.md" in layout.findings
+    assert (
+        "move intent.template.md → .metaproject.template/docs.template/INTENT.template.md"
+        in layout.findings
+    )
+    assert (
+        "move design.template.md → .metaproject.template/docs.template/TECH-DESIGN.template.md"
+        in layout.findings
+    )
     # The layout owns these; the store check neither re-seeds nor calls them extras.
     assert by_name["template store"].findings == [
         "extra in store (kept, learned or hand-added): hand-notes.md"
     ]
     assert any(
-        "intent.md → docs/INTENT.md" in f for f in by_name["config (learn.targets)"].findings
+        "intent.md → .metaproject/docs/INTENT.md" in f
+        for f in by_name["config (learn.targets)"].findings
     )
     assert by_name["orphaned global skill"].findings
     docs = by_name[f"project docs: {docs_project}"]
-    assert "move intent.md → docs/INTENT.md" in docs.findings
-    assert "move design.md → docs/TECH-DESIGN.md" in docs.findings
+    assert "move intent.md → .metaproject/docs/INTENT.md" in docs.findings
+    assert "move design.md → .metaproject/docs/TECH-DESIGN.md" in docs.findings
     skills_result = by_name[f"project skills: {skills_project}"]
     assert "missing skill: generate-spec" in skills_result.findings
     assert any("modified skill" in f and "wrapup" in f for f in skills_result.findings)
@@ -421,11 +437,14 @@ def test_ac9_confirmed_fixes_migrate_everything_and_second_run_is_clean(
     run_checks(cfg, config_file, confirm=_all_yes)
 
     # Store: moved with git mv, exactly one new commit, unrelated dirty file untouched.
-    assert (store / "docs.template" / "INTENT.template.md").is_file()
+    assert (store / ".metaproject.template" / "docs.template" / "INTENT.template.md").is_file()
     assert not (store / "intent.template.md").exists()
     assert int(_git(store, "rev-list", "--count", "HEAD")) == commits_before + 1
     changed = _git(store, "show", "--name-status", "--format=", "HEAD")
-    assert "R100\tintent.template.md\tdocs.template/INTENT.template.md" in changed
+    assert (
+        "R100\tintent.template.md\t.metaproject.template/docs.template/INTENT.template.md"
+        in changed
+    )
     assert "hand-notes.md" not in changed
     assert "?? hand-notes.md" in _git(store, "status", "--porcelain")
 
@@ -433,20 +452,20 @@ def test_ac9_confirmed_fixes_migrate_everything_and_second_run_is_clean(
     targets = load_config(config_file).learn.targets
     assert targets[:5] == [
         "AGENTS.md",
-        "docs/INTENT.md",
-        "docs/TECH-DESIGN.md",
-        "docs/",
+        ".metaproject/docs/INTENT.md",
+        ".metaproject/docs/TECH-DESIGN.md",
+        ".metaproject/docs/",
         "Makefile",
     ]
     assert len(targets) == len(set(targets))
     assert "intent.md" not in targets
 
     # Project docs: moved, content intact, history preserved (git mv), not committed.
-    for old, new in LEGACY_NAMES.items():
+    for old, new in LEGACY_ROOT_NAMES.items():
         assert (docs_project / new).read_text(encoding="utf-8") == _OLD_DOC_TEXT[old]
         assert old not in os.listdir(docs_project)
     status = _git(docs_project, "status", "--porcelain")
-    assert "R  intent.md -> docs/INTENT.md" in status
+    assert "R  intent.md -> .metaproject/docs/INTENT.md" in status
     assert int(_git(docs_project, "rev-list", "--count", "HEAD")) == 1
 
     # Skills: missing installed, stale left byte-identical.
@@ -469,18 +488,22 @@ def test_ac9_confirmed_fixes_migrate_everything_and_second_run_is_clean(
 def test_ac10_existing_docs_file_is_a_conflict_both_kept(tmp_path: Path) -> None:
     cfg, config_file = _make_env(tmp_path)
     project = _legacy_project(cfg, tmp_path / "projects", "clash", git_repo=False)
-    (project / "docs").mkdir()
-    (project / "docs" / "INTENT.md").write_text("# already migrated\n", encoding="utf-8")
+    (project / ".metaproject" / "docs").mkdir(parents=True)
+    (project / ".metaproject" / "docs" / "INTENT.md").write_text(
+        "# already migrated\n", encoding="utf-8"
+    )
 
     results = run_checks(cfg, config_file, confirm=_all_yes)
     docs = next(r for r in results if r.name == f"project docs: {project}")
 
-    assert "conflict: intent.md kept; docs/INTENT.md already exists" in docs.findings
+    assert "conflict: intent.md kept; .metaproject/docs/INTENT.md already exists" in docs.findings
     assert docs.healthy is False
     assert (project / "intent.md").read_text(encoding="utf-8") == _OLD_DOC_TEXT["intent.md"]
-    assert (project / "docs" / "INTENT.md").read_text(encoding="utf-8") == "# already migrated\n"
+    assert (project / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8") == (
+        "# already migrated\n"
+    )
     # The rest still moved (plain rename: not a git project).
-    assert (project / "docs" / "SPEC.md").is_file()
+    assert (project / ".metaproject" / "docs" / "SPEC.md").is_file()
 
 
 def test_declining_one_project_does_not_block_the_next(tmp_path: Path) -> None:
@@ -495,7 +518,7 @@ def test_declining_one_project_does_not_block_the_next(tmp_path: Path) -> None:
     run_checks(cfg, config_file, confirm=decline_first)
 
     assert (first / "intent.md").is_file()
-    assert (second / "docs" / "INTENT.md").is_file()
+    assert (second / ".metaproject" / "docs" / "INTENT.md").is_file()
 
 
 def test_unmanaged_project_is_never_migrated(tmp_path: Path) -> None:
@@ -515,26 +538,44 @@ def test_unmanaged_project_is_never_migrated(tmp_path: Path) -> None:
 
 
 def test_relocate_case_only_rename_goes_through_an_interim_name(tmp_path: Path) -> None:
-    """R-NFR-6: `docs/intent.md` → `docs/INTENT.md` really changes the entry's case."""
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "intent.md").write_text("mine\n", encoding="utf-8")
+    """R-NFR-6: `.metaproject/docs/intent.md` → `.metaproject/docs/INTENT.md` changes case."""
+    (tmp_path / ".metaproject" / "docs").mkdir(parents=True)
+    (tmp_path / ".metaproject" / "docs" / "intent.md").write_text("mine\n", encoding="utf-8")
 
-    assert _relocate(tmp_path, "docs/intent.md", "docs/INTENT.md", git_repo=False) is None
+    assert (
+        _relocate(
+            tmp_path,
+            ".metaproject/docs/intent.md",
+            ".metaproject/docs/INTENT.md",
+            git_repo=False,
+        )
+        is None
+    )
 
-    assert os.listdir(tmp_path / "docs") == ["INTENT.md"]
-    assert (tmp_path / "docs" / "INTENT.md").read_text(encoding="utf-8") == "mine\n"
+    assert os.listdir(tmp_path / ".metaproject" / "docs") == ["INTENT.md"]
+    assert (tmp_path / ".metaproject" / "docs" / "INTENT.md").read_text(
+        encoding="utf-8"
+    ) == "mine\n"
 
 
 def test_relocate_case_only_rename_in_git(tmp_path: Path) -> None:
     project = tmp_path / "gitcase"
-    (project / "docs").mkdir(parents=True)
-    (project / "docs" / "intent.md").write_text("mine\n", encoding="utf-8")
+    (project / ".metaproject" / "docs").mkdir(parents=True)
+    (project / ".metaproject" / "docs" / "intent.md").write_text("mine\n", encoding="utf-8")
     init_repository(project)
 
-    assert _relocate(project, "docs/intent.md", "docs/INTENT.md", git_repo=True) is None
+    assert (
+        _relocate(
+            project,
+            ".metaproject/docs/intent.md",
+            ".metaproject/docs/INTENT.md",
+            git_repo=True,
+        )
+        is None
+    )
 
-    assert os.listdir(project / "docs") == ["INTENT.md"]
-    assert "docs/INTENT.md" in _git(project, "ls-files")
+    assert os.listdir(project / ".metaproject" / "docs") == ["INTENT.md"]
+    assert ".metaproject/docs/INTENT.md" in _git(project, "ls-files")
 
 
 def test_orphaned_global_skill_symlink_is_unlinked_not_followed(tmp_path: Path, home: Path) -> None:
@@ -561,7 +602,9 @@ def test_default_confirm_asks_and_respects_no(
     import questionary
 
     cfg, config_file = _make_env(tmp_path)
-    victim = Path(cfg.templates_dir) / "docs.template" / "INTENT.template.md"
+    victim = (
+        Path(cfg.templates_dir) / ".metaproject.template" / "docs.template" / "INTENT.template.md"
+    )
     victim.unlink()
     asked: list[str] = []
 
@@ -614,11 +657,11 @@ def test_scoped_run_fixes_only_that_project(tmp_path: Path) -> None:
     results = run_checks(cfg, config_file, confirm=_all_yes, project=target)
 
     assert all(r.healthy for r in results)
-    assert (target / "docs" / "INTENT.md").is_file()
+    assert (target / ".metaproject" / "docs" / "INTENT.md").is_file()
     assert (target / ".agents" / "skills" / "write-intent" / "SKILL.md").is_file()
     # The bystander project and the environment stay out of scope.
     assert (bystander / "intent.md").is_file()
-    assert not (bystander / "docs").exists()
+    assert not (bystander / ".metaproject").exists()
     assert _snapshot(store, config_file.parent) == before
 
     # A full run afterwards still sees the bystander's findings, and the environment
@@ -643,7 +686,7 @@ def test_scoped_identity_backfill_brings_project_into_scope(tmp_path: Path) -> N
     assert _check(results, "project identity").fixed is True
     new_identity = read_identity(project)
     assert new_identity is not None and new_identity.author == "Test Operator"
-    assert (project / "docs" / "INTENT.md").read_text(encoding="utf-8") == (
+    assert (project / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8") == (
         "the project's own words\n"
     )
     assert (project / ".agents" / "skills" / "write-intent" / "SKILL.md").is_file()
@@ -676,7 +719,7 @@ def test_cli_doctor_scoped_project_dry_run(runner: CliRunner, tmp_path: Path) ->
 
     assert result.exit_code == 1
     assert "cli_target" in result.output
-    assert "docs/INTENT.md" in result.output
+    assert ".metaproject/docs/INTENT.md" in result.output
     assert "cli_bystander" not in result.output
     assert (bystander / "intent.md").is_file()
 

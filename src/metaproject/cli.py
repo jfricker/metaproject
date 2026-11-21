@@ -1373,8 +1373,8 @@ def print_backfill_result(result, dry_run: bool, target: Path) -> None:
 def backfill_cmd(
     files: Optional[List[str]] = typer.Argument(
         None,
-        help="Specific deliverables to create (e.g. docs/HANDOFF.md; old names such as "
-        "intent.md resolve to their docs/ path). Default: every "
+        help="Specific deliverables to create (e.g. .metaproject/docs/HANDOFF.md; old names "
+        "like intent.md or docs/HANDOFF.md resolve to .metaproject/docs/). Default: every "
         "missing deliverable `new` scaffolds.",
     ),
     project_dir: Optional[Path] = typer.Option(

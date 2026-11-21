@@ -72,12 +72,14 @@ def test_backfill_from_a_subdirectory_acts_on_the_sub_project(
     runner: CliRunner, mono: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(mono["deep"])
-    result = runner.invoke(app, ["backfill", "docs/HANDOFF.md", "--templates", TEMPLATES])
+    result = runner.invoke(
+        app, ["backfill", ".metaproject/docs/HANDOFF.md", "--templates", TEMPLATES]
+    )
     assert result.exit_code == 0, result.output
     assert f"project: {mono['sub']}" in result.output
-    assert (mono["sub"] / "docs" / "HANDOFF.md").is_file()
-    assert not (mono["deep"] / "docs").exists()
-    assert not (mono["root"] / "docs").exists()
+    assert (mono["sub"] / ".metaproject" / "docs" / "HANDOFF.md").is_file()
+    assert not (mono["deep"] / ".metaproject").exists()
+    assert not (mono["root"] / ".metaproject" / "docs").exists()
 
 
 def test_skills_status_and_sync_resolve_to_the_sub_project(

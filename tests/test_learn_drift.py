@@ -175,13 +175,10 @@ _STATE_TEMPLATE = (
 def _structure_templates_dir(tmp_path: Path) -> Path:
     """A shared template store carrying intent.md and STATE.md templates only."""
     templates_dir = tmp_path / "structure_templates"
-    (templates_dir / "docs.template").mkdir(parents=True, exist_ok=True)
-    (templates_dir / "docs.template" / "INTENT.template.md").write_text(
-        _INTENT_TEMPLATE, encoding="utf-8"
-    )
-    (templates_dir / "docs.template" / "STATE.template.md").write_text(
-        _STATE_TEMPLATE, encoding="utf-8"
-    )
+    store_docs = templates_dir / ".metaproject.template" / "docs.template"
+    store_docs.mkdir(parents=True, exist_ok=True)
+    (store_docs / "INTENT.template.md").write_text(_INTENT_TEMPLATE, encoding="utf-8")
+    (store_docs / "STATE.template.md").write_text(_STATE_TEMPLATE, encoding="utf-8")
     return templates_dir
 
 
@@ -221,12 +218,16 @@ def test_collect_drift_records_a_missing_heading_as_a_removal_key(tmp_path: Path
     project_dir = _structure_project(
         tmp_path,
         "proj1",
-        {"docs/INTENT.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+        {
+            ".metaproject/docs/INTENT.md": (
+                f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"
+            )
+        },
     )
 
     signal = collect_drift([project_dir], templates_dir)
 
-    assert signal.reports(project_dir, "docs/INTENT.md", ["## Constraints"])
+    assert signal.reports(project_dir, ".metaproject/docs/INTENT.md", ["## Constraints"])
 
 
 def test_collect_drift_records_no_key_for_an_extra_heading(tmp_path: Path) -> None:
@@ -237,7 +238,7 @@ def test_collect_drift_records_no_key_for_an_extra_heading(tmp_path: Path) -> No
         tmp_path,
         "alpha",
         {
-            "docs/STATE.md": (
+            ".metaproject/docs/STATE.md": (
                 f"# STATE.md\n\n## Process\n{_BODY}\n\n"
                 f"## Implementation phases\n{_BODY}\n\n"
                 f"## Risks\n{_BODY}\n\n"
@@ -248,8 +249,8 @@ def test_collect_drift_records_no_key_for_an_extra_heading(tmp_path: Path) -> No
 
     signal = collect_drift([project_dir], templates_dir)
 
-    assert (str(project_dir), "docs/STATE.md") not in signal.lines
-    assert not signal.reports(project_dir, "docs/STATE.md", ["## Risks"])
+    assert (str(project_dir), ".metaproject/docs/STATE.md") not in signal.lines
+    assert not signal.reports(project_dir, ".metaproject/docs/STATE.md", ["## Risks"])
 
 
 def test_drift_for_a_file_review_saw_but_collect_gathered_no_evidence_for_is_inert(
@@ -265,10 +266,14 @@ def test_drift_for_a_file_review_saw_but_collect_gathered_no_evidence_for_is_ine
         project_dir = _structure_project(
             tmp_path,
             name,
-            {"docs/INTENT.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+            {
+                ".metaproject/docs/INTENT.md": (
+                    f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"
+                )
+            },
         )
         project_dirs.append(project_dir)
-        records += _structure_collect(project_dir, templates_dir, "docs/INTENT.md")
+        records += _structure_collect(project_dir, templates_dir, ".metaproject/docs/INTENT.md")
 
     weights = {r.project_path: 1.0 for r in records}
     # A phantom structural finding for a file none of the `intent.md`-only records
@@ -276,14 +281,14 @@ def test_drift_for_a_file_review_saw_but_collect_gathered_no_evidence_for_is_ine
     # contributes nothing, but an out-of-band STATE.md finding is simulated here to
     # isolate the invariant without depending on a second real project).
     phantom = DriftSignal(
-        lines={(str(project_dirs[0]), "docs/STATE.md"): frozenset({"## Risks"})},
+        lines={(str(project_dirs[0]), ".metaproject/docs/STATE.md"): frozenset({"## Risks"})},
         missing={},
     )
 
     proposals = structure.propose(records, weights, drift=phantom, min_evidence=2)
 
     assert proposals, "the intent.md removal must still be proposed"
-    assert {p.target_file for p in proposals} == {"docs/INTENT.md"}
+    assert {p.target_file for p in proposals} == {".metaproject/docs/INTENT.md"}
 
 
 def test_review_structure_drift_raises_a_removal_score_over_the_same_removal_unboosted(
@@ -305,17 +310,23 @@ def test_review_structure_drift_raises_a_removal_score_over_the_same_removal_unb
         project_dir = _structure_project(
             tmp_path,
             name,
-            {"docs/INTENT.md": f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"},
+            {
+                ".metaproject/docs/INTENT.md": (
+                    f"# intent.md\n\n## Overview\n{_BODY}\n\n## Scope\n{_BODY}\n"
+                )
+            },
         )
         project_dirs.append(project_dir)
-        removal_records += _structure_collect(project_dir, templates_dir, "docs/INTENT.md")
+        removal_records += _structure_collect(
+            project_dir, templates_dir, ".metaproject/docs/INTENT.md"
+        )
 
     for name in ("alpha", "beta"):
         project_dir = _structure_project(
             tmp_path,
             name,
             {
-                "docs/STATE.md": (
+                ".metaproject/docs/STATE.md": (
                     f"# STATE.md\n\n## Process\n{_BODY}\n\n"
                     f"## Implementation phases\n{_BODY}\n\n"
                     f"## Risks\n{_BODY}\n\n"
@@ -324,7 +335,9 @@ def test_review_structure_drift_raises_a_removal_score_over_the_same_removal_unb
             },
         )
         project_dirs.append(project_dir)
-        addition_records += _structure_collect(project_dir, templates_dir, "docs/STATE.md")
+        addition_records += _structure_collect(
+            project_dir, templates_dir, ".metaproject/docs/STATE.md"
+        )
 
     records = removal_records + addition_records
     weights = {r.project_path: 1.0 for r in records}
