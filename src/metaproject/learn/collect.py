@@ -362,7 +362,11 @@ def iter_project_dirs(root: Path, max_depth: int = 4) -> Iterator[Path]:
     root = Path(root).expanduser().resolve()
 
     def walk(current: Path, depth: int) -> Iterator[Path]:
-        if depth > max_depth or current.name in IGNORED_DIRECTORIES:
+        if (
+            depth > max_depth
+            or current.name in IGNORED_DIRECTORIES
+            or current.name == ".metaproject"
+        ):
             return
         if is_project_root(current):
             yield current
@@ -375,7 +379,7 @@ def iter_project_dirs(root: Path, max_depth: int = 4) -> Iterator[Path]:
         for child in children:
             if not child.is_dir() or child.is_symlink():
                 continue
-            if child.name in IGNORED_DIRECTORIES:
+            if child.name in IGNORED_DIRECTORIES or child.name == ".metaproject":
                 continue
             yield from walk(child, depth + 1)
 

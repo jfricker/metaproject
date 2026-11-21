@@ -469,3 +469,46 @@ def test_skill_directories_are_never_collected_even_when_configured(tmp_path: Pa
         ],
     )
     assert found == ["AGENTS.md"]
+
+
+def test_ac11_learn_ignores_project_docs_guide_under_default_targets(tmp_path: Path) -> None:
+    """AC-11 (R-LEG-4): default learn targets ignore user `docs/guide.md` and collect
+    `.metaproject/docs/` structure diffs."""
+    from metaproject.config import load_config
+
+    project = tmp_path / "proj"
+    (project / ".metaproject" / "docs").mkdir(parents=True)
+    (project / ".metaproject" / "docs" / "STATE.md").write_text(
+        "# State\n\n## Overview\nBody\n\n## Custom Section\nExtra content here.\n",
+        encoding="utf-8",
+    )
+    (project / "docs").mkdir()
+    (project / "docs" / "guide.md").write_text("# User Guide\nDocs content.\n", encoding="utf-8")
+
+    templates = tmp_path / "templates"
+    (templates / ".metaproject.template" / "docs.template").mkdir(parents=True)
+    (templates / ".metaproject.template" / "docs.template" / "STATE.template.md").write_text(
+        "# State\n\n## Overview\nBody\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_config(tmp_path / "missing-config.json")
+    records = collect_project(project, templates, config=cfg)
+    targets = {r.target_file for r in records}
+    assert ".metaproject/docs/STATE.md" in targets
+    assert "docs/guide.md" not in targets
+
+
+def test_ac11_iter_project_dirs_skips_dot_metaproject_archives(tmp_path: Path) -> None:
+    """R-LEG-3: `iter_project_dirs` never descends into `.metaproject/docs/archive/<cycle>/`."""
+    from metaproject.learn.collect import iter_project_dirs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "pyproject.toml").write_text('[project]\nname = "proj"\n', encoding="utf-8")
+    archived = project / ".metaproject" / "docs" / "archive" / "cycle-1"
+    archived.mkdir(parents=True)
+    (archived / "INTENT.md").write_text("# Archived\n", encoding="utf-8")
+    (archived / "Makefile").write_text("all:\n", encoding="utf-8")
+
+    assert list(iter_project_dirs(project)) == [project.resolve()]

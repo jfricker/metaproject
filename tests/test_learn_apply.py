@@ -978,3 +978,34 @@ def test_c28_directory_and_config_shaped_targets_survive_a_scan(tmp_path: Path) 
     assert result.projects_scanned == 1
     assert result.files_scanned >= 2
     assert snapshot(ws.templates) == before
+
+
+def test_ac11_learn_apply_writes_into_dot_metaproject_template_docs_template(
+    tmp_path: Path, db: sqlite_utils.Database
+) -> None:
+    """AC-11: `.metaproject/docs/` proposal writes into `.metaproject.template/docs.template/`."""
+    ws = build_workspace(tmp_path, git_init_templates=True, only=["spire"])
+    dest = template_destination(".metaproject/docs/NOTES.md", ws.templates)
+    assert dest == (ws.templates / ".metaproject.template" / "docs.template" / "NOTES.template.md")
+
+    pid = upsert_proposal(
+        db,
+        ProposalDraft(
+            content_hash="hash-dot-metaproject-notes",
+            target_file=".metaproject/docs/NOTES.md",
+            kind="new_template",
+            title="Add cycle notes template",
+            rationale="Two projects maintain a NOTES.md cycle note.",
+            proposed_body="# Notes\n\n## Summary\n\n{{ project_name }}\n",
+            evidence_count=2,
+            evidence_score=1.5,
+            template_path=None,
+            target_section=None,
+        ),
+    )
+
+    outcome = apply_proposal(db, pid, templates_dir=ws.templates)
+    assert outcome.commit == git(ws.templates, "rev-parse", "HEAD").strip()
+    assert dest.is_file()
+    assert not (ws.templates / "docs.template" / "NOTES.template.md").exists()
+    assert "cycle notes template" in git(ws.templates, "log", "-1", "--pretty=%B").lower()

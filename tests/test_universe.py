@@ -485,3 +485,66 @@ def test_has_doc_columns_count_either_location(tmp_path: Path) -> None:
     assert records["legacy"]["has_intent_md"] == 1
     assert records["legacy"]["has_state_md"] == 1
     assert records["legacy"]["has_handoff_md"] == 0
+
+
+def test_ac11_universe_recognizes_dot_metaproject_docs_and_all_three_layouts(
+    tmp_path: Path,
+) -> None:
+    """AC-11 (R-LEG-3): `.metaproject/docs/`, `docs/`, and root markers all work."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+
+    current = ws / "current_proj"
+    (current / ".metaproject" / "docs").mkdir(parents=True)
+    for name in ("INTENT.md", "STATE.md", "HANDOFF.md"):
+        (current / ".metaproject" / "docs" / name).write_text("# x\n", encoding="utf-8")
+
+    v09 = ws / "v09_proj"
+    (v09 / "docs").mkdir(parents=True)
+    for name in ("INTENT.md", "STATE.md", "HANDOFF.md"):
+        (v09 / "docs" / name).write_text("# x\n", encoding="utf-8")
+
+    v08 = ws / "v08_proj"
+    v08.mkdir()
+    for name in ("intent.md", "STATE.md", "HANDOFF.md"):
+        (v08 / name).write_text("# x\n", encoding="utf-8")
+
+    for proj in (current, v09, v08):
+        assert is_project_root(proj)
+
+    db = get_db(tmp_path / "universe.db")
+    records = {r["name"]: r for r in scan_universe(ws, db=db)}
+    assert set(records) == {"current_proj", "v09_proj", "v08_proj"}
+    for key in ("current_proj", "v09_proj", "v08_proj"):
+        assert records[key]["has_intent_md"] == 1
+        assert records[key]["has_state_md"] == 1
+        assert records[key]["has_handoff_md"] == 1
+
+
+def test_ac11_universe_tracks_dot_metaproject_mtime_and_skips_archived_cycles(
+    tmp_path: Path,
+) -> None:
+    """R-LEG-3: edits under `.metaproject/docs/` count for mtime, while
+    `.metaproject/docs/archive/<cycle>/` is never cataloged as a project."""
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    readme = app_dir / "README.md"
+    readme.write_text("# App\n", encoding="utf-8")
+    old_ts = 946684800.0  # 2000-01-01T00:00:00Z
+    os.utime(readme, (old_ts, old_ts))
+
+    archived = app_dir / ".metaproject" / "docs" / "archive" / "cycle-1"
+    archived.mkdir(parents=True)
+    (archived / "INTENT.md").write_text("# Old cycle\n", encoding="utf-8")
+    (archived / "Makefile").write_text("all:\n", encoding="utf-8")
+    os.utime(archived / "INTENT.md", (old_ts, old_ts))
+    os.utime(archived / "Makefile", (old_ts, old_ts))
+
+    fresh_intent = app_dir / ".metaproject" / "docs" / "INTENT.md"
+    fresh_intent.write_text("# Current intent\n", encoding="utf-8")
+
+    db = get_db(tmp_path / "universe.db")
+    records = scan_universe(app_dir, db=db)
+    assert [r["name"] for r in records] == ["app"]
+    assert records[0]["last_modified_ts"] > old_ts + 1_000_000
+    assert records[0]["classification"] == "Active Now"

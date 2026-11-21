@@ -82,9 +82,15 @@ def is_project_root(path: Path) -> bool:
         return True
 
     # 2. SDLC root indicators. `.metaproject.json` anchors a nested sub-project that
-    # carries nothing else. Root `intent.md` stays a marker so an unmigrated project
-    # is still recognised (R-DOC-6).
-    for marker in (".metaproject.json", "AGENTS.md", "docs/INTENT.md", "intent.md"):
+    # carries nothing else. `.metaproject/docs/INTENT.md`, legacy `docs/INTENT.md`,
+    # and root `intent.md` all stay markers across migrated and unmigrated layouts (R-LEG-3).
+    for marker in (
+        ".metaproject.json",
+        "AGENTS.md",
+        ".metaproject/docs/INTENT.md",
+        "docs/INTENT.md",
+        "intent.md",
+    ):
         if (path / marker).exists():
             return True
 
@@ -97,7 +103,7 @@ def is_project_root(path: Path) -> bool:
 
 
 def _has_doc(project_dir: Path, *locations: str) -> int:
-    """1 when a cycle document exists at its `docs/` path or its legacy root name."""
+    """1 when a cycle document exists at `.metaproject/docs/` or a legacy location."""
     return 1 if any((project_dir / rel).exists() for rel in locations) else 0
 
 
@@ -112,7 +118,7 @@ def is_archived_path(path: Path) -> bool:
 def extract_title(project_dir: Path) -> str:
     """Extract project title: `.metaproject.json` first, else manifest fallback (R-ID-3).
 
-    `docs/INTENT.md` is never consulted and a hyphenated title is never truncated.
+    `.metaproject/docs/INTENT.md` is never consulted and a hyphenated title is never truncated.
     """
     identity = read_identity(project_dir)
     if identity is not None:
@@ -124,7 +130,7 @@ def extract_title(project_dir: Path) -> str:
 def extract_description(project_dir: Path) -> str:
     """Extract project description: `.metaproject.json` first, else manifest fallback.
 
-    `docs/INTENT.md` is never consulted (R-ID-3).
+    `.metaproject/docs/INTENT.md` is never consulted (R-ID-3).
     """
     identity = read_identity(project_dir)
     if identity is not None:
@@ -227,7 +233,11 @@ def scan_universe(
     discovered_projects: List[Dict[str, Any]] = []
 
     def walk_dirs(current: Path, depth: int) -> None:
-        if depth > max_depth or current.name in IGNORED_DIRECTORIES:
+        if (
+            depth > max_depth
+            or current.name in IGNORED_DIRECTORIES
+            or current.name == ".metaproject"
+        ):
             return
 
         # Check if current is a project root
@@ -253,9 +263,15 @@ def scan_universe(
                 "is_git": is_git,
                 "git_branch": branch,
                 "has_agents_md": 1 if (current / "AGENTS.md").exists() else 0,
-                "has_intent_md": _has_doc(current, "docs/INTENT.md", "intent.md"),
-                "has_state_md": _has_doc(current, "docs/STATE.md", "STATE.md"),
-                "has_handoff_md": _has_doc(current, "docs/HANDOFF.md", "HANDOFF.md"),
+                "has_intent_md": _has_doc(
+                    current, ".metaproject/docs/INTENT.md", "docs/INTENT.md", "intent.md"
+                ),
+                "has_state_md": _has_doc(
+                    current, ".metaproject/docs/STATE.md", "docs/STATE.md", "STATE.md"
+                ),
+                "has_handoff_md": _has_doc(
+                    current, ".metaproject/docs/HANDOFF.md", "docs/HANDOFF.md", "HANDOFF.md"
+                ),
                 "has_readme_md": 1 if (current / "README.md").exists() else 0,
                 "scanned_at": scan_start_iso,
                 "scan_root": str(resolved_root),
@@ -265,13 +281,14 @@ def scan_universe(
             discovered_projects.append(record)
 
             # If current is not the root, do not traverse into child directories
-            # unless it contains a nested git repository
+            # unless it contains a nested git repository (never inside `.metaproject`).
             if current != resolved_root:
                 try:
                     for child in current.iterdir():
                         if (
                             child.is_dir()
                             and child.name not in IGNORED_DIRECTORIES
+                            and child.name != ".metaproject"
                             and is_git_repository(child)
                         ):
                             walk_dirs(child, depth + 1)
@@ -279,10 +296,16 @@ def scan_universe(
                     pass
                 return
 
-        # If not a project root OR current == resolved_root: traverse subdirectories
+        # If not a project root OR current == resolved_root: traverse subdirectories,
+        # skipping `.metaproject` so archived cycles under `.metaproject/docs/archive/`
+        # are never cataloged as nested projects (`R-LEG-3`).
         try:
             for child in current.iterdir():
-                if child.is_dir() and child.name not in IGNORED_DIRECTORIES:
+                if (
+                    child.is_dir()
+                    and child.name not in IGNORED_DIRECTORIES
+                    and child.name != ".metaproject"
+                ):
                     walk_dirs(child, depth + 1)
         except Exception:
             pass
