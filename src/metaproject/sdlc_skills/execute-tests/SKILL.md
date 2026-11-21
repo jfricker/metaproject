@@ -67,13 +67,18 @@ look — tests, build, and (for UI work) screenshots.
    the fix requires a decision outside `docs/PLAN.md`'s scope — then stop and flag it.
 6. Check each item in `docs/SPEC.md`'s Acceptance criteria against what was actually
    implemented; note any criteria not yet met.
-7. Report results plainly: what passed, what failed, what was fixed, and anything still
+7. Record in `docs/STATE.md` (wrapup reads these sections and nothing else): unmet
+   acceptance criteria and unresolved failures under **Open items carried into PLAN.md**;
+   new regression guards under **Design invariants**; facts this run established under
+   **Verified facts**.
+8. Report results plainly: what passed, what failed, what was fixed, and anything still
    open — never claim tests pass without having run them.
 
 ## Output artifact
 
 A verified, green test/build run (or an explicit list of what's still failing and why),
-ready for `wrapup`.
+ready for `wrapup`. No cycle skill opens a PR: if the project uses them, opening one is the
+operator's call, and landing the branch is `/shipit`'s.
 
 ## Stop conditions / human gate
 

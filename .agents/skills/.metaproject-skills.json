@@ -2,7 +2,7 @@
   "skills": {
     "backlog-factory": {
       "files": {
-        "SKILL.md": "dcfde1b154f018475aee3787c757879083e8fb071fcd3bc7b75f82753ad5de35"
+        "SKILL.md": "b415a0dba32236b811c74b80f3d83f0e77ab8476aefe9c705577dae8e5dececb"
       },
       "release": "0.9.1"
     },
@@ -14,7 +14,7 @@
     },
     "execute-tests": {
       "files": {
-        "SKILL.md": "38ece6da480a0c2281e1a0f96128e5b3a4d4a712e26e62722d60bb03fb1fa6a3"
+        "SKILL.md": "7b28382b785a9378f7299759947ddf100fec02e13dde821325aeaf52d0fc19d0"
       },
       "release": "0.9.1"
     },
@@ -26,7 +26,7 @@
     },
     "generate-plan": {
       "files": {
-        "SKILL.md": "8d4274de9b9fca2a2ed667855758c7f9511df503682144b675b4b896a46bfd50"
+        "SKILL.md": "ea7a7be808d8a941d2a8ba3277bafc0d98d37b60e2019c9135f7c41b7ce70e15"
       },
       "release": "0.9.1"
     },
@@ -38,21 +38,21 @@
     },
     "implement-plan": {
       "files": {
-        "SKILL.md": "3e693510631b7b0c00bfd72ee1cdac02db0b030ecc9fe46037bb901de3dd3079"
+        "SKILL.md": "13ae673d5079d841470f4ae602c6dc4e2cff09eb2e95ee2337306c5433f0b2ad"
       },
       "release": "0.9.1"
     },
     "metaproject": {
       "files": {
-        "SKILL.md": "f15e344e9a0c87a6a4bea959b00f409ef12561a0f88e7436be8e387f8c1dbb4f",
-        "references/commands.md": "4d5b4041c9d5e0b3a0c21be3244802e86976aee2d81b47f654a4cc373c37201e",
+        "SKILL.md": "67e46db907bc23d140ea4366b4dcabff9395c7266bba044c4a89a89f327e432e",
+        "references/commands.md": "8d5c57448ddcb7b34b476cfa2f8cb25ef05c5500f40da9c513e29777ff2bba5c",
         "references/documents.md": "0850c437d82c30d5ca6fa743782a8d6b84671af2632f45d748f0df61aef3c21f"
       },
       "release": "0.9.1"
     },
     "shipit": {
       "files": {
-        "SKILL.md": "752a387aafd777b0e0a2e38e186be80c0c217f2569be2eac9b2f510834fed2db"
+        "SKILL.md": "07dc635ccef7c8d2fec12b95f84b0d129315af16587f987416b391c5d5c26202"
       },
       "release": "0.9.1"
     },
@@ -64,7 +64,7 @@
     },
     "wrapup": {
       "files": {
-        "SKILL.md": "cfdbe26e88ceed24eea539891e3d492f2a28b44e8e15e614d15c302b0d7209da"
+        "SKILL.md": "8294e90df5875a5c0a42340deb51834f92ed2c7fb0048476de06eef333c0ff32"
       },
       "release": "0.9.1"
     },

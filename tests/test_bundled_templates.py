@@ -185,3 +185,10 @@ def test_new_dry_run_lists_every_r_tpl_4_file_and_not_handoff(tmp_path: Path) ->
         "/" not in p and p.endswith(".md") and p not in ("AGENTS.md", "CLAUDE.md", "README.md")
         for p in rendered
     )
+
+
+def test_todo_template_has_carry_over_above_the_verification_log() -> None:
+    """#27: Carry over section first, the append-only verification log after it."""
+    text = (TEMPLATES_DIR / "docs.template/TODO.template.md").read_text(encoding="utf-8")
+    assert "## Carry over" in text
+    assert text.index("## Carry over") < text.index("Needs manual verification")

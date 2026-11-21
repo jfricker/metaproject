@@ -71,10 +71,12 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
    production deploy from this skill.
 10. **Smoke-test the preview**: `curl -fsS <url>/health`, or `curl -fsSI <url>` expecting a
     2xx/3xx, plus one page load per UI item.
-11. **Clean up via `/shipit`** for each merged branch (worktree, local and remote branch).
-    If `.agents/skills/shipit/` is missing, fall back to `git worktree remove <path>`,
-    `git worktree prune` (run these outside the sandbox), `git branch -d <branch>` and
-    `git push origin --delete <branch>`. Unmerged items keep their worktree and branch.
+11. **Clean up** each merged branch (worktree, local and remote branch) by following only
+    `shipit`'s step 6 ("Clean up"). Never invoke `/shipit` as a whole here: it merges to
+    `main`, pushes and deploys to production. If `.agents/skills/shipit/` is missing, run
+    `git worktree remove <path>`, `git worktree prune` (run these outside the sandbox),
+    `git branch -d <branch>` and `git push origin --delete <branch>`. Unmerged items keep
+    their worktree and branch.
 12. **Leave the sources alone.** Do not change a backlog doc's Status (promotion is
     `write-intent`'s job) and do not close issues by hand; the PR's "Closes #n" does that.
     Note each PR link in the final table.

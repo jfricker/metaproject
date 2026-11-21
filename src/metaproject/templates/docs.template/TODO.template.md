@@ -1,9 +1,19 @@
 # TODO
 
 Standing list of things the operator still has to do or check by hand. Never archived,
-never reset: `wrapup` appends a dated entry per cycle; delete or tick entries once done.
+never reset; delete or tick entries once done.
 
-<!-- wrapup appends entries below, newest last. Format:
+## Carry over
+
+Work found during development or discovery that belongs to a later cycle. `wrapup` adds
+each open item the operator chose to carry forward; tick it when a cycle picks it up.
+
+<!-- Format:
+- [ ] <item> — carried from `docs/archive/YYYY-MM-DD-<slug>/` (YYYY-MM-DD)
+-->
+
+<!-- Manual verification log: wrapup appends one dated entry per cycle below, newest
+last. Format:
 
 ## YYYY-MM-DD: Needs manual verification (<cycle slug>)
 

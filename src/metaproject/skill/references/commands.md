@@ -24,6 +24,7 @@ a managed one needs `metaproject adopt --dir .`.
 - [universe](#universe)
 - [doctor](#doctor)
 - [skills](#skills)
+- [templates](#templates)
 - [Agent-session guards](#agent-session-guards)
 - [Web profile (Claude Code on the web)](#web-profile-claude-code-on-the-web)
 - [Optional `tui` extra](#optional-tui-extra)
@@ -34,7 +35,8 @@ a managed one needs `metaproject adopt --dir .`.
 
 ## init
 
-`metaproject init [SOURCE_TEMPLATES] [PROJECT_HOME]` — **interactive**
+`metaproject init [SOURCE_TEMPLATES] [PROJECT_HOME]` — **interactive**. `metaproject install`
+is an alias with the same arguments and flags.
 
 Creates `~/.metaproject/`: `config.json`, the template store (git-backed, so every
 `learn apply` is a revertible commit), and `universe.db`. It installs no skill: project
@@ -219,6 +221,7 @@ is missing. The ignore ledger lives at `~/.metaproject/review-ignore.json`.
 
 | Subcommand | Safety | Purpose |
 |---|---|---|
+| `learn review` | **interactive** (TUI) | Review the existing queue without scanning |
 | `learn list` | read-only | Table of proposals: id, target file, title, evidence count, score |
 | `learn show <id>` | read-only | Rationale, proposed body, contributing projects |
 | `learn scan [ROOT]` | **refused in an agent session**; calls a model, sends data off-machine | Collect drift and synthesize proposals |
@@ -228,6 +231,11 @@ is missing. The ignore ledger lives at `~/.metaproject/review-ignore.json`.
 
 `learn list --status pending|applied|rejected|all` (default `pending`), `--verbose` adds
 the proposed section.
+
+`learn review` flags: `--target <file>` (only that target file), `--status <status>`
+(default `pending`; `all` for every proposal), `--min-score <float>`, `--no-tui` (print
+the queue table instead of opening the reviewer), `--templates <path>`. The bare
+`learn [ROOT]` takes the `learn scan` flags plus `--no-tui`.
 
 `learn scan` flags: `--all` (scan the configured projects home), `--depth <int>`,
 `--since <date-or-N-days>`, `--yes` (skip the egress confirmation), `--model <name>`,
@@ -245,6 +253,7 @@ are redacted; only diffs leave the machine, never whole files.
 ## universe
 
 `metaproject universe [TARGET_DIR]` — scans and catalogs into `~/.metaproject/universe.db`.
+`metaproject universe summary` is the same as `--summary`.
 
 | Flag | Effect |
 |---|---|
@@ -257,6 +266,7 @@ are redacted; only diffs leave the machine, never whole files.
 | `--show-missing` | Include projects cataloged but now gone |
 | `--db <path>` | Alternate database |
 | `--quiet`, `-q` | Refresh the database silently |
+| `--no-tui` | Print the table and exit instead of opening the interactive browser |
 
 Classifications: `Active Now`, `Active Near`, `Active Far`, `Idle`, `Ancient`, `Archived`.
 A project root is anything with a git repo, a `.metaproject` marker, or marker files like
@@ -362,6 +372,12 @@ the same set `doctor` checks. Each project goes through the single-project code 
   to the operator.
 - A project that fails or is refused does not stop the rest; the exit code is then 1.
 - `status --all` is read-only and allowed in agent sessions.
+
+## templates
+
+`metaproject templates fetch [--dir PATH]` — agent-safe. Shallow-fetches (or refreshes)
+the project's git `templates.source` into `~/.metaproject/cache/templates/`; a no-op that
+exits 0 when the project declares none. See [`templates.source`](#templatessource).
 
 ## Agent-session guards
 

@@ -138,8 +138,10 @@ incident.
 them or pass `--yes`. Give it what it needs and it runs unattended.
 
 Read-only or safe to run whenever they would help — none of these write anything except
-`backfill`/`adopt`, which only ever *create* files that did not exist: `review`,
-`universe`, `learn list`, `learn show`, `backfill`, `adopt` (and any `--dry-run`).
+`backfill`/`adopt`, which only ever *create* files that did not exist: `review` (without
+`--unignore`, which edits the ignore ledger), `universe --summary` and `universe --list`
+(a bare `universe [DIR]` rescans and rewrites `universe.db`), `learn list`, `learn show`,
+`backfill`, `adopt` (and any `--dry-run`).
 
 In a Claude Code on the web session (the *web profile*: `CLAUDE_CODE_REMOTE=true` with
 no config, or `METAPROJECT_PROFILE=web`) `universe` and `learn` only print a

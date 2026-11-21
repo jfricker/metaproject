@@ -9,6 +9,10 @@
       {
         "digest": "07d5093bcbff092c36b5fb5127b89d592790bbe5246887d75f28c080a6f053ce",
         "release": "0.9.1"
+      },
+      {
+        "digest": "fbdb071eef074400753db17d7ee7538eebb335aae51c5b138b18ec756b6e827b",
+        "release": "0.9.1"
       }
     ],
     "backlog-new": [
@@ -41,6 +45,14 @@
       {
         "digest": "4c172ecf32547dc3b5dde5fc1e65eeafb3bcec0b330f585d3769207bf67cddf7",
         "release": "0.9.1"
+      },
+      {
+        "digest": "a14c49d61c59e33a6bb9b08bba8da4159ee69f52a65350619e508ec269575476",
+        "release": "0.9.2"
+      },
+      {
+        "digest": "973a562b0cccdbb4dea77a498f74ae1696c0cd24b73ee18ae50ba3a452cf598c",
+        "release": "0.9.1"
       }
     ],
     "generate-design": [
@@ -69,6 +81,10 @@
       {
         "digest": "85b717562c0f77ff9e7c3f6fae2af2adf5592fca65c610a2ecba4a59a92d9a55",
         "release": "0.9.1"
+      },
+      {
+        "digest": "16f1ec6673d574c8cfb025ffddfe9ae2e0d781b80afd23ddf111f0d0fa720188",
+        "release": "0.9.2"
       }
     ],
     "generate-spec": [
@@ -96,6 +112,10 @@
       },
       {
         "digest": "56c0af4f4dc6fd7ecf9b2dda622116f8ae2e5cc1ccff2d124d8a1456f0d2219d",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "d90ee09599dc29bdbabee2f2292c6bf8adfaad7d413244234575125480b598a7",
         "release": "0.9.1"
       }
     ],
@@ -143,6 +163,10 @@
       {
         "digest": "47c98c1c571926f77fe2687fda735a77e4336b15cdd95ba4c4e2f3ae8dc02582",
         "release": "0.9.1"
+      },
+      {
+        "digest": "e7d3aa0fbd84156ae621f7fa29df7b8af956af97ec5a71555c0be55c3183f31d",
+        "release": "0.9.1"
       }
     ],
     "shipit": [
@@ -156,6 +180,10 @@
       },
       {
         "digest": "31578a734651a87f6d8664a5718860f0b4f26ed3084da72c1e559c08d74b604d",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "50c4bcede4f2c3bee5f8a13a034c259f59b84504f86f944da558b7a71e16ad60",
         "release": "0.9.1"
       }
     ],
@@ -184,6 +212,10 @@
       },
       {
         "digest": "cfa488191e6c8aa16bd4f18535a79acfffe5ba5ea137186c05e0399967d6c6d0",
+        "release": "0.9.1"
+      },
+      {
+        "digest": "d7e6677afeff64f6deb28683974607ff5d80fd24b91ea070ed62f5c8f8bab014",
         "release": "0.9.1"
       }
     ],

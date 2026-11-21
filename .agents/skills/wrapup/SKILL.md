@@ -32,8 +32,7 @@ what's worth keeping long-term, and reset `docs/` to a blank slate for the next
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
   own judgment.
-- Tick `docs/STATE.md` Process item 7 once this stage is done (before it's archived — see
-  Process below).
+- Tick `docs/STATE.md` Process item 7 in Process step 7, just before STATE.md is archived.
 
 **Scope discipline**: this skill only ever touches SDLC documents (`docs/INTENT.md`,
 `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/HANDOFF.md`, `docs/STATE.md`), `docs/TODO.md` (append-only), the long-lived docs
@@ -72,7 +71,9 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
      - **Discard** — no longer relevant; drop it.
      - **Carry forward** — it's real but out of scope for this cycle; it gets seeded
        into the next `docs/INTENT.md`'s Open questions section (step 8), linked back to this
-       cycle's archive, so `write-intent` starts the next cycle with it already in view.
+       cycle's archive, so `write-intent` starts the next cycle with it already in view,
+       and recorded under `docs/TODO.md`'s **Carry over** section (step 9) so it survives
+       if the next cycle is about something else.
      - **Return to implement-plan** — the cycle isn't actually finished; this item needs
        real work, not a note. If the operator picks this for *any* item, **stop the
        entire wrapup run here** — archive nothing, reset nothing, hand back to
@@ -105,7 +106,8 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    should list at least `docs/archive/.gitkeep`) — this is a precondition of the repo,
    not something this step creates. If it's missing, fix it with
    `metaproject backfill docs/archive` rather than `mkdir -p`-ing it into existence.
-   Once confirmed, `git mv` (or move + `git add`) each of `docs/INTENT.md`, `docs/SPEC.md`,
+   Once confirmed, tick `docs/STATE.md` Process item 7 (`- [x] 7. wrapup: cycle
+   archived`), then `git mv` (or move + `git add`) each of `docs/INTENT.md`, `docs/SPEC.md`,
    `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, and `docs/HANDOFF.md` (if present) into the derived
    archive directory, preserving history. If INTENT.md has an `**Origin**` field pointing
    at a `docs/backlog/` doc, `git mv` that doc into the archive directory too. STATE.md is
@@ -122,7 +124,10 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    everything this cycle needed but you could not check yourself (browsers, devices, CI
    runs, third-party widgets, deployed environments) as `- [ ]` items, each with the
    exact steps for the operator to check it and the expected result. If there is
-   nothing, add the entry anyway with "Nothing outstanding." `docs/TODO.md` is never
+   nothing, add the entry anyway with "Nothing outstanding." Also add each step-2
+   "carry forward" item under the file's `## Carry over` heading (add the heading above
+   the dated entries if the file predates it) as
+   `- [ ] <item> — carried from docs/archive/YYYY-MM-DD-<slug>/ (YYYY-MM-DD)`. `docs/TODO.md` is never
    archived or reset. Then commit the archive + long-lived doc updates + `docs/TODO.md`
    entry + reset as one commit on the cycle branch (before the `/shipit` handoff, so the gate and merge carry it to `main`) (e.g.
    `chore: archive <slug> cycle, reset SDLC docs`).
@@ -159,7 +164,8 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
   - `docs/INTENT.md` (Open questions possibly seeded with carried-forward items),
     `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md` recreated via
     `metaproject backfill`.
-  - `docs/TODO.md` with a new dated "Needs manual verification" entry, committed with the archive.
+  - `docs/TODO.md` with a new dated "Needs manual verification" entry and any carried-forward
+    items under **Carry over**, committed with the archive.
   - No worktrees or merged branches left over from the closed cycle.
 - Or: an early exit back to `implement-plan` — nothing archived, nothing reset,
   triggered by the operator choosing "return to implement-plan" on an open item in

@@ -33,7 +33,10 @@ keep going.
    files, and flag anything that does not belong to this work: held-back dependency
    upgrades, lockfile churn, unrelated refactors, stray debug files, version bumps nobody
    asked for. Ask the operator to confirm or drop flagged items before continuing.
-3. **Merge.** Fast-forward only. Update `main` (`git fetch origin`), rebase the branch on
+3. **Merge.** The operator invoking `/shipit` on this branch is the OK to merge and push
+   it, once step 2's flagged items are settled. When another skill handed off here
+   (`wrapup`), show the commit range and the gate result and wait for an explicit OK in
+   chat before merging. Fast-forward only. Update `main` (`git fetch origin`), rebase the branch on
    `origin/main` if it is behind, rerun the gate if the rebase changed anything, then
    `git merge --ff-only <branch>` in the main checkout and `git push origin main`. If a
    fast-forward is impossible or the push is rejected, stop — never force-push and never
@@ -69,7 +72,10 @@ keep going.
 6. **Clean up.** Remove the worktree and delete the branch locally and on the remote:
    - `git worktree remove <path>` then `git worktree prune` (these write under
      `.git/worktrees`, so run them outside the sandbox);
-   - `git branch -d <branch>` and `git push origin --delete <branch>`.
+   - `git branch -d <branch>` and `git push origin --delete <branch>`. Before the remote
+     delete, check for an open PR on the branch (`gh pr list --head <branch> --state open`
+     when `gh` is available); if there is one, keep the remote branch and report it. When
+     another skill handed off here, ask before the remote delete.
    Use `-d`, not `-D`: if git says the branch is unmerged, stop. Do nothing if the work
    was done on `main` directly. Leave other branches and worktrees alone.
 7. **Report.** One short summary: what merged (commit range), gate result, flagged items
@@ -93,8 +99,7 @@ when in doubt treat the target as production.
 ## Stop conditions / human gate
 
 - A production deploy never starts without the five-line plan and the operator's explicit
-  OK; this gate applies even when the operator has already approved the merge.
-
+  OK; this gate applies even when the operator has already approved the merge (step 3).
 - Gate failure, unconfirmed unrelated changes, non-fast-forward merge, rejected push,
   failed live verification, or an unmerged-branch warning: stop and ask.
 - Never force-push, never `--no-verify`, never delete a branch that is not merged into

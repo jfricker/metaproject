@@ -164,3 +164,50 @@ def test_wrapup_records_manual_verification_in_todo() -> None:
     assert "docs/TODO.md" in step9 and "Then commit" in step9
     # TODO.md is not among the archived documents.
     assert "{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md" in text
+
+
+def test_implement_plan_and_execute_tests_write_the_state_sections_wrapup_reads() -> None:
+    """#12 S2/S3: the STATE.md sections wrapup preserves have a named writer."""
+    sections = ("Design invariants", "Verified facts", "Open items carried into PLAN.md")
+    implement = _skill_text("implement-plan")
+    assert "Implementation phases" in implement and "- [ ] <n>. <step>" in implement
+    for section in sections:
+        assert section in implement
+        assert section in _skill_text("execute-tests")
+
+
+def test_no_cycle_skill_claims_to_open_the_pr() -> None:
+    """#12 S5: execute-tests no longer hands off to a PR step nobody owns."""
+    assert "No cycle skill opens a PR" in _skill_text("execute-tests")
+    assert "wrapup/PR" not in _skill_text("execute-tests")
+
+
+def test_wrapup_ticks_process_item_7_in_step_7_before_archiving() -> None:
+    """#12 S4: the tick is a numbered step, ahead of the git mv."""
+    text = _skill_text("wrapup")
+    step7 = text[text.index("\n7. ") : text.index("\n8. ")]
+    assert step7.index("Process item 7") < step7.index("`git mv`")
+
+
+def test_wrapup_records_carried_forward_items_under_todo_carry_over() -> None:
+    """#27: carry-forward items get a durable home in docs/TODO.md."""
+    text = _skill_text("wrapup")
+    step9 = text[text.index("\n9. ") : text.index("\n10. ")]
+    assert "## Carry over" in step9 and "carry forward" in step9
+
+
+def test_backlog_factory_cleanup_never_runs_the_whole_shipit_flow() -> None:
+    """#12 S7: cleanup is shipit's step 6 only; shipit as a whole deploys to production."""
+    text = _skill_text("backlog-factory")
+    assert "Clean up via `/shipit`" not in text
+    assert "only\n    `shipit`'s step 6" in text
+
+
+def test_shipit_gates_handed_off_merges_and_keeps_branches_with_open_prs() -> None:
+    """#12 S8/S9."""
+    text = _skill_text("shipit")
+    merge = text[text.index("\n3. **Merge.**") : text.index("\n4. **Deploy")]
+    assert "invoking `/shipit`" in merge and "explicit OK" in merge
+    cleanup = text[text.index("\n6. **Clean up.**") : text.index("\n7. **Report.**")]
+    assert "gh pr list --head <branch> --state open" in cleanup
+    assert cleanup.index("open PR") < cleanup.index("Use `-d`")

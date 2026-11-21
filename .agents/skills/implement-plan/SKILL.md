@@ -57,8 +57,17 @@ Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
    `generate-design`/`generate-plan` rather than introducing new ones.
 4. Write tests alongside the code covering `docs/SPEC.md`'s acceptance criteria — don't defer
    all testing to `execute-tests`.
-5. Update `docs/STATE.md`'s checklist as each step of `docs/PLAN.md` completes (check the box,
-   don't just narrate progress).
+5. Keep `docs/STATE.md` current as you go — wrapup archives it and keeps only what these
+   sections hold:
+   - **Implementation phases**: before the first step, add one `- [ ] <n>. <step>` line per
+     `docs/PLAN.md` step if none exist; tick each as it lands (check the box, don't just
+     narrate progress).
+   - **Design invariants (regression guards)**: each rule the code now relies on that a
+     future change must not break, with the test that guards it.
+   - **Verified facts (do not re-investigate)**: each fact you confirmed by running or
+     reading something, with how you confirmed it.
+   - **Open items carried into PLAN.md**: each deviation from the plan, deferred piece, or
+     question you could not settle.
 6. If work is interrupted before the plan is fully implemented, run
    `metaproject backfill docs/HANDOFF.md` (it's an on-demand document) and fill it in with
    exact state and next step, per `AGENTS.md`.
@@ -79,4 +88,5 @@ real progress.
 
 - Do not implement beyond what `docs/PLAN.md` approved — new scope goes back through
   `generate-spec`/`generate-design`/`generate-plan`, not straight into code.
-- Do not open a PR from this skill — hand off to `execute-tests` first.
+- Do not open a PR from this skill — hand off to `execute-tests` first. No cycle skill
+  opens a PR; that is the operator's call.
