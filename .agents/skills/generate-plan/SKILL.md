@@ -14,12 +14,12 @@ Stage 4 of 7: plan mode prevents code generation until strategy is approved.
 ## Conventions (metaproject)
 
 - **Documents come from metaproject**: working documents are templated by metaproject,
-  not by this skill, and live in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`,
-  `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, `docs/ARCHITECTURE.md`).
-  Create a missing one with `metaproject backfill docs/<FILE>.md` (create-only — it
+  not by this skill, and live in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+  `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`).
+  Create a missing one with `metaproject backfill .metaproject/docs/<FILE>.md` (create-only — it
   never overwrites); `metaproject backfill` with no files creates every missing
-  scaffolded deliverable at once. `docs/HANDOFF.md` is on-demand:
-  `metaproject backfill docs/HANDOFF.md`.
+  scaffolded deliverable at once. `.metaproject/docs/HANDOFF.md` is on-demand:
+  `metaproject backfill .metaproject/docs/HANDOFF.md`.
 - If a metaproject command fails, stop and show the user its output.
 - **Blank rule**: a cycle document (INTENT/SPEC/TECH-DESIGN/PLAN) is blank iff its first
   `# ` heading contains `<Title>`.
@@ -29,36 +29,36 @@ Stage 4 of 7: plan mode prevents code generation until strategy is approved.
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
   own judgment.
-- Tick `docs/STATE.md` Process item 4 once this stage is done.
+- Tick `.metaproject/docs/STATE.md` Process item 4 once this stage is done.
 
 ## When to use
 
-- `docs/SPEC.md` and `docs/TECH-DESIGN.md` both exist with `Status: Approved`.
+- `.metaproject/docs/SPEC.md` and `.metaproject/docs/TECH-DESIGN.md` both exist with `Status: Approved`.
 - The user is ready to move from "what/how" to "in what order, touching which files."
 
 ## Inputs
 
-- Approved `docs/SPEC.md` and `docs/TECH-DESIGN.md`.
+- Approved `.metaproject/docs/SPEC.md` and `.metaproject/docs/TECH-DESIGN.md`.
 - This repo's `CLAUDE.md` (conventions) and any relevant organization policy skills
   (installed as other plugins, or the project's own `.claude/skills/` if any exist).
 
 ## Process
 
-1. Read `docs/SPEC.md` and `docs/TECH-DESIGN.md` in full. Refuse to proceed if either isn't `Approved`.
-2. If `docs/PLAN.md` doesn't exist, create it with `metaproject backfill docs/PLAN.md`.
+1. Read `.metaproject/docs/SPEC.md` and `.metaproject/docs/TECH-DESIGN.md` in full. Refuse to proceed if either isn't `Approved`.
+2. If `.metaproject/docs/PLAN.md` doesn't exist, create it with `metaproject backfill .metaproject/docs/PLAN.md`.
 3. Enter plan mode (`EnterPlanMode`) — do not write or edit source files in this step.
-4. Build the plan from `docs/TECH-DESIGN.md`'s components: concrete steps, the specific files to
+4. Build the plan from `.metaproject/docs/TECH-DESIGN.md`'s components: concrete steps, the specific files to
    create/modify, sequencing (what must land before what), and risks/rollback
    considerations. Reference existing functions/utilities to reuse rather than
    reinventing them.
 5. Exit plan mode (`ExitPlanMode`) to get user approval on the plan content. The
    operator's approval through `ExitPlanMode` counts as their sign-off — write the
-   approved plan into `docs/PLAN.md` with `**Status**: Approved.` and
+   approved plan into `.metaproject/docs/PLAN.md` with `**Status**: Approved.` and
    `**Approved by**: <name> (<YYYY-MM-DD>).`; don't ask for a second, separate approval.
 
 ## Output artifact
 
-`docs/PLAN.md`, status `Approved`.
+`.metaproject/docs/PLAN.md`, status `Approved`.
 
 ## Stop conditions / human gate
 

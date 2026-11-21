@@ -1,6 +1,6 @@
 ---
 name: backlog-factory
-description: Orchestrates a batch of backlog items in parallel — picks the top N independent items from docs/backlog/ (or GitHub issues), gives each its own worktree, branch and subagent (spec and failing tests, implement to a green gate, screenshots, PR, CI fixes), then merges green PRs in a safe order with the operator's approval, deploys to preview only and reports. Use when the user says "backlog-factory", "feature factory", "work the backlog", "run the top N backlog items in parallel", or "fan these issues out". Not for a single item — that is write-intent and the cycle; not for parking an idea — that is backlog-new.
+description: Orchestrates a batch of backlog items in parallel — picks the top N independent items from .metaproject/docs/backlog/ (or GitHub issues), gives each its own worktree, branch and subagent (spec and failing tests, implement to a green gate, screenshots, PR, CI fixes), then merges green PRs in a safe order with the operator's approval, deploys to preview only and reports. Use when the user says "backlog-factory", "feature factory", "work the backlog", "run the top N backlog items in parallel", or "fan these issues out". Not for a single item — that is write-intent and the cycle; not for parking an idea — that is backlog-new.
 ---
 
 # backlog-factory
@@ -11,7 +11,7 @@ description: Orchestrates a batch of backlog items in parallel — picks the top
 
 Orchestrator for a batch of independent backlog items: one worktree, branch and subagent
 per item, then a gated merge, a preview deploy and one report. Not a cycle stage — it
-does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
+does not touch `.metaproject/docs/INTENT.md`, `.metaproject/docs/STATE.md` or the Process list.
 
 ## When to use
 
@@ -22,7 +22,7 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
 
 ## Inputs
 
-- `docs/backlog/*.md` (written by `backlog-new`), and/or open GitHub issues when the
+- `.metaproject/docs/backlog/*.md` (written by `backlog-new`), and/or open GitHub issues when the
   project has a remote and `gh` is available.
 - N, the batch size: default 3, at most 5. The operator may name the items instead.
 - The quality gate as `AGENTS.md` / the `Makefile` define it.
@@ -35,7 +35,9 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
    items one by one under this skill's name. The subagent brief pushes branches and opens
    PRs, so without a git remote and `gh` also stop and say so: this skill has no
    local-merge path.
-2. **Collect candidates.** Backlog docs in `docs/backlog/` whose Status line is `backlog`
+2. **Collect candidates.** Backlog docs in `.metaproject/docs/backlog/` (note:
+   `.metaproject/` is a hidden dot-directory, so pass `.metaproject/docs/` explicitly or
+   `--hidden` to `rg`/`fd`) whose Status line is `backlog`
    (skip `promoted ...`), and/or open issues from `gh issue list` (or the project board)
    when a remote and `gh` are present. Without them, use local backlog docs only.
 3. **Pick independent items.** For each candidate, estimate the files it touches from its
@@ -82,9 +84,9 @@ does not touch `docs/INTENT.md`, `docs/STATE.md` or the Process list.
     Note each PR link in the final table.
 13. **Report** with the table below, then the deferred items with reasons, the preview URL
     and smoke result, and the manual-verification items. Append those items to
-    `docs/TODO.md` as a dated `## YYYY-MM-DD: Needs manual verification (<slug>)` entry of
+    `.metaproject/docs/TODO.md` as a dated `## YYYY-MM-DD: Needs manual verification (<slug>)` entry of
     `- [ ]` items, as `wrapup` does (create the file with
-    `metaproject backfill docs/TODO.md` if missing; append only).
+    `metaproject backfill .metaproject/docs/TODO.md` if missing; append only).
 
 ## Subagent brief
 
@@ -101,8 +103,8 @@ Item: <backlog doc path or issue URL>. Worktree: <path>. Branch: <branch>.
    an issue).
 5. If CI fails, read the logs, fix, push. Up to 3 attempts, then stop and report.
 Rules: stay inside the worktree; never touch main; never merge; never deploy; no
-version bumps; do not edit docs/INTENT.md, docs/SPEC.md, docs/TECH-DESIGN.md,
-docs/PLAN.md or docs/STATE.md; keep build-time code (for example Vite plugins) out of
+version bumps; do not edit .metaproject/docs/INTENT.md, .metaproject/docs/SPEC.md, .metaproject/docs/TECH-DESIGN.md,
+.metaproject/docs/PLAN.md or .metaproject/docs/STATE.md; keep build-time code (for example Vite plugins) out of
 git-ignored directories (run git check-ignore before creating files); give Playwright a
 worktree-local PLAYWRIGHT_BROWSERS_PATH.
 Report back: PR URL, gate result, CI attempts, screenshot paths, the files actually
@@ -116,7 +118,7 @@ changed, open questions.
 | `<backlog doc or issue>` | `<PR URL>` | green / red | 1-3 | paths or "n/a" | ... |
 
 Followed by the deferred items with reasons, the preview URL and smoke result, and the
-`docs/TODO.md` entry.
+`.metaproject/docs/TODO.md` entry.
 
 ## Stop conditions / human gate
 

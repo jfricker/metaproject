@@ -15,12 +15,12 @@ version-controlled artifact — before any requirements, design, or code work st
 ## Conventions (metaproject)
 
 - **Documents come from metaproject**: working documents are templated by metaproject,
-  not by this skill, and live in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`,
-  `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, `docs/ARCHITECTURE.md`).
-  Create a missing one with `metaproject backfill docs/<FILE>.md` (create-only — it
+  not by this skill, and live in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+  `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`).
+  Create a missing one with `metaproject backfill .metaproject/docs/<FILE>.md` (create-only — it
   never overwrites); `metaproject backfill` with no files creates every missing
-  scaffolded deliverable at once. `docs/HANDOFF.md` is on-demand:
-  `metaproject backfill docs/HANDOFF.md`.
+  scaffolded deliverable at once. `.metaproject/docs/HANDOFF.md` is on-demand:
+  `metaproject backfill .metaproject/docs/HANDOFF.md`.
 - If a metaproject command fails, stop and show the user its output.
 - **Blank rule**: a cycle document (INTENT/SPEC/TECH-DESIGN/PLAN) is blank iff its first
   `# ` heading contains `<Title>`.
@@ -30,24 +30,26 @@ version-controlled artifact — before any requirements, design, or code work st
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
   own judgment.
-- Tick `docs/STATE.md` Process item 1 once this stage is done.
+- Tick `.metaproject/docs/STATE.md` Process item 1 once this stage is done.
 
 ## When to use
 
 - The user has a problem statement, idea, ticket, or incident and wants to start work.
-- `docs/INTENT.md` is blank per the blank rule above, or missing — if
-  missing, run `metaproject backfill docs/INTENT.md` first, then confirm it's blank.
-- Do **not** use this to resume work on an already-approved `docs/INTENT.md` — that belongs
+- `.metaproject/docs/INTENT.md` is blank per the blank rule above, or missing — if
+  missing, run `metaproject backfill .metaproject/docs/INTENT.md` first, then confirm it's blank.
+- Do **not** use this to resume work on an already-approved `.metaproject/docs/INTENT.md` — that belongs
   to `generate-spec` onward.
 
 ## Inputs
 
 - The user's raw description of the problem (however rough).
-- Optionally, a `docs/backlog/` doc to start from (see step 2).
-- `docs/ARCHITECTURE.md` and `docs/VERIFIED-FACTS.md`, if they exist — check them so the
+- Optionally, a `.metaproject/docs/backlog/` doc to start from (see step 2; pass
+  `.metaproject/docs/` explicitly or `--hidden` with `rg`/`fd` because `.metaproject/`
+  is a hidden dot-directory).
+- `.metaproject/docs/ARCHITECTURE.md` and `.metaproject/docs/VERIFIED-FACTS.md`, if they exist — check them so the
   intent is framed against what's already known about the system, instead of
   rediscovering it.
-- The existing `docs/INTENT.md` template (title/author/date/status header,
+- The existing `.metaproject/docs/INTENT.md` template (title/author/date/status header,
   Problem / Proposed outcome / Affected users and systems / Scope / Resolved decisions /
   Constraints / Open questions).
 
@@ -57,12 +59,12 @@ version-controlled artifact — before any requirements, design, or code work st
    its approach; either way, ask questions until the problem, proposed outcome,
    affected systems, and constraints are concrete — don't just restate what the user
    typed.
-2. **From the backlog.** If the idea comes from a `docs/backlog/` doc, use that doc as
+2. **From the backlog.** If the idea comes from a `.metaproject/docs/backlog/` doc, use that doc as
    the raw problem statement — verify its "Current behavior" still holds, carry its
-   Goal and Open questions into INTENT.md, add an `**Origin**: docs/backlog/<slug>.md`
+   Goal and Open questions into INTENT.md, add an `**Origin**: .metaproject/docs/backlog/<slug>.md`
    header field to INTENT.md, and flip the backlog doc's Status line to
    `promoted YYYY-MM-DD (<cycle name>)` when the cycle starts.
-3. Draft `docs/INTENT.md` in place, filling every section:
+3. Draft `.metaproject/docs/INTENT.md` in place, filling every section:
    - **Problem** — what's wrong or missing, for whom.
    - **Proposed outcome** — what "done" looks like, observably.
    - **Affected users and systems** — who/what this touches.
@@ -77,7 +79,7 @@ version-controlled artifact — before any requirements, design, or code work st
 
 ## Output artifact
 
-`docs/INTENT.md`, status `Approved`.
+`.metaproject/docs/INTENT.md`, status `Approved`.
 
 ## Stop conditions / human gate
 

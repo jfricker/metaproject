@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into docs/archive/, flags unrelated changes that would ship, hands branch and worktree cleanup to `/shipit` (with a manual fallback), and recreates blank cycle documents with `metaproject backfill`. Besides documents it changes only git worktrees and the cycle's local and remote branches; never source code or tests. Records everything it could not verify itself in docs/TODO.md. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
+description: End-of-cycle archive and reset. First resolves STATE.md's Open items with the operator (discard, carry forward, or send the cycle back to implement-plan), then marks INTENT.md Complete, appends STATE.md's Design invariants and Verified facts to the long-lived docs, updates ARCHITECTURE.md's cycle index, archives the cycle documents into .metaproject/docs/archive/, flags unrelated changes that would ship, hands branch and worktree cleanup to `/shipit` (with a manual fallback), and recreates blank cycle documents with `metaproject backfill`. Besides documents it changes only git worktrees and the cycle's local and remote branches; never source code or tests. Records everything it could not verify itself in .metaproject/docs/TODO.md. Use when the user says the current cycle is finished and ready to close out. Final step of the write-intent → generate-spec → generate-design → generate-plan → implement-plan → execute-tests → wrapup cycle.
 ---
 
 # wrapup
@@ -10,19 +10,20 @@ description: End-of-cycle archive and reset. First resolves STATE.md's Open item
 > operator to run `metaproject new .` (agents may run only `metaproject new . --dry-run`).
 
 Closes the loop: once a cycle's work is done, archive everything it produced, preserve
-what's worth keeping long-term, and reset `docs/` to a blank slate for the next
+what's worth keeping long-term, and reset `.metaproject/docs/` to a blank slate for the next
 `write-intent`.
 
 ## Conventions (metaproject)
 
 - **Documents come from metaproject**: working documents are templated by metaproject,
-  not by this skill, and live in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`,
-  `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, `docs/ARCHITECTURE.md`).
-  Create a missing one with `metaproject backfill docs/<FILE>.md` (create-only — it
+  not by this skill, and live in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+  `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`).
+  Create a missing one with `metaproject backfill .metaproject/docs/<FILE>.md` (create-only — it
   never overwrites); `metaproject backfill` with no files creates every missing
-  scaffolded deliverable at once. `docs/HANDOFF.md` is on-demand:
-  `metaproject backfill docs/HANDOFF.md`. `docs/TODO.md` is on-demand too
-  (`metaproject backfill docs/TODO.md`).
+  scaffolded deliverable at once. `.metaproject/docs/HANDOFF.md` is on-demand:
+  `metaproject backfill .metaproject/docs/HANDOFF.md`. `.metaproject/docs/TODO.md` is on-demand too
+  (`metaproject backfill .metaproject/docs/TODO.md`). `.metaproject/` is a hidden
+  dot-directory, so use `--hidden` with `rg`/`fd` or pass `.metaproject/docs/` explicitly.
 - If a metaproject command fails, stop and show the user its output.
 - **Blank rule**: a cycle document (INTENT/SPEC/TECH-DESIGN/PLAN) is blank iff its first
   `# ` heading contains `<Title>`.
@@ -32,47 +33,47 @@ what's worth keeping long-term, and reset `docs/` to a blank slate for the next
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
   own judgment.
-- Tick `docs/STATE.md` Process item 7 in Process step 7, just before STATE.md is archived.
+- Tick `.metaproject/docs/STATE.md` Process item 7 in Process step 7, just before STATE.md is archived.
 
-**Scope discipline**: this skill only ever touches SDLC documents (`docs/INTENT.md`,
-`docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/HANDOFF.md`, `docs/STATE.md`), `docs/TODO.md` (append-only), the long-lived docs
-(`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`), the
-`docs/archive/` directory, and git worktree bookkeeping. It never edits source code,
+**Scope discipline**: this skill only ever touches SDLC documents (`.metaproject/docs/INTENT.md`,
+`.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/HANDOFF.md`, `.metaproject/docs/STATE.md`), `.metaproject/docs/TODO.md` (append-only), the long-lived docs
+(`.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`), the
+`.metaproject/docs/archive/` directory, and git worktree bookkeeping. It never edits source code,
 tests, or opens a PR — if any of those are still outstanding, the cycle isn't done; send
 the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
 
 ## When to use
 
 - The user says the current cycle's work is finished and ready to close out.
-- `docs/INTENT.md` shows `Status: Approved` and the work it describes is
+- `.metaproject/docs/INTENT.md` shows `Status: Approved` and the work it describes is
   actually done — don't archive an in-flight or abandoned cycle without confirming with
   the user first.
 
 ## Inputs
 
-- The current `docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/HANDOFF.md` (if present),
-  and `docs/STATE.md`.
-- `docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md` — if any is
-  missing, create it with `metaproject backfill docs/<FILE>.md` before appending to it.
+- The current `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/HANDOFF.md` (if present),
+  and `.metaproject/docs/STATE.md`.
+- `.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md` — if any is
+  missing, create it with `metaproject backfill .metaproject/docs/<FILE>.md` before appending to it.
 - `git worktree list` for any worktrees created during this cycle.
 
 ## Process
 
 1. Confirm with the user which cycle is being closed if it's at all ambiguous (more than
-   one `docs/INTENT.md`-shaped thing could be meant).
+   one `.metaproject/docs/INTENT.md`-shaped thing could be meant).
 2. **Resolve STATE.md's "Open items carried into PLAN.md" before anything else — this
    can abort the whole wrapup, so do it before touching any file.**
    - If the section is empty, skip to step 3.
    - If it has content, for each item work out *why it's still open*: check whether
-     `docs/PLAN.md`/`implement-plan`'s actual work addressed it, whether `execute-tests`
+     `.metaproject/docs/PLAN.md`/`implement-plan`'s actual work addressed it, whether `execute-tests`
      touched it, or whether it was never picked up at all. Don't just relay the raw
      text — show the operator the item plus your assessment of its status.
    - Ask the operator, per item, to choose one:
      - **Discard** — no longer relevant; drop it.
      - **Carry forward** — it's real but out of scope for this cycle; it gets seeded
-       into the next `docs/INTENT.md`'s Open questions section (step 8), linked back to this
+       into the next `.metaproject/docs/INTENT.md`'s Open questions section (step 8), linked back to this
        cycle's archive, so `write-intent` starts the next cycle with it already in view,
-       and recorded under `docs/TODO.md`'s **Carry over** section (step 9) so it survives
+       and recorded under `.metaproject/docs/TODO.md`'s **Carry over** section (step 9) so it survives
        if the next cycle is about something else.
      - **Return to implement-plan** — the cycle isn't actually finished; this item needs
        real work, not a note. If the operator picks this for *any* item, **stop the
@@ -86,49 +87,49 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
    - If no, get explicit confirmation from the operator that the cycle's work is
      finished and committed (to `main` or wherever they're closing it from).
    Do not archive/reset until this is confirmed one way or the other.
-4. Set `docs/INTENT.md`'s `**Status**: Complete.` (it was `Approved`; the cycle it approved
+4. Set `.metaproject/docs/INTENT.md`'s `**Status**: Complete.` (it was `Approved`; the cycle it approved
    is now done) before archiving it.
-5. Derive an archive slug from `docs/INTENT.md`'s title and today's date:
-   `docs/archive/YYYY-MM-DD-<slugified-title>/`.
+5. Derive an archive slug from `.metaproject/docs/INTENT.md`'s title and today's date:
+   `.metaproject/docs/archive/YYYY-MM-DD-<slugified-title>/`.
 6. **Preserve long-lived knowledge before STATE.md is archived:**
    - If STATE.md's **Design invariants (regression guards)** section has content,
-     append it to `docs/DESIGN-INVARIANTS.md` under a new dated heading linking to this
+     append it to `.metaproject/docs/DESIGN-INVARIANTS.md` under a new dated heading linking to this
      cycle's archive directory. Skip if the section is empty.
    - If STATE.md's **Verified facts (do not re-investigate)** section has content,
-     append it to `docs/VERIFIED-FACTS.md` the same way. Skip if empty.
-   - Add a row to `docs/ARCHITECTURE.md`'s cycle index: date, slug, a one/two-line summary of
+     append it to `.metaproject/docs/VERIFIED-FACTS.md` the same way. Skip if empty.
+   - Add a row to `.metaproject/docs/ARCHITECTURE.md`'s cycle index: date, slug, a one/two-line summary of
      what the cycle did, links to the archived
-     `docs/archive/YYYY-MM-DD-<slug>/SPEC.md` and `…/TECH-DESIGN.md`. If `docs/TECH-DESIGN.md`'s
+     `.metaproject/docs/archive/YYYY-MM-DD-<slug>/SPEC.md` and `…/TECH-DESIGN.md`. If `.metaproject/docs/TECH-DESIGN.md`'s
      Affected components / Data flow sections describe a structural change, amend
-     `docs/ARCHITECTURE.md`'s existing mermaid diagram(s) to reflect it — update in place,
+     `.metaproject/docs/ARCHITECTURE.md`'s existing mermaid diagram(s) to reflect it — update in place,
      don't regenerate from scratch each cycle.
-7. Confirm `docs/archive/` already exists and is tracked (`git ls-files docs/archive/`
-   should list at least `docs/archive/.gitkeep`) — this is a precondition of the repo,
+7. Confirm `.metaproject/docs/archive/` already exists and is tracked (`git ls-files .metaproject/docs/archive/`
+   should list at least `.metaproject/docs/archive/.gitkeep`) — this is a precondition of the repo,
    not something this step creates. If it's missing, fix it with
-   `metaproject backfill docs/archive` rather than `mkdir -p`-ing it into existence.
-   Once confirmed, tick `docs/STATE.md` Process item 7 (`- [x] 7. wrapup: cycle
-   archived`), then `git mv` (or move + `git add`) each of `docs/INTENT.md`, `docs/SPEC.md`,
-   `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, and `docs/HANDOFF.md` (if present) into the derived
+   `metaproject backfill .metaproject/docs/archive` rather than `mkdir -p`-ing it into existence.
+   Once confirmed, tick `.metaproject/docs/STATE.md` Process item 7 (`- [x] 7. wrapup: cycle
+   archived`), then `git mv` (or move + `git add`) each of `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+   `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, and `.metaproject/docs/HANDOFF.md` (if present) into the derived
    archive directory, preserving history. If INTENT.md has an `**Origin**` field pointing
-   at a `docs/backlog/` doc, `git mv` that doc into the archive directory too. STATE.md is
+   at a `.metaproject/docs/backlog/` doc, `git mv` that doc into the archive directory too. STATE.md is
    archived whole, only after step 6 has already copied its invariants/facts elsewhere.
-8. Recreate the working documents in `docs/` in one call:
-   `metaproject backfill` (no file arguments) — this recreates blank `docs/INTENT.md`,
-   `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, and `docs/STATE.md` since step 7 moved all of them out.
-   Then, if step 2 produced any "carry forward" items, seed the new `docs/INTENT.md`'s
+8. Recreate the working documents in `.metaproject/docs/` in one call:
+   `metaproject backfill` (no file arguments) — this recreates blank `.metaproject/docs/INTENT.md`,
+   `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, and `.metaproject/docs/STATE.md` since step 7 moved all of them out.
+   Then, if step 2 produced any "carry forward" items, seed the new `.metaproject/docs/INTENT.md`'s
    **Open questions** section with them, each one linked back to the cycle it came from
-   (`docs/archive/YYYY-MM-DD-<slug>/`).
+   (`.metaproject/docs/archive/YYYY-MM-DD-<slug>/`).
 9. **Record what you could not verify, then commit.** Append a dated
-   `## YYYY-MM-DD: Needs manual verification (<slug>)` entry to `docs/TODO.md`; if the
-   file is missing, create it first with `metaproject backfill docs/TODO.md`. List
+   `## YYYY-MM-DD: Needs manual verification (<slug>)` entry to `.metaproject/docs/TODO.md`; if the
+   file is missing, create it first with `metaproject backfill .metaproject/docs/TODO.md`. List
    everything this cycle needed but you could not check yourself (browsers, devices, CI
    runs, third-party widgets, deployed environments) as `- [ ]` items, each with the
    exact steps for the operator to check it and the expected result. If there is
    nothing, add the entry anyway with "Nothing outstanding." Also add each step-2
    "carry forward" item under the file's `## Carry over` heading (add the heading above
    the dated entries if the file predates it) as
-   `- [ ] <item> — carried from docs/archive/YYYY-MM-DD-<slug>/ (YYYY-MM-DD)`. `docs/TODO.md` is never
-   archived or reset. Then commit the archive + long-lived doc updates + `docs/TODO.md`
+   `- [ ] <item> — carried from .metaproject/docs/archive/YYYY-MM-DD-<slug>/ (YYYY-MM-DD)`. `.metaproject/docs/TODO.md` is never
+   archived or reset. Then commit the archive + long-lived doc updates + `.metaproject/docs/TODO.md`
    entry + reset as one commit on the cycle branch (before the `/shipit` handoff, so the gate and merge carry it to `main`) (e.g.
    `chore: archive <slug> cycle, reset SDLC docs`).
 10. **Wrap up the cycle's branch and worktrees** (only after step 9's commit, so the archive and reset ship with the merge). A branch is *wrapped up* when its work
@@ -156,15 +157,15 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
 ## Output artifact
 
 - Either: a completed wrapup —
-  - `docs/archive/YYYY-MM-DD-<slug>/{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md` (+ `…/HANDOFF.md`
+  - `.metaproject/docs/archive/YYYY-MM-DD-<slug>/{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md` (+ `…/HANDOFF.md`
     if it existed, + the promoted backlog doc if INTENT.md had an `**Origin**`).
-  - `docs/ARCHITECTURE.md` with a new cycle-index row (and diagram update if applicable).
-  - `docs/DESIGN-INVARIANTS.md` / `docs/VERIFIED-FACTS.md` with a new dated section, if
+  - `.metaproject/docs/ARCHITECTURE.md` with a new cycle-index row (and diagram update if applicable).
+  - `.metaproject/docs/DESIGN-INVARIANTS.md` / `.metaproject/docs/VERIFIED-FACTS.md` with a new dated section, if
     STATE.md had content to preserve.
-  - `docs/INTENT.md` (Open questions possibly seeded with carried-forward items),
-    `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md` recreated via
+  - `.metaproject/docs/INTENT.md` (Open questions possibly seeded with carried-forward items),
+    `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md` recreated via
     `metaproject backfill`.
-  - `docs/TODO.md` with a new dated "Needs manual verification" entry and any carried-forward
+  - `.metaproject/docs/TODO.md` with a new dated "Needs manual verification" entry and any carried-forward
     items under **Carry over**, committed with the archive.
   - No worktrees or merged branches left over from the closed cycle.
 - Or: an early exit back to `implement-plan` — nothing archived, nothing reset,
@@ -181,7 +182,7 @@ the user back to `execute-tests`/`implement-plan` instead of running `wrapup`.
 - Never delete a worktree with uncommitted or unmerged work without explicit
   confirmation.
 - Never claim something was verified that you did not verify; anything unverified goes
-  into the `docs/TODO.md` entry (step 9) with exact steps. Never archive `docs/TODO.md`.
+  into the `.metaproject/docs/TODO.md` entry (step 9) with exact steps. Never archive `.metaproject/docs/TODO.md`.
 - Never push unrelated changes (step 10) without the operator's explicit say-so.
 - Never archive STATE.md without first preserving any non-empty Design
   invariants/Verified facts content into the long-lived docs — that knowledge doesn't
