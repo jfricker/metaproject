@@ -21,9 +21,9 @@ def test_verify_browser_covers_the_loop() -> None:
         "e2e_port",
         "fails on current `main`",
         "chrome-devtools",
-        "docs/TODO.md",
+        ".metaproject/docs/TODO.md",
         "Needs manual verification",
-        "metaproject backfill docs/TODO.md",
+        "metaproject backfill .metaproject/docs/TODO.md",
         "real device",
         "cannot be reproduced",
     ):

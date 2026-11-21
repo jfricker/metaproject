@@ -14,12 +14,13 @@ Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
 ## Conventions (metaproject)
 
 - **Documents come from metaproject**: working documents are templated by metaproject,
-  not by this skill, and live in `docs/` (`docs/INTENT.md`, `docs/SPEC.md`,
-  `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, `docs/ARCHITECTURE.md`).
-  Create a missing one with `metaproject backfill docs/<FILE>.md` (create-only — it
+  not by this skill, and live in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+  `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`).
+  Create a missing one with `metaproject backfill .metaproject/docs/<FILE>.md` (create-only — it
   never overwrites); `metaproject backfill` with no files creates every missing
-  scaffolded deliverable at once. `docs/HANDOFF.md` is on-demand:
-  `metaproject backfill docs/HANDOFF.md`.
+  scaffolded deliverable at once. `.metaproject/docs/HANDOFF.md` is on-demand:
+  `metaproject backfill .metaproject/docs/HANDOFF.md`. Note: `.metaproject/` is a hidden
+  dot-directory, so pass `.metaproject/docs/` explicitly or `--hidden` to `rg`/`fd`.
 - If a metaproject command fails, stop and show the user its output.
 - **Blank rule**: a cycle document (INTENT/SPEC/TECH-DESIGN/PLAN) is blank iff its first
   `# ` heading contains `<Title>`.
@@ -29,7 +30,7 @@ Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
   `**Approved by**: <name> (<YYYY-MM-DD>).`; approval gates check that Status is
   `Approved`. Set `Approved` only on the operator's explicit sign-off, never on your
   own judgment.
-- Tick `docs/STATE.md` Process item 5 once this stage is done.
+- Tick `.metaproject/docs/STATE.md` Process item 5 once this stage is done.
 - Before editing, grep to locate the exact target and count matches. After editing,
   diff to confirm no sibling or identically-structured code changed. If a direct Edit
   fails twice on this file, switch to a perl/python scripted edit instead of retrying
@@ -37,30 +38,30 @@ Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
 
 ## When to use
 
-- `docs/PLAN.md` exists with `Status: Approved`.
+- `.metaproject/docs/PLAN.md` exists with `Status: Approved`.
 - The user wants code written against that plan.
 
 ## Inputs
 
-- Approved `docs/PLAN.md` (and `docs/SPEC.md`/`docs/TECH-DESIGN.md` for context on *why*).
+- Approved `.metaproject/docs/PLAN.md` (and `.metaproject/docs/SPEC.md`/`.metaproject/docs/TECH-DESIGN.md` for context on *why*).
 - `CLAUDE.md` for team conventions, commands, and mistakes to avoid.
-- `docs/STATE.md`'s checklist.
+- `.metaproject/docs/STATE.md`'s checklist.
 
 ## Process
 
-1. Read `docs/PLAN.md` in full. Refuse to proceed if its Status isn't `Approved`.
-2. Work through `docs/PLAN.md`'s steps in the stated sequence. If reality diverges from the
+1. Read `.metaproject/docs/PLAN.md` in full. Refuse to proceed if its Status isn't `Approved`.
+2. Work through `.metaproject/docs/PLAN.md`'s steps in the stated sequence. If reality diverges from the
    plan (a step doesn't apply, a file doesn't exist as expected), stop and flag it to the
    user rather than silently improvising past what was approved — a material deviation
    means the plan needs revisiting (back to `generate-plan`), not a unilateral pivot.
 3. Follow `CLAUDE.md` conventions and reuse existing patterns/utilities found during
    `generate-design`/`generate-plan` rather than introducing new ones.
-4. Write tests alongside the code covering `docs/SPEC.md`'s acceptance criteria — don't defer
+4. Write tests alongside the code covering `.metaproject/docs/SPEC.md`'s acceptance criteria — don't defer
    all testing to `execute-tests`.
-5. Keep `docs/STATE.md` current as you go — wrapup archives it and keeps only what these
+5. Keep `.metaproject/docs/STATE.md` current as you go — wrapup archives it and keeps only what these
    sections hold:
    - **Implementation phases**: before the first step, add one `- [ ] <n>. <step>` line per
-     `docs/PLAN.md` step if none exist; tick each as it lands (check the box, don't just
+     `.metaproject/docs/PLAN.md` step if none exist; tick each as it lands (check the box, don't just
      narrate progress).
    - **Design invariants (regression guards)**: each rule the code now relies on that a
      future change must not break, with the test that guards it.
@@ -69,7 +70,7 @@ Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
    - **Open items carried into PLAN.md**: each deviation from the plan, deferred piece, or
      question you could not settle.
 6. If work is interrupted before the plan is fully implemented, run
-   `metaproject backfill docs/HANDOFF.md` (it's an on-demand document) and fill it in with
+   `metaproject backfill .metaproject/docs/HANDOFF.md` (it's an on-demand document) and fill it in with
    exact state and next step, per `AGENTS.md`.
 7. **Delegation.** Run each plan step through clean-context subagents, one step at a
    time (concurrent agents collide on the shared working tree and gate): a Sonnet agent
@@ -81,12 +82,12 @@ Stage 5 of 7: execute the approved plan, not a reinterpretation of it.
 
 ## Output artifact
 
-Committed code + tests on the working branch, matching `docs/PLAN.md`; `docs/STATE.md` reflecting
+Committed code + tests on the working branch, matching `.metaproject/docs/PLAN.md`; `.metaproject/docs/STATE.md` reflecting
 real progress.
 
 ## Stop conditions / human gate
 
-- Do not implement beyond what `docs/PLAN.md` approved — new scope goes back through
+- Do not implement beyond what `.metaproject/docs/PLAN.md` approved — new scope goes back through
   `generate-spec`/`generate-design`/`generate-plan`, not straight into code.
 - Do not open a PR from this skill — hand off to `execute-tests` first. No cycle skill
   opens a PR; that is the operator's call.

@@ -12,7 +12,7 @@ description: Proves a browser bug is fixed in every engine — reproduces it in 
 Cross-browser verification loop: reproduce a browser bug in WebKit with a failing
 regression test, fix it until the test passes in every target engine, and report what
 still needs a real device. A utility skill, not a cycle stage — it does not tick the
-`docs/STATE.md` Process list.
+`.metaproject/docs/STATE.md` Process list.
 
 ## When to use
 
@@ -67,9 +67,9 @@ still needs a real device. A utility skill, not a cycle stage — it does not ti
     Playwright project added in step 3, and what still needs a real device (Safari on
     macOS, Safari on iOS, other devices).
 11. **Record what needs a real device.** Append a dated
-    `## YYYY-MM-DD: Needs manual verification (<slug>)` entry to `docs/TODO.md`, as
+    `## YYYY-MM-DD: Needs manual verification (<slug>)` entry to `.metaproject/docs/TODO.md`, as
     `wrapup` does; if the file is missing, create it first with
-    `metaproject backfill docs/TODO.md`. List each item as `- [ ]` with the exact steps
+    `metaproject backfill .metaproject/docs/TODO.md`. List each item as `- [ ]` with the exact steps
     for the operator and the expected result. Append only; never edit earlier entries.
     Unlike `wrapup`, add no entry when nothing is outstanding.
 
@@ -77,7 +77,7 @@ still needs a real device. A utility skill, not a cycle stage — it does not ti
 
 A committed fix with a WebKit regression test that failed before the fix and now passes
 in `webkit`, `chromium` and `mobile-safari`, plus the report from step 10 and any
-`docs/TODO.md` entry from step 11. If the bug cannot be reproduced, the output is the
+`.metaproject/docs/TODO.md` entry from step 11. If the bug cannot be reproduced, the output is the
 "cannot be reproduced" write-up instead, and nothing is committed.
 
 ## Stop conditions / human gate
@@ -86,7 +86,7 @@ in `webkit`, `chromium` and `mobile-safari`, plus the report from step 10 and an
   is green. The fix is not complete until the WebKit regression test passes.
 - Never weaken, skip or delete the regression test to get green.
 - Never claim "verified in Safari": Playwright WebKit is not Safari on a real device. Say
-  "WebKit", and list the real-device checks in `docs/TODO.md`.
+  "WebKit", and list the real-device checks in `.metaproject/docs/TODO.md`.
 - Never wait on, or delete, a held Playwright install lock.
-- Do not edit cycle documents (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`,
-  `docs/PLAN.md`, `docs/STATE.md`).
+- Do not edit cycle documents (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`,
+  `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`).

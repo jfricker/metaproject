@@ -104,5 +104,5 @@ when in doubt treat the target as production.
   failed live verification, or an unmerged-branch warning: stop and ask.
 - Never force-push, never `--no-verify`, never delete a branch that is not merged into
   `main`.
-- Do not edit cycle documents (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`,
-  `docs/PLAN.md`, `docs/STATE.md`); archiving them is `wrapup`'s job.
+- Do not edit cycle documents (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+  `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`); archiving them is `wrapup`'s job.

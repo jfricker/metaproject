@@ -18,7 +18,7 @@
 - [x] 2. backfill no-args legacy safeguard
 - [x] 3. universe and learn compatibility
 - [x] 4. doctor migrations and git.git_rm
-- [ ] 5. Bundled skills, skill_history.json, and skill/wheel tests
+- [x] 5. Bundled skills, skill_history.json, and skill/wheel tests
 - [ ] 6. Root governance docs (README.md, AGENTS.md) and grep sweep
 - [ ] 7. Self-migrate this repo and sync .agents/skills/
 

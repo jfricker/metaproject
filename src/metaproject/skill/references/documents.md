@@ -9,7 +9,7 @@ when to touch it.
 
 Every cycle of work moves through seven stages, each owned by a project skill (copied
 into `.agents/skills/` by `new`/`backfill`, invoked by bare name) and ticked off in
-`docs/STATE.md`'s Process list. Every cycle document lives in `docs/`:
+`.metaproject/docs/STATE.md`'s Process list. Every cycle document lives in `.metaproject/docs/`:
 
 ```
 write-intent → generate-spec → generate-design → generate-plan →
@@ -21,37 +21,37 @@ INTENT.md   SPEC.md    TECH-DESIGN.md  PLAN.md   code + tests    STATE.md      a
    why         what      how (tech)   how (steps)    verified       tracked        long-lived docs
 ```
 
-- **write-intent** produces `docs/INTENT.md`: the problem, proposed outcome, affected users
+- **write-intent** produces `.metaproject/docs/INTENT.md`: the problem, proposed outcome, affected users
   and systems, in the user's terms, not the implementation's.
-- **generate-spec** turns an approved `docs/INTENT.md` into `docs/SPEC.md`: requirements and
+- **generate-spec** turns an approved `.metaproject/docs/INTENT.md` into `.metaproject/docs/SPEC.md`: requirements and
   acceptance criteria.
-- **generate-design** turns an approved `docs/SPEC.md` into `docs/TECH-DESIGN.md`: affected components,
+- **generate-design** turns an approved `.metaproject/docs/SPEC.md` into `.metaproject/docs/TECH-DESIGN.md`: affected components,
   data flow, interfaces, trade-offs.
-- **generate-plan** turns approved `docs/SPEC.md` + `docs/TECH-DESIGN.md` into `docs/PLAN.md`: files touched,
+- **generate-plan** turns approved `.metaproject/docs/SPEC.md` + `.metaproject/docs/TECH-DESIGN.md` into `.metaproject/docs/PLAN.md`: files touched,
   sequencing, risks.
-- **implement-plan** writes code and tests against the approved `docs/PLAN.md`, ticking off
-  `docs/STATE.md`'s Implementation phases as steps land.
+- **implement-plan** writes code and tests against the approved `.metaproject/docs/PLAN.md`, ticking off
+  `.metaproject/docs/STATE.md`'s Implementation phases as steps land.
 - **execute-tests** runs the quality gate and records verified facts / design invariants
-  in `docs/STATE.md`.
-- **wrapup** archives `docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md` and (if
-  present) `docs/HANDOFF.md` into `docs/archive/`, appends `docs/STATE.md`'s invariants and facts
-  into `docs/DESIGN-INVARIANTS.md` and `docs/VERIFIED-FACTS.md`, updates
-  `docs/ARCHITECTURE.md`'s cycle index, and resets the cycle documents to blank for the next
+  in `.metaproject/docs/STATE.md`.
+- **wrapup** archives `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md` and (if
+  present) `.metaproject/docs/HANDOFF.md` into `.metaproject/docs/archive/`, appends `.metaproject/docs/STATE.md`'s invariants and facts
+  into `.metaproject/docs/DESIGN-INVARIANTS.md` and `.metaproject/docs/VERIFIED-FACTS.md`, updates
+  `.metaproject/docs/ARCHITECTURE.md`'s cycle index, and resets the cycle documents to blank for the next
   one.
 
 ## Deliverable classes
 
 - **governance** — `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`. Rendered and
   diffed in full, body-for-body; offered for both Update and Deploy.
-- **working** — `docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,
-  `docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`. Checked for
+- **working** — `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`,
+  `.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`. Checked for
   heading structure only: a template heading with no matching heading in the project
   file is drift, body text is never diffed, and these are never offered for Update — you
   fill their content freely and `review` never second-guesses it.
-- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new`, never
-  reported missing by `review`. Create HANDOFF with `metaproject backfill docs/HANDOFF.md`
+- **on-demand** — `.metaproject/docs/HANDOFF.md`, `.metaproject/docs/TODO.md`. Never scaffolded by `new`, never
+  reported missing by `review`. Create HANDOFF with `metaproject backfill .metaproject/docs/HANDOFF.md`
   only when work stops mid-stream; `wrapup` creates TODO the same way.
-- **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
+- **directory** — `.metaproject/docs/`, `.metaproject/docs/archive/`. Presence checks, nothing more.
 - **settings** — `.claude/settings.json`. Never rendered from a template and never
   overwritten: `new`/`backfill` merge two hook entries into it (`PostToolUse` `Edit|Write`
   and `PreToolUse` `Bash`, both running `.claude/hooks/metaproject_hook.py`) and keep every
@@ -95,11 +95,11 @@ nearest ancestor project (or the git root) instead of its own `.agents/skills`; 
 
 ## The blank rule
 
-A cycle document (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`) is **blank** iff its
+A cycle document (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`) is **blank** iff its
 first `# ` heading still contains the literal `<Title>`. This is the single rule every
 skill and tool uses — `write-intent`'s precondition that there's no unfinished cycle,
 `generate-spec`'s check that a stale spec hasn't been left behind, `wrapup`'s reset back
-to blank. `docs/ARCHITECTURE.md` and the two long-lived `docs/` files use a
+to blank. `.metaproject/docs/ARCHITECTURE.md` and the two long-lived `.metaproject/docs/` files use a
 `{ProjectTitle}`-style header instead of the cycle header and are never blank.
 
 ## Status vocabulary
@@ -120,28 +120,28 @@ Cycle documents share one header:
 `Superseded`. `Approved by` stays `—` until the operator signs off, then names them and
 the date — that is the gate `implement-plan` checks before it starts writing code.
 
-## `docs/INTENT.md`
+## `.metaproject/docs/INTENT.md`
 
 The problem, the proposed outcome, affected users and systems. Written *before* spec or
 design, in the user's terms. Starts `Draft`; becomes `Approved` before `generate-spec`
 runs.
 
-## `docs/SPEC.md`
+## `.metaproject/docs/SPEC.md`
 
-What the system must do, derived from `docs/INTENT.md`: requirements (`R-…`) and acceptance
-criteria (`AC-…`). The contract `docs/TECH-DESIGN.md` and `docs/PLAN.md` cite by requirement ID.
+What the system must do, derived from `.metaproject/docs/INTENT.md`: requirements (`R-…`) and acceptance
+criteria (`AC-…`). The contract `.metaproject/docs/TECH-DESIGN.md` and `.metaproject/docs/PLAN.md` cite by requirement ID.
 
-## `docs/TECH-DESIGN.md`
+## `.metaproject/docs/TECH-DESIGN.md`
 
-How `docs/SPEC.md`'s requirements get built: affected components, data flow, interfaces,
-trade-offs, alternatives considered. `generate-plan` reads this alongside `docs/SPEC.md`.
+How `.metaproject/docs/SPEC.md`'s requirements get built: affected components, data flow, interfaces,
+trade-offs, alternatives considered. `generate-plan` reads this alongside `.metaproject/docs/SPEC.md`.
 
-## `docs/PLAN.md`
+## `.metaproject/docs/PLAN.md`
 
 Sequenced implementation steps, files touched, risks and rollback. `implement-plan`
 follows it strictly; deviations get recorded, not silently taken.
 
-## `docs/STATE.md`
+## `.metaproject/docs/STATE.md`
 
 The live record of where the work actually is. The scaffolded skeleton:
 
@@ -165,7 +165,7 @@ The live record of where the work actually is. The scaffolded skeleton:
 
 ## Design invariants (regression guards)
 
-<!-- written by implement-plan/execute-tests; appended to docs/DESIGN-INVARIANTS.md by wrapup -->
+<!-- written by implement-plan/execute-tests; appended to .metaproject/docs/DESIGN-INVARIANTS.md by wrapup -->
 
 ## Open items carried into PLAN.md
 
@@ -173,7 +173,7 @@ The live record of where the work actually is. The scaffolded skeleton:
 
 ## Verified facts (do not re-investigate)
 
-<!-- written by implement-plan/execute-tests; appended to docs/VERIFIED-FACTS.md by wrapup -->
+<!-- written by implement-plan/execute-tests; appended to .metaproject/docs/VERIFIED-FACTS.md by wrapup -->
 ```
 
 Two sections earn their keep and are the ones most often neglected:
@@ -186,48 +186,48 @@ Two sections earn their keep and are the ones most often neglected:
   otherwise be re-litigated every session ("the TUI degrades correctly under `TERM=dumb`;
   confirmed 2026-09-05"). Include the date; a verified fact has a shelf life.
 
-Update `docs/STATE.md` as phases land, not in a single sweep at the end. A `docs/STATE.md` that is
+Update `.metaproject/docs/STATE.md` as phases land, not in a single sweep at the end. A `.metaproject/docs/STATE.md` that is
 only accurate at release time is a changelog, and there are better changelogs.
 
-## `docs/HANDOFF.md`
+## `.metaproject/docs/HANDOFF.md`
 
 On-demand — not scaffolded, never reported missing. Create it (`metaproject backfill
-docs/HANDOFF.md`) when work is **interrupted before completion**, not routinely. It answers
+.metaproject/docs/HANDOFF.md`) when work is **interrupted before completion**, not routinely. It answers
 one question: what does the next session need in order to continue — current state,
 SDLC stage, branch/worktree, last commit, command(s) to re-run, next steps, blockers.
 
 The failure mode is writing it as a summary of what was done. Bias it toward what is
 *unfinished*.
 
-## `docs/TODO.md`
+## `.metaproject/docs/TODO.md`
 
 On-demand, append-only, never archived. `wrapup` appends a dated "Needs manual
 verification" entry per cycle: each thing the agent could not verify itself (browsers,
 devices, CI runs, third-party widgets) with exact steps and the expected result. The
 entry is committed with the cycle. The operator ticks or deletes items.
 
-## `docs/ARCHITECTURE.md`
+## `.metaproject/docs/ARCHITECTURE.md`
 
 Long-lived, never reset. `wrapup` appends each cycle's summary to its cycle index; it is
 the sum of every cycle's decisions, not a from-scratch description rewritten each time.
 
-## `docs/DESIGN-INVARIANTS.md`
+## `.metaproject/docs/DESIGN-INVARIANTS.md`
 
-Long-lived, append-only. `wrapup` moves `docs/STATE.md`'s "Design invariants" section here,
-dated and linked to the cycle's archive, before resetting `docs/STATE.md`. Read it before
+Long-lived, append-only. `wrapup` moves `.metaproject/docs/STATE.md`'s "Design invariants" section here,
+dated and linked to the cycle's archive, before resetting `.metaproject/docs/STATE.md`. Read it before
 `generate-spec`/`generate-design`/`generate-plan` so an invariant from one cycle isn't
 accidentally violated in the next.
 
-## `docs/VERIFIED-FACTS.md`
+## `.metaproject/docs/VERIFIED-FACTS.md`
 
-Long-lived, append-only. `wrapup` moves `docs/STATE.md`'s "Verified facts" section here the
+Long-lived, append-only. `wrapup` moves `.metaproject/docs/STATE.md`'s "Verified facts" section here the
 same way. Read it before re-deriving something a prior cycle already confirmed.
 
-## `docs/`, `docs/archive/`
+## `.metaproject/docs/`, `.metaproject/docs/archive/`
 
-Directory deliverables — presence checks only. `docs/archive/<date>-<slug>/` is where
-`wrapup` moves a completed cycle's `docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`,
-`docs/STATE.md` and `docs/HANDOFF.md` (if present).
+Directory deliverables — presence checks only. `.metaproject/docs/archive/<date>-<slug>/` is where
+`wrapup` moves a completed cycle's `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`,
+`.metaproject/docs/STATE.md` and `.metaproject/docs/HANDOFF.md` (if present).
 
 ## `AGENTS.md`
 
@@ -255,12 +255,12 @@ When you are making changes in a project that has these files:
 
 1. Read `AGENTS.md` first — it tells you the build and test commands, and the gate to run
    before committing. Following it beats inferring conventions from the code.
-2. Check `docs/STATE.md` for design invariants and verified facts before investigating
+2. Check `.metaproject/docs/STATE.md` for design invariants and verified facts before investigating
    something that looks unresolved. It may already be settled — and so might
-   `docs/DESIGN-INVARIANTS.md` / `docs/VERIFIED-FACTS.md` from a prior cycle.
-3. Update `docs/STATE.md` when a phase lands. Part of finishing the work, not a follow-up.
-4. Write `docs/HANDOFF.md` (via `metaproject backfill docs/HANDOFF.md`) if you stop mid-stream.
-5. If a document `review` reports missing, use `metaproject backfill docs/<FILE>.md` rather than
+   `.metaproject/docs/DESIGN-INVARIANTS.md` / `.metaproject/docs/VERIFIED-FACTS.md` from a prior cycle.
+3. Update `.metaproject/docs/STATE.md` when a phase lands. Part of finishing the work, not a follow-up.
+4. Write `.metaproject/docs/HANDOFF.md` (via `metaproject backfill .metaproject/docs/HANDOFF.md`) if you stop mid-stream.
+5. If a document `review` reports missing, use `metaproject backfill .metaproject/docs/<FILE>.md` rather than
    hand-writing it — it renders from the same template the rest of the fleet uses.
 6. If a convention you followed here would serve every project, that is exactly what
    `metaproject learn` harvests — mention it rather than editing the template store

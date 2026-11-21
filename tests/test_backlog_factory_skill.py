@@ -12,7 +12,7 @@ def _skill() -> str:
 def test_backlog_factory_covers_the_orchestration() -> None:
     text = _skill()
     for needle in (
-        "docs/backlog/",
+        ".metaproject/docs/backlog/",
         "gh issue list",
         "gh auth status",
         "git worktree add",
@@ -25,7 +25,7 @@ def test_backlog_factory_covers_the_orchestration() -> None:
         "preview",
         "PLAYWRIGHT_BROWSERS_PATH",
         "verify-browser",
-        "docs/TODO.md",
+        ".metaproject/docs/TODO.md",
         "Needs manual verification",
     ):
         assert needle in text, needle

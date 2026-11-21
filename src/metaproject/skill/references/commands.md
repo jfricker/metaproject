@@ -80,9 +80,9 @@ tracked in the initial commit. Also installs the Claude Code hooks: the scripts
 `.claude/hooks/metaproject_hook.py` and `scripts/metaproject-session.sh` (create-only)
 and three entries (`PostToolUse`, `PreToolUse`, web-only session-start) merged into
 `.claude/settings.json` (merge, never overwrite; invalid JSON there is reported and left
-alone). Cycle documents land in `docs/` (`docs/INTENT.md`,
-`docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`,
-`docs/ARCHITECTURE.md`).
+alone). Cycle documents land in `.metaproject/docs/` (`.metaproject/docs/INTENT.md`,
+`.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`,
+`.metaproject/docs/ARCHITECTURE.md`).
 
 **Path resolution:** no `--output` → `./<project-name>`; `--output` naming an existing
 directory → `<output>/<project-name>`; `--output` that does not exist or ends in `/` →
@@ -108,7 +108,7 @@ reports missing, without `new .`'s confirmations.
 
 | Flag | Effect |
 |---|---|
-| `FILE...` (positional, optional) | Specific deliverables to create, e.g. `docs/SPEC.md docs/HANDOFF.md`. Old names (`spec.md`, `design.md`) and bare new names (`SPEC.md`) resolve to their `docs/` path. Default: every deliverable `new` scaffolds that is currently missing, plus missing project skills. |
+| `FILE...` (positional, optional) | Specific deliverables to create, e.g. `.metaproject/docs/SPEC.md .metaproject/docs/HANDOFF.md`. Old names (`spec.md`, `design.md`, `docs/SPEC.md`) and bare new names (`SPEC.md`) resolve to their `.metaproject/docs/` path. Default: every missing deliverable `new` scaffolds (skipping any found at a legacy location and pointing to `doctor`), plus missing project skills. |
 | `--dir`, `-d <path>` | Project directory to backfill (default: the nearest `.metaproject.json` at or above the current directory, else the current directory). |
 | `--templates <path>` | Template directory to create from (default `~/.metaproject/templates`). |
 | `--dry-run` | Preview what would be created; writes nothing. |
@@ -131,7 +131,7 @@ Two modes:
   landed); the operator runs `metaproject backfill` themselves to install them. Naming
   `.claude/settings.json` explicitly and failing to write it exits 1.
 - **Named `FILE`s** — creates exactly those (never skills), including on-demand ones
-  like `docs/HANDOFF.md`. If *any* named file already exists, nothing at all is written and every
+  like `.metaproject/docs/HANDOFF.md`. If *any* named file already exists, nothing at all is written and every
   existing name is reported under "Refused — already exists, nothing written"; the
   command exits non-zero. A named path with no template in the store is reported under
   "No template in the store" and also writes nothing.
@@ -141,11 +141,11 @@ no-`FILE` mode); `1` if any named file was refused or had no template.
 
 ```bash
 metaproject backfill                       # every missing scaffolded deliverable
-metaproject backfill docs/SPEC.md docs/TECH-DESIGN.md   # exactly these
-metaproject backfill docs/HANDOFF.md       # on-demand deliverable, created by name
-metaproject backfill intent.md             # an old name: creates docs/INTENT.md
+metaproject backfill .metaproject/docs/SPEC.md .metaproject/docs/TECH-DESIGN.md   # exactly these
+metaproject backfill .metaproject/docs/HANDOFF.md       # on-demand deliverable, created by name
+metaproject backfill intent.md             # an old name: creates .metaproject/docs/INTENT.md
 metaproject backfill --dry-run             # preview only, writes nothing
-metaproject backfill docs/SPEC.md          # exits 1, writes nothing, if it exists
+metaproject backfill .metaproject/docs/SPEC.md          # exits 1, writes nothing, if it exists
 ```
 
 ## adopt
@@ -199,9 +199,9 @@ scaffolded deliverable is missing; wins over everything). Comparison renders eac
 variables first, so substituted placeholders are never reported as drift.
 
 Governance deliverables (`AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`) are diffed
-body-for-body. Working deliverables (`docs/INTENT.md`, `docs/SPEC.md`,
-`docs/TECH-DESIGN.md`, `docs/PLAN.md`, `docs/STATE.md`, `docs/ARCHITECTURE.md`,
-`docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`) are
+body-for-body. Working deliverables (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`,
+`.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`, `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`,
+`.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`) are
 checked for heading structure only — a per-file list of template headings the project
 file is missing, shown as notes on the detail screen — and are never offered for Update;
 `.metaproject.json`'s absence is reported as an informational note rather than
@@ -281,12 +281,12 @@ left behind by an upgrade, and repairs each finding behind its own confirmation.
 
 | Check | Fix (on confirmation) |
 |---|---|
-| Template-store layout | Moves root cycle templates (`intent.template.md`, …) into `docs.template/` with their new names; `git mv` plus one commit of only the moved paths |
+| Template-store layout | Moves root cycle templates and `docs.template/` (plus `.gitkeep`s) into `.metaproject.template/docs.template/` with their new names while keeping custom `docs.template/` files; `git mv` plus one commit of only the moved/removed paths |
 | Template store | Seeds templates missing from the store; extras are kept and only listed |
-| Config | Rewrites old `learn.targets` paths (`intent.md` → `docs/INTENT.md`) in place, order kept, and appends missing core targets |
+| Config | Rewrites legacy `learn.targets` paths (`intent.md`, `docs/INTENT.md`, `docs/` → `.metaproject/docs/...`) in place, order kept, deduplicated, and appends missing core targets |
 | Orphaned global skill | Removes `~/.claude/skills/metaproject/` from older releases; nothing else under `~/.claude` |
 | Project identity | Backfills a missing `.metaproject.json` in cataloged projects |
-| Project docs (per project) | Moves cycle documents at the root or under old names into `docs/` (`git mv` when tracked); never overwrites (a clash is reported, both files kept) and never commits |
+| Project docs (per project) | Moves legacy root or `docs/` cycle documents (plus `docs/{archive,backlog,discovery}/` and `.gitkeep`) into `.metaproject/docs/` (`git mv` when tracked), cleans emptied/junk-only `docs/` while keeping non-empty project `docs/`; never overwrites conflicts and never commits |
 | Project skills (per project) | Installs missing project skills and updates outdated, unmodified ones (same classification as `skills status`); modified ones are reported, never overwritten |
 
 The project checks cover `universe`-cataloged projects that have `.metaproject.json`, one
@@ -472,7 +472,7 @@ metaproject new <name> --title "<Title>" --description "<one line>" --yes
 metaproject new . --dry-run
 
 # Create a specific missing document without any confirmation (agent-safe)
-metaproject backfill docs/SPEC.md docs/HANDOFF.md
+metaproject backfill .metaproject/docs/SPEC.md .metaproject/docs/HANDOFF.md
 
 # Fill in every missing scaffolded deliverable in one call
 metaproject backfill
@@ -522,7 +522,7 @@ metaproject universe --list --all --format json
 
 Template files carry a `.template` infix that is stripped on render:
 `AGENTS.template.md` → `AGENTS.md`, `.gitignore.template` → `.gitignore`,
-`docs.template/` → `docs/`.
+`.metaproject.template/docs.template/` → `.metaproject/docs/`.
 
 Substituted variables: `{ProjectTitle}`, `{ProjectSlug}`, `{ProjectDescription}`,
 `{Author}`, `{Date}`, `{Year}`. Braces that are not on this list are left alone, so JSON,

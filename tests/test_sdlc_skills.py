@@ -79,17 +79,23 @@ def test_no_plugin_plumbing(name: str) -> None:
 
 @pytest.mark.parametrize("name", SDLC_SKILLS)
 def test_no_root_location_reference_to_a_relocated_document(name: str) -> None:
-    """R-TXT-3: relocated documents are named by their new names and `docs/` paths."""
+    """R-TXT-3: relocated documents use their `.metaproject/docs/` paths."""
     text = _skill_text(name)
     assert not re.search(r"\b(intent|spec|design|plan)\.md\b", text), name
     assert "repo root" not in text
-    assert not re.search(r"backfill (?!docs/)[A-Za-z-]+\.md", text), name
+    assert not re.search(r"backfill (?!\.metaproject/docs/)[A-Za-z-]+\.md", text), name
     assert not re.search(r"`(INTENT|SPEC|TECH-DESIGN|PLAN|STATE|HANDOFF|ARCHITECTURE)\.md`", text)
+    assert not re.search(
+        r"(?<!\.metaproject/)docs/(?:INTENT|SPEC|TECH-DESIGN|PLAN|STATE|HANDOFF|TODO|"
+        r"ARCHITECTURE|DESIGN-INVARIANTS|VERIFIED-FACTS|<FILE>)\.md",
+        text,
+    ), name
+    assert not re.search(r"(?<!\.metaproject/)docs/(?:archive|backlog|discovery)\b", text), name
 
 
 def test_wrapup_archives_from_docs_and_resets_with_backfill() -> None:
     text = _skill_text("wrapup")
-    assert "`docs/INTENT.md`, `docs/SPEC.md`" in text
+    assert "`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`" in text
     assert "{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md" in text
     assert "`metaproject backfill` (no file arguments)" in text
 
@@ -130,7 +136,7 @@ def test_metaproject_skill_has_no_plugin_plumbing_and_new_paths() -> None:
         for needle in FORBIDDEN:
             assert needle not in text, f"{path.name}: {needle!r}"
         assert "`sdlc-skills`" not in text
-    assert "docs/INTENT.md" in (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    assert ".metaproject/docs/INTENT.md" in (skill_dir / "SKILL.md").read_text(encoding="utf-8")
 
 
 def test_wheel_contains_every_skill(tmp_path: Path) -> None:
@@ -144,6 +150,11 @@ def test_wheel_contains_every_skill(tmp_path: Path) -> None:
     assert "metaproject/skill/SKILL.md" in names
     assert "metaproject/skill/references/commands.md" in names
     assert "metaproject/templates/.metaproject.template/docs.template/INTENT.template.md" in names
+    assert "metaproject/templates/.metaproject.template/docs.template/.gitkeep" in names
+    assert (
+        "metaproject/templates/.metaproject.template/docs.template/archive.template/.gitkeep"
+        in names
+    )
 
 
 def test_import_staging_and_plugin_scaffolding_are_gone() -> None:
@@ -156,12 +167,12 @@ def test_import_staging_and_plugin_scaffolding_are_gone() -> None:
 def test_wrapup_records_manual_verification_in_todo() -> None:
     text = _skill_text("wrapup")
     assert "Needs manual verification" in text
-    assert "metaproject backfill docs/TODO.md" in text
+    assert "metaproject backfill .metaproject/docs/TODO.md" in text
     assert "never\n   archived or reset" in text
     assert "exact steps" in text
     # The entry is written in step 9, before the commit and the /shipit handoff.
     step9 = text[text.index("\n9. ") : text.index("\n10. ")]
-    assert "docs/TODO.md" in step9 and "Then commit" in step9
+    assert ".metaproject/docs/TODO.md" in step9 and "Then commit" in step9
     # TODO.md is not among the archived documents.
     assert "{INTENT,SPEC,TECH-DESIGN,PLAN,STATE}.md" in text
 
@@ -190,10 +201,24 @@ def test_wrapup_ticks_process_item_7_in_step_7_before_archiving() -> None:
 
 
 def test_wrapup_records_carried_forward_items_under_todo_carry_over() -> None:
-    """#27: carry-forward items get a durable home in docs/TODO.md."""
+    """#27: carry-forward items get a durable home in `.metaproject/docs/TODO.md`."""
     text = _skill_text("wrapup")
     step9 = text[text.index("\n9. ") : text.index("\n10. ")]
     assert "## Carry over" in step9 and "carry forward" in step9
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["backlog-new", "write-intent", "implement-plan", "execute-tests", "wrapup", "backlog-factory"],
+)
+def test_skills_document_hidden_dot_dir_search_guidance(name: str) -> None:
+    """`R-SKL-2`: skills searching `.metaproject/docs/` mention `--hidden`."""
+    assert "--hidden" in _skill_text(name), name
+
+
+def test_metaproject_skill_documents_hidden_dot_dir_search_guidance() -> None:
+    skill_dir = next(s.source_dir for s in bundled_skills() if s.name == "metaproject")
+    assert "--hidden" in (skill_dir / "SKILL.md").read_text(encoding="utf-8")
 
 
 def test_backlog_factory_cleanup_never_runs_the_whole_shipit_flow() -> None:

@@ -1,6 +1,6 @@
 ---
 name: metaproject
-description: Uses the `metaproject` CLI to scaffold, audit, and maintain a project's SDLC documents (docs/INTENT.md, SPEC.md, TECH-DESIGN.md, PLAN.md, STATE.md, HANDOFF.md, AGENTS.md, CLAUDE.md, README.md) and project skills from the template store at ~/.metaproject/templates. Use when the user wants to start a project with SDLC boilerplate, add missing documents ("backfill", "scaffold into this directory"), check drift from the templates ("review", "is this project up to date"), migrate a project whose cycle documents sit at its root ("doctor"), promote recurring drift into the templates ("learn"), or list projects on the machine ("universe"). Also use when the user asks for an AGENTS.md, STATE.md, spec, or handoff doc, or why a project is missing its standard files, even without naming metaproject.
+description: Uses the `metaproject` CLI to scaffold, audit, and maintain a project's SDLC documents (.metaproject/docs/INTENT.md, SPEC.md, TECH-DESIGN.md, PLAN.md, STATE.md, HANDOFF.md, AGENTS.md, CLAUDE.md, README.md) and project skills from the template store at ~/.metaproject/templates. Use when the user wants to start a project with SDLC boilerplate, add missing documents ("backfill", "scaffold into this directory"), check drift from the templates ("review", "is this project up to date"), migrate a project whose cycle documents sit at its root or in docs/ ("doctor"), promote recurring drift into the templates ("learn"), or list projects on the machine ("universe"). Also use when the user asks for an AGENTS.md, STATE.md, spec, or handoff doc, or why a project is missing its standard files, even without naming metaproject.
 ---
 
 # metaproject
@@ -31,7 +31,7 @@ project→templates?"
 ## The 7-stage cycle
 
 Every project's documents move through one cycle, each stage owned by a project skill
-and ticked off in `docs/STATE.md`'s Process list. The skills ship in the metaproject
+and ticked off in `.metaproject/docs/STATE.md`'s Process list. The skills ship in the metaproject
 wheel; `new` and `backfill` copy them into the project's `.agents/skills/` (reachable as
 `.claude/skills/`), where they are committed with the project and invoked by bare name
 (`/write-intent`, `/generate-spec`, …, plus utility skills such as `/backlog-new` and `/verify-browser`):
@@ -41,7 +41,9 @@ write-intent → generate-spec → generate-design → generate-plan →
 implement-plan → execute-tests → wrapup
 ```
 
-All cycle documents live in `docs/`: `INTENT.md` (why), `SPEC.md` (what),
+All cycle documents live in `.metaproject/docs/`: `INTENT.md` (why), `SPEC.md` (what),
+Note: `.metaproject/` is a hidden dot-directory, so `rg`/`fd` searches targeting
+`.metaproject/docs/` need `--hidden` or an explicit `.metaproject/docs/` path.
 `TECH-DESIGN.md` (how, technically), `PLAN.md` (how, in sequence), then implementation and its tests, then `wrapup` archives the cycle's
 documents and resets for the next one. `metaproject` scaffolds and checks the documents;
 it does not run the cycle itself.
@@ -52,16 +54,16 @@ Every file `metaproject` scaffolds, reviews, or learns from belongs to exactly o
 
 - **governance** — `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`. Rendered and
   diffed body-for-body; offered for both Update and Deploy when drifted or missing.
-- **working** — `docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`, `docs/PLAN.md`,
-  `docs/STATE.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`,
-  `docs/VERIFIED-FACTS.md`. Checked for
+- **working** — `.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`, `.metaproject/docs/PLAN.md`,
+  `.metaproject/docs/STATE.md`, `.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`,
+  `.metaproject/docs/VERIFIED-FACTS.md`. Checked for
   heading structure only — a template heading with no matching heading in the project
   file is drift — never body-for-body, and never offered for Update; you fill their
   content freely as the cycle runs.
-- **on-demand** — `docs/HANDOFF.md`, `docs/TODO.md`. Never scaffolded by `new` and never
-  reported missing by `review`; create HANDOFF (with `backfill docs/HANDOFF.md`) only when
-  work is interrupted. `wrapup` creates TODO (`backfill docs/TODO.md`) to log manual checks.
-- **directory** — `docs/`, `docs/archive/`. Presence checks, nothing more.
+- **on-demand** — `.metaproject/docs/HANDOFF.md`, `.metaproject/docs/TODO.md`. Never scaffolded by `new` and never
+  reported missing by `review`; create HANDOFF (with `backfill .metaproject/docs/HANDOFF.md`) only when
+  work is interrupted. `wrapup` creates TODO (`backfill .metaproject/docs/TODO.md`) to log manual checks.
+- **directory** — `.metaproject/docs/`, `.metaproject/docs/archive/`. Presence checks, nothing more.
 
 ## Project identity: `.metaproject.json`
 
@@ -84,12 +86,12 @@ links up to them.
 
 ## The blank rule
 
-A cycle document (`docs/INTENT.md`, `docs/SPEC.md`, `docs/TECH-DESIGN.md`,
-`docs/PLAN.md`) is **blank** iff its
+A cycle document (`.metaproject/docs/INTENT.md`, `.metaproject/docs/SPEC.md`, `.metaproject/docs/TECH-DESIGN.md`,
+`.metaproject/docs/PLAN.md`) is **blank** iff its
 first `# ` heading still contains `<Title>`. This is the one rule every skill and tool
 uses to decide "has this been written yet" — `write-intent`'s precondition,
-`generate-spec`'s stale-spec check, `wrapup`'s reset. `docs/ARCHITECTURE.md` and the two
-long-lived `docs/` files use a different, never-blank header and don't participate.
+`generate-spec`'s stale-spec check, `wrapup`'s reset. `.metaproject/docs/ARCHITECTURE.md` and the two
+long-lived `.metaproject/docs/` files use a different, never-blank header and don't participate.
 
 ## Before anything else: is it installed?
 
@@ -194,16 +196,16 @@ missing, right when it is needed:
 
 ```bash
 metaproject backfill                              # every missing deliverable and skill
-metaproject backfill docs/SPEC.md docs/TECH-DESIGN.md   # exactly these, by name
-metaproject backfill docs/HANDOFF.md              # on-demand deliverables must be named
+metaproject backfill .metaproject/docs/SPEC.md .metaproject/docs/TECH-DESIGN.md   # exactly these, by name
+metaproject backfill .metaproject/docs/HANDOFF.md              # on-demand deliverables must be named
 ```
 
 With no file argument it creates every deliverable `new` would have scaffolded (skipping
 on-demand ones) and copies any project skill whose `.agents/skills/<name>/` directory is
 absent — an existing skill directory is never written into. Naming files touches only
-those files, and also lets you create on-demand ones like `docs/HANDOFF.md`. Old names
-still work: `backfill intent.md` or `backfill INTENT.md` creates `docs/INTENT.md`, and
-`backfill design.md` creates `docs/TECH-DESIGN.md` — never a root-level file. An
+those files, and also lets you create on-demand ones like `.metaproject/docs/HANDOFF.md`. Old names
+still work when named: `backfill intent.md` or `backfill docs/INTENT.md` creates `.metaproject/docs/INTENT.md`, and
+`backfill design.md` creates `.metaproject/docs/TECH-DESIGN.md` — never a root-level or `docs/` duplicate. With no arguments, `backfill` skips legacy-located deliverables and directs you to `metaproject doctor`. An
 existing named file is refused — nothing is written and the command exits non-zero — so
 it never clobbers real content. `--dry-run` previews without writing.
 
@@ -265,11 +267,11 @@ clearly what they want, or use `metaproject backfill` for a missing working docu
 
 ## Migrating an older project: `doctor`
 
-Projects scaffolded before cycle documents moved into `docs/` keep them at the root under
+Projects scaffolded before cycle documents moved into `.metaproject/docs/` keep them at root or in `docs/` under
 lowercase names; `review` shows those projects as `↻ OUTOFDATE`. `metaproject doctor`
 migrates, each fix behind the operator's confirmation: it moves the store's cycle
-templates into `docs.template/` (one commit in the store), rewrites old paths in
-`learn.targets`, moves each cataloged project's documents into `docs/` with their new
+templates into `.metaproject.template/docs.template/` (plus `.gitkeep`s, one commit in the store), rewrites old paths in
+`learn.targets` (including `docs/` → `.metaproject/docs/`), moves each cataloged project's cycle documents and `docs/{archive,backlog,discovery}/` into `.metaproject/docs/` with their new names (removing empty or junk-only `docs/` while keeping non-empty project `docs/` intact),
 names (`git mv` when tracked; it never overwrites and never commits in the project),
 installs missing project skills and updates outdated unmodified ones (a modified copy is
 reported, never overwritten), and
@@ -326,21 +328,21 @@ filesystem yourself.
 Scaffolding the files is the easy half. Their value comes from being kept current while
 work happens, and that is your job in every session inside a metaproject-managed repo:
 
-- **`docs/INTENT.md` / `docs/SPEC.md` / `docs/TECH-DESIGN.md` / `docs/PLAN.md`** — the
+- **`.metaproject/docs/INTENT.md` / `.metaproject/docs/SPEC.md` / `.metaproject/docs/TECH-DESIGN.md` / `.metaproject/docs/PLAN.md`** — the
   cycle documents, one stage each, moving Draft → Approved as the operator signs off.
-- **`docs/STATE.md`** — the live checklist: the 7-stage Process list, implementation phases,
+- **`.metaproject/docs/STATE.md`** — the live checklist: the 7-stage Process list, implementation phases,
   design invariants, verified facts, open items. Update it as tasks land, not at the end.
-- **`docs/ARCHITECTURE.md`, `docs/DESIGN-INVARIANTS.md`, `docs/VERIFIED-FACTS.md`** — the
+- **`.metaproject/docs/ARCHITECTURE.md`, `.metaproject/docs/DESIGN-INVARIANTS.md`, `.metaproject/docs/VERIFIED-FACTS.md`** — the
   long-lived record; `wrapup` appends each cycle's durable findings here and never resets
   them.
-- **`docs/HANDOFF.md`** — written when work is interrupted, so the next session (or the next
+- **`.metaproject/docs/HANDOFF.md`** — written when work is interrupted, so the next session (or the next
   person) can resume without re-deriving context. On-demand: create it with `backfill`
   only when actually stopping mid-stream.
-- **`docs/TODO.md`** — the operator's manual-verification list; `wrapup` appends a dated
+- **`.metaproject/docs/TODO.md`** — the operator's manual-verification list; `wrapup` appends a dated
   entry per cycle and it is never archived.
 - **`AGENTS.md` / `CLAUDE.md`** — how to build, test, and work in this repo.
 
-When you finish a meaningful chunk of work in one of these repos, updating `docs/STATE.md`
+When you finish a meaningful chunk of work in one of these repos, updating `.metaproject/docs/STATE.md`
 is part of finishing — not a separate chore to mention and skip.
 
 See `references/documents.md` for what belongs in each file and how the 7-stage cycle
