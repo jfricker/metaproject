@@ -15,7 +15,7 @@
 
 <!-- written by implement-plan as steps land -->
 - [x] 1. Relocated deliverables, template store layout, and review legacy detection
-- [ ] 2. backfill no-args legacy safeguard
+- [x] 2. backfill no-args legacy safeguard
 - [ ] 3. universe and learn compatibility
 - [ ] 4. doctor migrations and git.git_rm
 - [ ] 5. Bundled skills, skill_history.json, and skill/wheel tests

@@ -675,6 +675,8 @@ class BackfillResult:
 
     created: List[str] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)
+    # Declared path → legacy location already present (skipped in no-files mode, R-LOC-5).
+    legacy: Dict[str, str] = field(default_factory=dict)
     refused: List[str] = field(default_factory=list)
     missing_template: List[str] = field(default_factory=list)
     # Project skills, name → `installed` / `current` / `stale` (no-files mode only).
@@ -707,15 +709,17 @@ def backfill_missing(
     Two modes:
 
     - **No `files`** — every `scaffolded()` deliverable missing from the project, in
-      one call. Directory deliverables are created first (declaration order), then the
-      rest, and existence is re-checked before each write: rendering a directory
-      template (e.g. `.metaproject/docs/`) can create files declared later in `DELIVERABLES`; those
-      are reported `created` (the directory deploy wrote them) and never deployed a
-      second time. A deliverable
-      with no template in the store is reported in `missing_template` — never a silent
-      fallback to the bundled store (design.md "Alternatives considered") — but every
-      other target is still created. Missing project skills are then copied into
-      `.agents/skills/` (create-only; `skills`, `skills_notice`).
+      one call. Deliverables already sitting at a legacy location (`docs/`, v0.8 root,
+      or wrong case) are skipped into `legacy` (`R-LOC-5`) rather than duplicated under
+      `.metaproject/docs/`. Directory deliverables are created first (declaration order),
+      then the rest, and existence is re-checked before each write: rendering a directory
+      template (e.g. `.metaproject/docs/`) can create files declared later in `DELIVERABLES`;
+      those are reported `created` (the directory deploy wrote them) and never deployed a
+      second time. A deliverable with no template in the store is reported in
+      `missing_template` — never a silent fallback to the bundled store (design.md
+      "Alternatives considered") — but every other target is still created. Missing
+      project skills are then copied into `.agents/skills/` (create-only; `skills`,
+      `skills_notice`).
     - **`files` given** — exactly those paths, which may be on-demand (such as `HANDOFF.md`) or
       any other path the store has a template for. If *any* named file already exists,
       every existing one is reported in `refused` and **nothing at all is written**. If
@@ -776,6 +780,8 @@ def backfill_missing(
 
     created: List[str] = []
     skipped: List[str] = []
+    legacy: Dict[str, str] = {}
+    legacy_found = legacy_locations(resolved_proj)
     refused: List[str] = []
     not_written: List[str] = []
     hooks_notice: Optional[str] = None
@@ -789,6 +795,9 @@ def backfill_missing(
             continue
         if _present(resolved_proj, path):
             skipped.append(path)
+            continue
+        if path in legacy_found:
+            legacy[path] = legacy_found[path]
             continue
         if not _has_source(path, resolved_templates):
             missing_template.append(path)
@@ -826,6 +835,7 @@ def backfill_missing(
     return BackfillResult(
         created=created,
         skipped=skipped,
+        legacy=legacy,
         refused=refused,
         missing_template=missing_template,
         skills=dict(skills.states),

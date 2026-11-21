@@ -488,14 +488,15 @@ def test_backfill_alias_refuses_when_the_new_path_exists(tmp_path: Path) -> None
 
 def test_backfill_lowercase_docs_file_does_not_count_as_present(tmp_path: Path) -> None:
     """R-NFR-6: on APFS a lowercase `.metaproject/docs/intent.md` must not mask a missing
-    `.metaproject/docs/INTENT.md` — presence is decided on exact directory entries."""
+    `.metaproject/docs/INTENT.md` — and no-args backfill skips it into `legacy`."""
     proj, templates = scaffolded_project(tmp_path)
     (proj / ".metaproject" / "docs" / "INTENT.md").unlink()
     (proj / ".metaproject" / "docs" / "intent.md").write_text("legacy\n", encoding="utf-8")
 
     result = backfill_missing(proj, templates_dir=templates, dry_run=True)
 
-    assert ".metaproject/docs/INTENT.md" in result.created
+    assert result.legacy == {".metaproject/docs/INTENT.md": ".metaproject/docs/intent.md"}
+    assert ".metaproject/docs/INTENT.md" not in result.created
 
 
 def test_docs_directory_deploy_never_creates_handoff(tmp_path: Path) -> None:
@@ -516,3 +517,52 @@ def test_docs_directory_deploy_never_creates_handoff(tmp_path: Path) -> None:
     ):
         assert path in result.created
         assert (proj / path).is_file()
+
+
+def test_backfill_no_args_skips_v09_docs_layout_into_legacy(tmp_path: Path) -> None:
+    """R-LOC-5 (FC-2): no-args backfill on an unmigrated `docs/` project skips legacy items."""
+    proj, templates = scaffolded_project(tmp_path)
+    (proj / ".metaproject" / "docs").rename(proj / "docs")
+    (proj / ".metaproject").rmdir()
+
+    result = backfill_missing(proj, templates_dir=templates)
+
+    assert result.refused == []
+    assert ".metaproject/docs" in result.legacy
+    assert ".metaproject/docs/archive" in result.legacy
+    assert ".metaproject/docs/INTENT.md" in result.legacy
+    assert ".metaproject/docs/STATE.md" in result.legacy
+    assert not (proj / ".metaproject").exists()
+    assert not any(p.startswith(".metaproject/docs") for p in result.created)
+
+
+def test_cli_backfill_no_args_on_v09_docs_exits_zero_and_points_to_doctor(tmp_path: Path) -> None:
+    """R-LOC-5 CLI: prints legacy table pointing to `metaproject doctor` and exits 0."""
+    proj, templates = scaffolded_project(tmp_path)
+    (proj / ".metaproject" / "docs").rename(proj / "docs")
+    (proj / ".metaproject").rmdir()
+
+    res = CliRunner().invoke(
+        app,
+        ["backfill", "--dir", str(proj), "--templates", str(templates)],
+        env={"HOME": str(tmp_path / "home"), "COLUMNS": "140"},
+    )
+
+    assert res.exit_code == 0
+    assert "metaproject doctor" in res.output
+    assert "docs/INTENT.md → .metaproject/docs/INTENT.md" in res.output
+    assert not (proj / ".metaproject").exists()
+
+
+def test_backfill_no_args_skips_v08_root_intent_without_duplicating(tmp_path: Path) -> None:
+    """R-LOC-5: v0.8 root `intent.md` goes into `legacy` without duplicating `INTENT.md`."""
+    proj, templates = scaffolded_project(tmp_path)
+    (proj / ".metaproject" / "docs" / "INTENT.md").rename(proj / "intent.md")
+    shutil.rmtree(proj / ".metaproject")
+
+    result = backfill_missing(proj, templates_dir=templates)
+
+    assert result.legacy == {".metaproject/docs/INTENT.md": "intent.md"}
+    assert not (proj / ".metaproject" / "docs" / "INTENT.md").exists()
+    assert ".metaproject/docs/SPEC.md" in result.created
+    assert (proj / ".metaproject" / "docs" / "SPEC.md").is_file()

@@ -1319,6 +1319,16 @@ def print_backfill_result(result, dry_run: bool, target: Path) -> None:
             table.add_row(path)
         console.print(table)
 
+    if result.legacy:
+        table = Table(
+            title="Skipped (legacy location — run `metaproject doctor`)",
+            show_header=False,
+        )
+        table.add_column(style="yellow")
+        for declared, where in result.legacy.items():
+            table.add_row(f"{where} → {declared}")
+        console.print(table)
+
     from metaproject.hooks import SETTINGS_PATH
 
     # The settings deliverable is refused for its content (or, when named, an unwritable
@@ -1361,6 +1371,7 @@ def print_backfill_result(result, dry_run: bool, target: Path) -> None:
     if not (
         result.created
         or result.skipped
+        or result.legacy
         or result.refused
         or result.not_written
         or result.missing_template
