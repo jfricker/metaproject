@@ -3,5 +3,10 @@
   "created": "2026-09-15",
   "description": "Project scaffold and SDLC skills",
   "metaproject_version": "0.9.1",
+  "skills": {
+    "targets": [
+      "claude"
+    ]
+  },
   "title": "MetaProject"
 }

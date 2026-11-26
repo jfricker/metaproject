@@ -1,4 +1,63 @@
 {
+  "bridges": {
+    ".": {
+      "claude": {
+        "created": [
+          ".claude/skills"
+        ],
+        "entries": {
+          "backlog-factory": {
+            "link": "../../.agents/skills/backlog-factory",
+            "mode": "symlink"
+          },
+          "backlog-new": {
+            "link": "../../.agents/skills/backlog-new",
+            "mode": "symlink"
+          },
+          "execute-tests": {
+            "link": "../../.agents/skills/execute-tests",
+            "mode": "symlink"
+          },
+          "generate-design": {
+            "link": "../../.agents/skills/generate-design",
+            "mode": "symlink"
+          },
+          "generate-plan": {
+            "link": "../../.agents/skills/generate-plan",
+            "mode": "symlink"
+          },
+          "generate-spec": {
+            "link": "../../.agents/skills/generate-spec",
+            "mode": "symlink"
+          },
+          "implement-plan": {
+            "link": "../../.agents/skills/implement-plan",
+            "mode": "symlink"
+          },
+          "metaproject": {
+            "link": "../../.agents/skills/metaproject",
+            "mode": "symlink"
+          },
+          "shipit": {
+            "link": "../../.agents/skills/shipit",
+            "mode": "symlink"
+          },
+          "verify-browser": {
+            "link": "../../.agents/skills/verify-browser",
+            "mode": "symlink"
+          },
+          "wrapup": {
+            "link": "../../.agents/skills/wrapup",
+            "mode": "symlink"
+          },
+          "write-intent": {
+            "link": "../../.agents/skills/write-intent",
+            "mode": "symlink"
+          }
+        }
+      }
+    }
+  },
   "skills": {
     "backlog-factory": {
       "files": {
@@ -44,11 +103,11 @@
     },
     "metaproject": {
       "files": {
-        "SKILL.md": "4d98416307768a31b3280c46f6821149f89bb6c3b363a8090b838ba60a04fee1",
-        "references/commands.md": "340af3933e57921d9e5c847165235f69515d3d57290ca585e1b20d0bbcd11899",
+        "SKILL.md": "2bd936fec1e9c3dbf4ad49000b28f060eaa54a1a91cd6a15ad7296f74b27a4d0",
+        "references/commands.md": "ebf4e0954efa169cd1761ed927979e2bb6ddb2fcc9865f946e7a7f46fa4228c6",
         "references/documents.md": "70e3e1eb4710be4614a690b72a138d3309604d3feaf2c9476bd0cd4f8ff4cd89"
       },
-      "release": "0.10.0"
+      "release": "0.11.0"
     },
     "shipit": {
       "files": {
@@ -75,5 +134,5 @@
       "release": "0.10.0"
     }
   },
-  "version": 1
+  "version": 2
 }
