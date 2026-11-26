@@ -10,8 +10,8 @@ module that owns the concern, so doctor and ``init``/``new`` cannot drift apart
 (spec R-DR-11).
 
 The checks, in order: template-store layout, template store, config file name, config,
-orphaned global skill, project identity, project config, project docs, project skills,
-project hook scripts. Layout runs first so a store
+orphaned global skill, project identity, project config, project docs, skills legacy link,
+skills targets, project skills, skill shadowing, project hook scripts. Layout runs first so a store
 whose cycle templates are still at the root is migrated, not re-seeded beside them.
 
 `run_checks(..., project=...)` scopes the run to one operator-named project: only
@@ -27,8 +27,11 @@ from datetime import date
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
+from rich.console import Console
+
 from metaproject import (
     __version__,
+    bridges,
     catalog,
     config,
     db,
@@ -40,6 +43,7 @@ from metaproject import (
     templates,
 )
 from metaproject.config import Config
+from metaproject.exceptions import MetaProjectError
 from metaproject.extras import LazyModule
 
 questionary = LazyModule("questionary", "Doctor's confirmations")
@@ -729,14 +733,91 @@ def fix_project_docs(project_dir: Path) -> None:
         _prune_dir_if_junk_only(root, "docs", git_repo, recursive=False)
 
 
+def _skills_home(project_dir: Path) -> Optional[Path]:
+    """The project whose `.agents/skills` holds the sources, or None when there is none."""
+    target = skills.project_skills_dir(project_dir)
+    if target.refusal is not None:
+        return None
+    return target.home if target.home is not None else Path(project_dir)
+
+
+def _is_legacy_link(project_dir: Path) -> bool:
+    home = _skills_home(project_dir)
+    return home is not None and bridges.claude_skills_shape(project_dir, home) == bridges.LEGACY
+
+
+def _console() -> Console:
+    return Console(markup=False, highlight=False, soft_wrap=True)
+
+
+def check_skills_legacy_link(project_dir: Path) -> tuple[List[str], List[str], str]:
+    """A whole-directory `.claude/skills` link (R-BRG-19/20): fixable, with lost user skills.
+
+    The lost-skill lines are warnings only: they never make the fix unavailable.
+    """
+    if not _is_legacy_link(project_dir):
+        return [], [], ""
+    home = _skills_home(project_dir) or Path(project_dir)
+    names = [skill.name for skill in skills.bundled_skills()]
+    findings = [".claude/skills is a whole-directory link to .agents/skills (legacy layout)"]
+    for name in bridges.lost_user_skills(home / ".agents" / "skills", names):
+        findings.append(
+            f"user skill {name} will no longer be visible to Claude Code after migration "
+            f"(add your own .claude/skills/{name} entry)"
+        )
+    summary = "replace the link with a real .claude/skills/ holding one entry per bundled skill"
+    return findings, [], summary
+
+
+def fix_skills_legacy_link(project_dir: Path) -> None:
+    report = skills.migrate_legacy_skills_link(project_dir)
+    out = _console()
+    if report.lost:
+        out.print("User skills Claude Code will no longer see through .claude/skills:")
+        for name in report.lost:
+            out.print(f"  {name}")
+        out.print("Add a .claude/skills/<name> entry for any skill Claude Code should still see.")
+    out.print("Commit .claude/skills.")
+
+
+def check_skills_targets(project_dir: Path) -> tuple[List[str], List[str], str]:
+    """`skills.targets` absent from the project config (R-BRG-5): behaves as `["claude"]`."""
+    _targets, recorded, _warnings = bridges.configured_targets(project_dir)
+    if recorded:
+        return [], [], ""
+    return (
+        ['skills.targets is not recorded (behaves as ["claude"])'],
+        [],
+        'record skills.targets = ["claude"] in the project config',
+    )
+
+
+def fix_skills_targets(project_dir: Path) -> None:
+    warning = identity.update_settings(project_dir, ("skills", "targets"), ["claude"])
+    if warning:
+        raise MetaProjectError(warning)
+
+
+def check_skill_shadowing(project_dir: Path) -> tuple[List[str], List[str], str]:
+    """Same-named skills that take precedence over the project's (R-BRG-23); report-only."""
+    names = [skill.name for skill in skills.bundled_skills()]
+    findings = bridges.shadowing(project_dir, names)
+    return findings, list(findings), ""
+
+
+def fix_skill_shadowing(project_dir: Path) -> None:
+    """Nothing to repair: shadowing is the operator's to resolve."""
+
+
 def check_project_skills(project_dir: Path) -> tuple[List[str], List[str], str]:
     """Missing, outdated and modified declared skills in one project (R-DRX-4).
 
     The same classification as `metaproject skills status`. Missing and outdated
     (pristine copies of an earlier release) are fixable; a modified skill is the
-    project's own edit and is reported, never overwritten (FC-4). An R-SKL-5 refusal, or
-    a manifest written by a newer metaproject, is reported the same way. A manifest
-    that only needs recording is not a finding.
+    project's own edit and is reported, never overwritten (FC-4). The same holds for the
+    `.claude/skills` bridge entries (R-BRG-20). A refusal, a bridge notice, or a manifest
+    written by a newer metaproject is reported the same way; the legacy-link notice is
+    left to its own check. A manifest that only needs recording is not a finding.
     """
     report = skills.inspect_project_skills(project_dir)
     if report.notice is not None:
@@ -753,14 +834,38 @@ def check_project_skills(project_dir: Path) -> tuple[List[str], List[str], str]:
         + [f"outdated skill (unmodified copy of an earlier release): {name}" for name in outdated]
         + modified
     )
-    # A sub-project declaring `skills.location: "root"` whose `.claude/skills` link
-    # still has to be created or re-pointed at its home: fixable by the same sync.
-    if report.link:
-        findings.append(f".claude/skills link pending: {report.link}")
     report_only = list(modified)
+    bridge = report.bridges.get("claude")
+    bridge_fixable = 0
+    if bridge is not None:
+        newer = report.manifest_state == skills.MANIFEST_NEWER
+        if bridge.notice is not None and not newer and not _is_legacy_link(project_dir):
+            findings.append(bridge.notice)
+            report_only.append(bridge.notice)
+        wanted = "claude" in bridges.configured_targets(project_dir)[0]
+        for name, entry in bridge.entries.items():
+            state = entry.get("state")
+            where = f".claude/skills/{name}"
+            if state == bridges.MISSING and wanted:
+                findings.append(f"missing bridge entry: {where}")
+                bridge_fixable += 1
+            elif state == bridges.OUTDATED and wanted:
+                findings.append(f"outdated bridge entry: {where}")
+                bridge_fixable += 1
+            elif state == bridges.MODIFIED:
+                note = entry.get("note")
+                text = f"modified bridge entry (left untouched): {where}"
+                if note:
+                    text += f"; {note}"
+                findings.append(text)
+                report_only.append(text)
+            elif state == bridges.FOREIGN and entry.get("note") != "identical":
+                text = f"foreign entry (not created by metaproject; left untouched): {where}"
+                findings.append(text)
+                report_only.append(text)
     if report.manifest_state == skills.MANIFEST_NEWER and findings:
-        newer = "skills manifest written by a newer metaproject; upgrade before syncing"
-        findings.append(newer)
+        newer_text = "skills manifest written by a newer metaproject; upgrade before syncing"
+        findings.append(newer_text)
         report_only = list(findings)
     try:
         where = report.target.relative_to(project_dir).as_posix()
@@ -770,8 +875,8 @@ def check_project_skills(project_dir: Path) -> tuple[List[str], List[str], str]:
         f"install {len(missing)} missing, update {len(outdated)} outdated unmodified "
         f"skill(s) in {where}/"
     )
-    if report.link:
-        summary += f", and {report.link}"
+    if bridge_fixable:
+        summary += f", and write {bridge_fixable} .claude/skills entr(ies)"
     return findings, report_only, summary
 
 
@@ -793,7 +898,10 @@ _PROJECT_CHECKS: Tuple[
 ] = (
     ("project config", check_project_config, fix_project_config),
     ("project docs", check_project_docs, fix_project_docs),
+    ("skills legacy link", check_skills_legacy_link, fix_skills_legacy_link),
+    ("skills targets", check_skills_targets, fix_skills_targets),
     ("project skills", check_project_skills, fix_project_skills),
+    ("skill shadowing", check_skill_shadowing, fix_skill_shadowing),
     ("project hook scripts", check_project_hooks, fix_project_hooks),
 )
 
@@ -992,7 +1100,12 @@ def _apply(
         return result
     if not confirm(f"doctor: fix {name}? {fix_summary}"):
         return result
-    fix()
+    try:
+        fix()
+    except MetaProjectError as exc:
+        result.fixed = False
+        result.findings = [*findings, f"fix failed: {exc}"]
+        return result
     result.fixed = True
     # Healthy at end of run once every fixable finding is fixed (spec R-DR-1); findings
     # no fix resolves keep the check unhealthy.

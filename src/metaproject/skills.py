@@ -885,6 +885,36 @@ def sync_project_skills(
     )
 
 
+def migrate_legacy_skills_link(project_dir: Path) -> "bridge_ops.BridgeReport":
+    """Replace a legacy whole-directory `.claude/skills` link with per-skill bridge entries.
+
+    Records the created entries in the manifest. Raises `MetaProjectError` when the
+    manifest was written by a newer metaproject or the migration fails (the link is
+    then restored exactly).
+    """
+    target = project_skills_dir(project_dir)
+    if target.refusal is not None:
+        raise MetaProjectError(target.refusal)
+    loaded = load_manifest(target.path)
+    if loaded.state == MANIFEST_NEWER:
+        raise MetaProjectError(
+            f"{manifest_path(target.path)} was written by a newer metaproject; upgrade "
+            "metaproject before migrating (the file was left untouched)."
+        )
+    home = target.home if target.home is not None else Path(project_dir)
+    names = [skill.name for skill in bundled_skills()]
+    report, records = bridge_ops.migrate_legacy_link(Path(project_dir), home, names)
+    key = _project_key(Path(project_dir), home)
+    new_bridges: Dict[str, Dict] = {
+        k: dict(v) if isinstance(v, dict) else v for k, v in loaded.bridges.items()
+    }
+    slot = dict(new_bridges.get(key) or {})
+    slot["claude"] = records
+    new_bridges[key] = slot
+    _write_manifest(target.path, Manifest(MANIFEST_PRESENT, loaded.skills, new_bridges), None)
+    return report
+
+
 def install_project_skills(
     project_dir: Path,
     dry_run: bool = False,

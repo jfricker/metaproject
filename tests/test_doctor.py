@@ -20,7 +20,7 @@ from metaproject.config import (
     save_config,
 )
 from metaproject.doctor import run_checks
-from metaproject.identity import Identity, read_identity, write_identity
+from metaproject.identity import Identity, read_identity, update_settings, write_identity
 
 
 def _make_env(tmp_path: Path, learn_targets: list[str] | None = None) -> tuple[Config, Path]:
@@ -278,6 +278,7 @@ def test_cli_doctor_healthy_exit_zero(runner: CliRunner, tmp_path: Path) -> None
 
 # ------------------------------------------------------------- relocation (R-DRX)
 
+import json  # noqa: E402
 import os  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
@@ -421,7 +422,11 @@ def test_ac9_dry_run_reports_every_finding_and_writes_nothing(tmp_path: Path, ho
     assert "missing skill: generate-spec" in skills_result.findings
     assert any("modified skill" in f and "wrapup" in f for f in skills_result.findings)
     # docs_proj has no skills at all: every declared skill is missing.
-    missing_all = by_name[f"project skills: {docs_project}"].findings
+    missing_all = [
+        f
+        for f in by_name[f"project skills: {docs_project}"].findings
+        if f.startswith("missing skill")
+    ]
     assert len(missing_all) == len(bundled_skills())
 
     assert _snapshot(store, docs_project, skills_project, home, config_file.parent) == before
@@ -643,12 +648,18 @@ def test_scoped_dry_run_checks_only_that_project(tmp_path: Path) -> None:
         "project identity",
         f"project config: {target}",
         f"project docs: {target}",
+        f"skills legacy link: {target}",
+        f"skills targets: {target}",
         f"project skills: {target}",
+        f"skill shadowing: {target}",
         f"project hook scripts: {target}",
     ]
     assert results[0].healthy  # the legacy anchor `_legacy_project` writes is seen
-    assert all(not r.healthy for r in results[1:4])
-    assert results[4].healthy  # no hook scripts installed: nothing to refresh
+    assert [r.healthy for r in results[1:3]] == [False, False]
+    assert results[3].healthy  # no legacy link
+    assert not results[4].healthy  # skills.targets absent
+    assert not results[5].healthy  # nothing installed
+    assert results[6].healthy and results[7].healthy
     assert _snapshot(tmp_path / "projects", Path(cfg.templates_dir), config_file.parent) == before
     assert (bystander / "intent.md").is_file()
 
@@ -748,6 +759,7 @@ def test_cli_doctor_scoped_current_directory(
         ),
     )
     install_project_skills(project)
+    update_settings(project, ("skills", "targets"), ["claude"])
     monkeypatch.chdir(project)
 
     result = runner.invoke(app, ["doctor", "--dry-run", "."], env=_cli_env(config_file))
@@ -1068,3 +1080,188 @@ def test_doctor_web_profile_checks_single_v09_project(
     assert res.exit_code == 1
     assert "move docs/INTENT.md → .metaproject/docs/INTENT.md" in res.output
     assert "template store" not in res.output
+
+
+# ------------------------------------------------------------- legacy skills link
+
+
+from metaproject.scaffold import scaffold_project  # noqa: E402
+
+LEGACY_FINDING = ".claude/skills is a whole-directory link to .agents/skills (legacy layout)"
+
+
+def _legacy_skills_project(tmp_path: Path, as_file: bool = False) -> Path:
+    project = tmp_path / "proj"
+    scaffold_project(project_name="proj", output=project, interactive=False, no_git=True)
+    mine = project / ".agents" / "skills" / "mine"
+    mine.mkdir()
+    (mine / "SKILL.md").write_text("# mine\n", encoding="utf-8")
+    link = project / ".claude" / "skills"
+    shutil.rmtree(link)
+    if as_file:
+        link.write_text("../.agents/skills", encoding="utf-8")
+    else:
+        link.symlink_to("../.agents/skills")
+    return project
+
+
+def _skills_run(tmp_path, project, confirm=_all_yes, dry_run=False):
+    env_root = tmp_path / f"env{len(list(tmp_path.glob('env*')))}"
+    env_root.mkdir()
+    cfg, config_file = _make_env(env_root)
+    return run_checks(cfg, config_file, dry_run=dry_run, confirm=confirm, project=project)
+
+
+def _only(name: str):
+    return lambda message: name in message
+
+
+@pytest.mark.parametrize("as_file", [False, True])
+def test_legacy_link_reported_and_migrated(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], as_file: bool
+) -> None:
+    project = _legacy_skills_project(tmp_path, as_file)
+    results = _skills_run(tmp_path, project, dry_run=True, confirm=_fail_if_called)
+    legacy = _check(results, f"skills legacy link: {project}")
+    assert LEGACY_FINDING in legacy.findings
+    assert any("user skill mine will no longer be visible" in f for f in legacy.findings)
+    assert legacy.report_only == []
+    # The legacy-link notice is not repeated under "project skills".
+    assert not any(
+        "legacy link" in f for f in _check(results, f"project skills: {project}").findings
+    )
+
+    results = _skills_run(tmp_path, project, confirm=_only("skills legacy link"))
+    assert _check(results, f"skills legacy link: {project}").fixed is True
+    skills_dir = project / ".claude" / "skills"
+    assert skills_dir.is_dir() and not skills_dir.is_symlink()
+    assert (skills_dir / "wrapup").is_symlink()
+    assert not (skills_dir / "mine").exists() and not (skills_dir / "mine").is_symlink()
+    assert {p.name for p in skills_dir.iterdir()} == {s.name for s in bundled_skills()}
+    manifest = json.loads(
+        (project / ".agents" / "skills" / ".metaproject-skills.json").read_text(encoding="utf-8")
+    )
+    assert "wrapup" in manifest["bridges"][next(iter(manifest["bridges"]))]["claude"]["entries"]
+    out = capsys.readouterr().out
+    assert "mine" in out and "Commit .claude/skills." in out
+    assert (project / ".agents" / "skills" / "mine" / "SKILL.md").read_text() == "# mine\n"
+
+
+def test_legacy_link_migration_failure_restores_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _legacy_skills_project(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise OSError("disk on fire")
+
+    monkeypatch.setattr("metaproject.bridges.sync_bridges", boom)
+    results = _skills_run(tmp_path, project, confirm=_only("skills legacy link"))
+    legacy = _check(results, f"skills legacy link: {project}")
+    assert legacy.fixed is False and not legacy.healthy
+    assert any(f.startswith("fix failed:") and "disk on fire" in f for f in legacy.findings)
+    link = project / ".claude" / "skills"
+    assert link.is_symlink() and os.readlink(link) == "../.agents/skills"
+
+
+def test_each_check_confirmed_separately(tmp_path: Path) -> None:
+    project = _legacy_skills_project(tmp_path)
+    update_settings_path = project / ".metaproject" / "config.json"
+    data = json.loads(update_settings_path.read_text(encoding="utf-8"))
+    del data["skills"]["targets"]
+    update_settings_path.write_text(json.dumps(data), encoding="utf-8")
+
+    results = _skills_run(tmp_path, project, confirm=_only("skills targets"))
+    assert _check(results, f"skills legacy link: {project}").fixed is None
+    assert (project / ".claude" / "skills").is_symlink()
+    assert _check(results, f"skills targets: {project}").fixed is True
+    data = json.loads(update_settings_path.read_text(encoding="utf-8"))
+    assert data["skills"]["targets"] == ["claude"]
+
+
+def test_unparseable_config_targets_warning_file_unchanged(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    scaffold_project(project_name="proj", output=project, interactive=False, no_git=True)
+    cfg_path = project / ".metaproject" / "config.json"
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    del data["skills"]["targets"]
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    results = _skills_run(tmp_path, project, dry_run=True)
+    assert _check(results, f"skills targets: {project}").findings == [
+        'skills.targets is not recorded (behaves as ["claude"])'
+    ]
+    from metaproject.doctor import fix_skills_targets
+    from metaproject.exceptions import MetaProjectError
+
+    cfg_path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(MetaProjectError):
+        fix_skills_targets(project)
+    assert cfg_path.read_text(encoding="utf-8") == "{not json"
+    results = _skills_run(tmp_path, project, confirm=_only("skills targets"))
+    targets = _check(results, f"skills targets: {project}")
+    assert targets.fixed is False and any("fix failed" in f for f in targets.findings)
+    assert cfg_path.read_text(encoding="utf-8") == "{not json"
+
+
+def test_shadowing_is_report_only_and_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = tmp_path / "proj"
+    scaffold_project(project_name="proj", output=project, interactive=False, no_git=True)
+    fake_home = tmp_path / "fakehome"
+    (fake_home / ".claude" / "skills" / "wrapup").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    before = _snapshot(project, fake_home)
+    results = _skills_run(tmp_path, project, confirm=_fail_if_called)
+    shadow = _check(results, f"skill shadowing: {project}")
+    assert shadow.findings and shadow.findings == shadow.report_only
+    assert "wrapup" in shadow.findings[0] and shadow.fixed is None
+    assert _snapshot(project, fake_home) == before
+
+
+def test_modified_copy_and_foreign_entries_are_report_only(tmp_path: Path) -> None:
+    project = tmp_path / "proj"
+    scaffold_project(project_name="proj", output=project, interactive=False, no_git=True)
+    skills_dir = project / ".claude" / "skills"
+    for name in ("wrapup", "shipit"):
+        (skills_dir / name).unlink()
+    shutil.copytree(project / ".agents" / "skills" / "wrapup", skills_dir / "wrapup")
+    # Record wrapup as a copy bridge, then edit it.
+    manifest_path = project / ".agents" / "skills" / ".metaproject-skills.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    from metaproject.skills import file_map
+
+    recs = manifest["bridges"]["."]["claude"]["entries"]
+    recs["wrapup"] = {"mode": "copy", "files": file_map(skills_dir / "wrapup")}
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (skills_dir / "wrapup" / "SKILL.md").write_text("# edited\n", encoding="utf-8")
+    # A user's own, different entry under a bundled name that is not recorded.
+    recs.pop("shipit")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (skills_dir / "shipit").mkdir()
+    (skills_dir / "shipit" / "SKILL.md").write_text("# theirs\n", encoding="utf-8")
+
+    results = _skills_run(tmp_path, project, confirm=_fail_if_called)
+    result = _check(results, f"project skills: {project}")
+    assert any("modified bridge entry" in f and "wrapup" in f for f in result.findings)
+    assert any("foreign entry" in f and "shipit" in f for f in result.findings)
+    assert set(result.findings) <= set(result.report_only)
+
+
+def test_agent_session_reports_legacy_and_targets_writes_nothing(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    project = _legacy_skills_project(tmp_path)
+    cfg_path = project / ".metaproject" / "config.json"
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    del data["skills"]["targets"]
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    _, config_file = _make_env(tmp_path)
+    before = _snapshot(project)
+    env = {**_cli_env(config_file), "METAPROJECT_AGENT": None, "CLAUDECODE": "1"}
+    fix = runner.invoke(app, ["doctor", str(project)], env=env)
+    assert fix.exit_code == 1 and "needs an operator" in fix.output
+    dry = runner.invoke(app, ["doctor", "--dry-run", str(project)], env=env)
+    assert dry.exit_code == 1
+    assert "legacy layout" in dry.output and "skills.targets is not recorded" in dry.output
+    assert _snapshot(project) == before
