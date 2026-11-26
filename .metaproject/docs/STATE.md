@@ -18,7 +18,7 @@
 - [x] 2. `bridges.py` in isolation (1cca5fe; 1187 passed)
 - [x] 3. Wire bridges into skills (827929f; 1201 passed)
 - [x] 4. Scaffold / backfill / adopt (39df8bd; 1215 passed)
-- [ ] 5. Doctor
+- [x] 5. Doctor (e367e64; 1223 passed)
 - [ ] 6. CLI output and shim removal
 - [ ] 7. Docs, skill history, self-migration
 
@@ -31,12 +31,14 @@
 - The source (`.agents/skills`) is installed whatever `.claude/skills` is; only "root with no home" refuses (R-SKL-5 retired) (`tests/test_skills_sync.py`).
 - Manifest entry names are untrusted: unsafe names are dropped, writes/removals require the entry parent to be `.claude/skills`, and nothing is changed when `.claude` or `.claude/skills` resolves outside the project (c48165a, `tests/test_bridges.py`).
 - `backfill` and `adopt` run only allowlisted read-only git queries (`tests/test_backfill.py`, `tests/test_adopt.py` allowlist tests).
+- `doctor` checks run in order config, docs, skills legacy link, skills targets, project skills, skill shadowing, hook scripts; each is confirmed separately and agent sessions only report (`tests/test_doctor.py`).
 - A sync carries the manifest's `bridges` object through unchanged; v1 manifests are rewritten as v2 (`tests/test_skills_sync.py`).
 
 ## Open items carried into PLAN.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
 - Step 4 relaxed `test_cli_new_dry_run_mentions_gitkeep` (the `.gitkeep` preview line came from `cli.py` reading `skills_link`); step 6 restores it with the bridge preview output.
+- Step 5 deviations: doctor `_apply` now turns a `MetaProjectError` from any fix into a "fix failed" finding (previously raised); the legacy-migration post-fix message prints through a local rich Console; identical unrecorded bridge entries are not doctor findings; a manifest write failure after a successful migration is not rolled back (the entries then read as identical foreign).
 - Recording `skills.targets` re-serialises the config as sorted, indented JSON (keys and values preserved, formatting not).
 
 ## Verified facts (do not re-investigate)
