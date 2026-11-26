@@ -15,7 +15,7 @@
 
 <!-- written by implement-plan as steps land -->
 - [x] 1. Foundations: `treeops.py`, manifest v2, `identity.update_settings`, `git.read_only_query` (10a4a5e, 77bdbfe; 1142 passed)
-- [ ] 2. `bridges.py` in isolation
+- [x] 2. `bridges.py` in isolation (1cca5fe; 1187 passed)
 - [ ] 3. Wire bridges into skills
 - [ ] 4. Scaffold / backfill / adopt
 - [ ] 5. Doctor
@@ -27,6 +27,7 @@
 <!-- written by implement-plan/execute-tests; appended to .metaproject/docs/DESIGN-INVARIANTS.md by wrapup -->
 - Staging recovery never trusts repository content: a `.dest.txt` destination that is absolute, uses `..`, or resolves outside the home (symlinks included) is skipped (`tests/test_treeops.py`).
 - `git.read_only_query` is the only git call reachable from agent-safe commands and refuses keys outside `READ_ONLY_KEYS` (`tests/test_git_read_only.py`).
+- `bridges.py` never imports `skills`; it writes under `.claude/skills/<name>` only for manifest-recorded entries, and a foreign entry is changed only with `--force NAME` (`tests/test_bridges.py`).
 - A sync carries the manifest's `bridges` object through unchanged; v1 manifests are rewritten as v2 (`tests/test_skills_sync.py`).
 
 ## Open items carried into PLAN.md
