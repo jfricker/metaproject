@@ -1,6 +1,12 @@
 # MetaProject
 
-A CLI tool for setting up and managing agentic projects. Template based system to maintain consistency across projects. Learn mode reviews changes over time and recommends updates to the templates.
+A CLI tool for setting up and managing agentic projects. This includes SDLC skills, hooks and subagents that standardize how projects are developer. Document templates maintain consistency across multiple projects. Includes a learn mode that reviews project-specific changes over time and recommends updates to the library.
+
+## Inspiration
+
+In my 35 year career in software engineering I've used a lot of different SDLC patterns: everything from SAFe to Waterfall to Scrum. As I began writing code with agents I realized a hybrid of Waterfall and XP worked well for me and for the models. Engineers have become product managers and writing specifications and requirements is now our primary task. I tried numerous repos out that followed this thinking (GSD, Matt Pocock, Superpowers, and plenty more) but they all had too much (like GSD!) or weren't following my own mental model so I started writing my own. While working on it I came across [The AI Native SDLC Playbook](https://claude.com/resources/articles/the-ai-native-sdlc-playbook) from Anthropic which articulated the reasoning and goals well so I've incorporated parts of this into my cycle skills.
+
+I now use this process to write MetaProject as well as all my 30+ projects I've concieved. I made sure I could migrate any project into the MetaProject world, and I've kept growing the process as I find new habits I want to codify as my standard. What started as a collection of doc templates has grown into a skills, agents, scripts, and hooks - a flexible SDLC toolset.
 
 ## Features
 - **Instant Scaffolding (`metaproject new`)**: Scaffold projects with full SDLC documentation and automatic git initialization.
