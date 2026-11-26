@@ -253,9 +253,18 @@ def test_root_mode_sync_keeps_one_copy_at_the_home(delegating: dict) -> None:
     for skill in bundled_skills():
         assert (root / ".agents" / "skills" / skill.name).is_dir()
     assert not (sub / ".agents").exists()
-    link = sub / ".claude" / "skills"
-    assert os.readlink(link) == "../../../.agents/skills"
-    assert link.resolve() == (root / ".agents" / "skills").resolve()
+    # Per-skill bridge entries in the sub-project resolve to the home's sources.
+    skills_dir = sub / ".claude" / "skills"
+    assert not skills_dir.is_symlink()
+    for skill in bundled_skills():
+        entry = skills_dir / skill.name
+        assert entry.is_symlink()
+        assert entry.resolve() == (root / ".agents" / "skills" / skill.name).resolve()
+    assert report.bridges["claude"].notice is None
+    recorded = json.loads((root / ".agents" / "skills" / MANIFEST_NAME).read_text("utf-8"))
+    assert set(recorded["bridges"]["packages/a"]["claude"]["entries"]) == {
+        skill.name for skill in bundled_skills()
+    }
 
     # A second sub-project sharing the home finds everything already there.
     second = sync_project_skills(delegating["other"])
@@ -289,18 +298,20 @@ def test_root_mode_updates_outdated_and_keeps_modified_at_the_home(delegating: d
     assert (home / "shipit" / "SKILL.md").read_text(encoding="utf-8") == "mine\n"
 
 
-def test_root_mode_repoints_the_default_link(delegating: dict) -> None:
+def test_root_mode_legacy_default_link_is_reported_not_rewritten(delegating: dict) -> None:
     sub = delegating["sub"]
     (sub / ".claude").mkdir()
     (sub / ".claude" / "skills").symlink_to(Path("..") / ".agents" / "skills")
     pending = inspect_project_skills(sub)
-    assert pending.notice is None and pending.link and "re-point" in pending.link
-    sync_project_skills(sub)
-    assert os.readlink(sub / ".claude" / "skills") == "../../../.agents/skills"
+    assert pending.notice is None and pending.link is None
+    assert "legacy" in pending.bridges["claude"].notice
+    report = sync_project_skills(sub)
+    assert "legacy" in report.bridges["claude"].notice
+    assert os.readlink(sub / ".claude" / "skills") == "../.agents/skills"
 
 
 @pytest.mark.parametrize("kind", ["dir", "foreign"])
-def test_root_mode_refuses_a_real_dir_or_foreign_link(
+def test_root_mode_installs_home_sources_whatever_claude_skills_is(
     delegating: dict, tmp_path: Path, kind: str
 ) -> None:
     sub, root = delegating["sub"], delegating["root"]
@@ -310,14 +321,19 @@ def test_root_mode_refuses_a_real_dir_or_foreign_link(
     else:
         (sub / ".claude" / "skills").symlink_to(tmp_path)
     report = sync_project_skills(sub)
-    assert report.notice is not None
-    assert not (root / ".agents").exists()
+    assert report.notice is None
+    assert (root / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
+    if kind == "dir":
+        assert (sub / ".claude" / "skills" / "wrapup").is_symlink()
+    else:
+        assert report.bridges["claude"].notice
+        assert list(tmp_path.glob("wrapup")) == []
 
 
 def test_root_mode_dry_run_writes_nothing(delegating: dict) -> None:
     sub, root = delegating["sub"], delegating["root"]
     report = sync_project_skills(sub, dry_run=True)
-    assert report.link and report.link.startswith("would be created")
+    assert report.link is None
     assert not (root / ".agents").exists()
     assert not (sub / ".claude").exists()
 
@@ -337,8 +353,8 @@ def test_root_mode_cli_payload_and_doctor(
 ) -> None:
     sub, root = delegating["sub"], delegating["root"]
     findings, report_only, summary = check_project_skills(sub)
-    assert any("link pending" in f for f in findings)
-    assert not any("link pending" in f for f in report_only)
+    # The directory link is gone; doctor no longer reports one pending.
+    assert not any("link pending" in f for f in findings + report_only)
     assert str(root / ".agents" / "skills") in summary
     fix_project_skills(sub)
     assert check_project_skills(sub)[0] == []

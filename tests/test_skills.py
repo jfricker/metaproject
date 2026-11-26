@@ -215,27 +215,26 @@ def test_cli_backfill_reports_skills(runner: CliRunner, tmp_path: Path) -> None:
     assert (proj / ".agents" / "skills" / "generate-plan" / "SKILL.md").is_file()
 
 
-# ------------------------------------------------------------------ R-SKL-5 refusals
+# -------------------------------------------- `.claude/skills` never refuses the source
 
 
-def test_ac5_real_claude_skills_directory_refuses_skills_not_deliverables(
+def test_ac5_real_claude_skills_directory_installs_sources_and_bridges(
     runner: CliRunner, tmp_path: Path
 ) -> None:
-    """AC-5: `.claude/skills` as a real directory — no skill written, one notice, the
-    other deliverables still created."""
+    """A real `.claude/skills` no longer refuses: sources install, deliverables are
+    created, the user's own entries stay."""
     proj = tmp_path / "occupied"
-    (proj / ".claude" / "skills").mkdir(parents=True)
+    (proj / ".claude" / "skills" / "mine").mkdir(parents=True)
+    (proj / ".claude" / "skills" / "mine" / "SKILL.md").write_text("mine\n", encoding="utf-8")
     (proj / "README.md").write_text("# Occupied\n", encoding="utf-8")
 
     result = runner.invoke(app, ["backfill", "--dir", str(proj)])
 
     assert result.exit_code == 0, result.output
-    # The notice renders in an 80-column console: a long tmp path can wrap it
-    # mid-phrase, so match on whitespace-collapsed text.
-    assert "real directory" in " ".join(result.output.split())
-    assert not (proj / ".agents" / "skills").exists()
+    assert (proj / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
     assert (proj / ".metaproject" / "docs" / "INTENT.md").is_file()
-    assert list((proj / ".claude" / "skills").iterdir()) == []
+    assert (proj / ".claude" / "skills" / "mine" / "SKILL.md").read_text() == "mine\n"
+    assert (proj / ".claude" / "skills" / "wrapup").is_symlink()
 
 
 def test_ac5_new_dot_with_real_claude_skills_still_scaffolds(tmp_path: Path) -> None:
@@ -248,13 +247,12 @@ def test_ac5_new_dot_with_real_claude_skills_still_scaffolds(tmp_path: Path) -> 
         project_name=".", output=str(proj) + "/", interactive=False, backfill=True, no_git=True
     )
 
-    assert result["skills"].states == {}
-    assert "real directory" in result["skills"].notice
-    assert not (proj / ".agents" / "skills" / "wrapup").exists()
+    assert result["skills"].notice is None
+    assert (proj / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
     assert (proj / ".metaproject" / "docs" / "STATE.md").is_file()
 
 
-def test_symlink_elsewhere_is_refused(tmp_path: Path) -> None:
+def test_foreign_symlink_does_not_refuse_the_source(tmp_path: Path) -> None:
     proj = tmp_path / "linked"
     elsewhere = tmp_path / "shared-skills"
     elsewhere.mkdir()
@@ -262,9 +260,11 @@ def test_symlink_elsewhere_is_refused(tmp_path: Path) -> None:
     os.symlink(elsewhere, proj / ".claude" / "skills")
 
     target = project_skills_dir(proj)
-    assert target.refusal is not None and "symlink" in target.refusal
+    assert target.refusal is None and target.link is None
     report = install_project_skills(proj)
-    assert report.states == {} and report.notice
+    assert report.notice is None
+    assert report.states and set(report.states.values()) == {"installed"}
+    assert "not a metaproject-managed" in report.bridges["claude"].notice
     assert list(elsewhere.iterdir()) == []
 
 

@@ -3,8 +3,14 @@
 Two kinds of skill ship as package data: the metaproject skill (`skill/`), which teaches
 an agent to drive this CLI, and the SDLC cycle skills (`sdlc_skills/<name>/`). They are
 not installed globally. `metaproject new`, `backfill` and `adopt` copy each one into the
-project's own `.agents/skills/<name>/`, where the `.claude/skills` symlink makes them
-visible to Claude Code by bare name, and they are committed with the project.
+project's own `.agents/skills/<name>/` (the source), and they are committed with the
+project. The source is always installed; nothing about `.claude/skills` can refuse it.
+
+Claude Code reads only `.claude/skills/`, so after the source pass a bridge pass
+(`bridges.py`, the only writer there) adds one entry per bundled skill at
+`.claude/skills/<name>`: a relative symlink to the source, or a copy. There is no
+directory symlink; the user's own skills in `.claude/skills` are never touched. The
+entries the pass owns are recorded in the manifest under `bridges`.
 
 Every pass records what it wrote in an install manifest,
 `.agents/skills/.metaproject-skills.json`: per skill, the release that wrote it and the
@@ -16,7 +22,8 @@ project's own edit and is never touched unless the operator names it with `--for
 A sub-project whose `.metaproject/config.json` declares `"skills": {"location": "root"}` keeps
 no copy of its own: its skills (and the manifest) live in its home — the nearest ancestor
 project that does not itself declare `"root"`, else the git root — and its
-`.claude/skills` is a relative symlink up to the home's `.agents/skills`.
+`.claude/skills/<name>` entries are bridges up to the home's `.agents/skills/<name>`,
+recorded in the home's manifest under the sub-project's relative path.
 
 `new`, `backfill` and `adopt` stay create-only (`update=False`); `metaproject skills
 sync` and doctor's fix also replace outdated, unmodified skills. This module is the only
@@ -34,6 +41,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
+from metaproject import bridges as bridge_ops
 from metaproject.exceptions import MetaProjectError
 from metaproject.treeops import (  # noqa: F401  (re-exported for callers and tests)
     NON_REGULAR,
@@ -89,12 +97,11 @@ class BundledSkill:
 
 @dataclass(frozen=True)
 class SkillsTarget:
-    """Where a project's skills go, or why none may be written there (R-SKL-5).
+    """Where a project's skills go, or why none may be written there.
 
     `home` is the project whose `.agents/skills` is `path`: the project itself, or —
     for a sub-project declaring `"skills": {"location": "root"}` — the ancestor that
-    keeps the one shared copy (`delegated`). `link` describes the sub-project's
-    `.claude/skills` link when it still has to be created or re-pointed at the home.
+    keeps the one shared copy (`delegated`). `link` is always None (shim).
     """
 
     path: Path
@@ -122,9 +129,10 @@ class SkillStatus:
 class SkillsReport:
     """What one pass found and did (or would do, under `dry_run`), per skill name.
 
-    `notice` is set only for an R-SKL-5 refusal, in which case nothing was examined or
-    written. `warnings` carries everything else worth saying (an unreadable manifest, a
-    staging directory that could not be removed).
+    `notice` is set only for the no-home refusal, in which case nothing was examined or
+    written. `bridges` holds the per-target bridge report and `shadowing` the skills a
+    user-level or Copilot directory overrides. `warnings` carries everything else worth
+    saying (an unreadable manifest, a staging directory that could not be removed).
     """
 
     target: Path
@@ -136,9 +144,10 @@ class SkillsReport:
     # `project` (the default) or `root` (skills kept by an ancestor; see SkillsTarget).
     location: str = "project"
     home: Optional[Path] = None
-    # What happened (or, under dry_run, would happen) to a delegating sub-project's
-    # `.claude/skills` link; None when nothing needed doing.
+    # Shim: always None.
     link: Optional[str] = None
+    bridges: Dict[str, "bridge_ops.BridgeReport"] = field(default_factory=dict)
+    shadowing: List[str] = field(default_factory=list)
 
     def named(self, state: str) -> List[str]:
         """The skills that ended in `state`, in declaration order."""
@@ -469,24 +478,18 @@ def _leftover_warning(project_dir: Path) -> Optional[str]:
 
 
 def project_skills_dir(project_dir: Path) -> SkillsTarget:
-    """The project's skills directory, or a refusal when Claude Code would not see it.
+    """The project's skills directory (the source), or why there is none.
 
-    Ordinarily the project's own `.agents/skills`, with `.claude/skills` absent or a
-    symlink resolving to it. A real directory there, or a link elsewhere, means skills
-    written to `.agents/skills` would be invisible, so nothing is written (R-SKL-5).
-
-    With `skills.location: "root"` the target is the home's `.agents/skills` (see
-    `skills_home`). The home's own link is checked exactly as above, and the
-    sub-project's `.claude/skills` must be absent (it will be created), a symlink to the
-    home's `.agents/skills`, or the default link to its own `.agents/skills` (it will be
-    re-pointed); anything else is a refusal.
+    Ordinarily the project's own `.agents/skills`; with `skills.location: "root"` the
+    home's (see `skills_home`). The only refusal is `root` with no ancestor project or
+    git root. `.claude/skills` never refuses an install; the bridge pass copes with it.
     """
     project_dir = Path(project_dir)
     own = project_dir / ".agents" / "skills"
     location, invalid = skills_location(project_dir)
     warnings: Tuple[str, ...] = (invalid,) if invalid else ()
     if location != LOCATION_ROOT:
-        return SkillsTarget(own, _link_refusal(project_dir, own), project_dir, warnings=warnings)
+        return SkillsTarget(own, None, project_dir, warnings=warnings)
 
     home = skills_home(project_dir)
     if home is None:
@@ -498,40 +501,12 @@ def project_skills_dir(project_dir: Path) -> SkillsTarget:
             True,
         )
     if home == project_dir.resolve():
-        return SkillsTarget(own, _link_refusal(project_dir, own), project_dir, warnings=warnings)
+        return SkillsTarget(own, None, project_dir, warnings=warnings)
 
-    agents = home / ".agents" / "skills"
     leftover = _leftover_warning(project_dir)
     if leftover:
         warnings += (leftover,)
-
-    def refuse(reason: str) -> SkillsTarget:
-        return SkillsTarget(agents, reason, home, True, None, warnings)
-
-    refusal = _link_refusal(home, agents)
-    if refusal is not None:
-        return refuse(refusal)
-
-    claude_skills = project_dir / ".claude" / "skills"
-    wanted = link_target(project_dir, home)
-    link: Optional[str] = None
-    if claude_skills.is_symlink():
-        resolved = claude_skills.resolve()
-        if resolved == own.resolve():
-            link = f"re-point {claude_skills} -> {wanted}"
-        elif resolved != agents.resolve():
-            return refuse(
-                f"{claude_skills} is a symlink to {resolved}, not {agents}; project "
-                "skills were not installed."
-            )
-    elif claude_skills.exists():
-        return refuse(
-            f"{claude_skills} is a real directory, not a symlink to {agents}; project "
-            "skills were not installed."
-        )
-    else:
-        link = f"create {claude_skills} -> {wanted}"
-    return SkillsTarget(agents, None, home, True, link, warnings)
+    return SkillsTarget(home / ".agents" / "skills", None, home, True, None, warnings)
 
 
 def ensure_skills_link(
@@ -666,6 +641,21 @@ def _manifest_warning(state: str, writing: bool) -> Optional[str]:
     return None
 
 
+def _project_key(project_dir: Path, home: Path) -> str:
+    """The manifest key for a project's bridges: its path under the home, `.` for the home."""
+    try:
+        rel = Path(project_dir).resolve().relative_to(Path(home).resolve()).as_posix()
+    except ValueError:
+        return Path(project_dir).name
+    return rel or "."
+
+
+def _bridge_records(manifest: Manifest, key: str) -> Dict:
+    entry = manifest.bridges.get(key)
+    records = entry.get("claude") if isinstance(entry, dict) else None
+    return records if isinstance(records, dict) else {}
+
+
 def inspect_project_skills(project_dir: Path) -> SkillsReport:
     """Classify every bundled skill in a project. Read-only: writes nothing at all."""
     target = project_skills_dir(project_dir)
@@ -687,17 +677,20 @@ def inspect_project_skills(project_dir: Path) -> SkillsReport:
     )
     warning = _manifest_warning(manifest_state, writing=False)
     warnings = target.warnings + ((warning,) if warning else ())
-    if target.link:
-        warnings += (
-            f".claude/skills link pending (`metaproject skills sync` will {target.link}).",
-        )
+    names = [skill.name for skill in bundled_skills()]
+    home = target.home if target.home is not None else Path(project_dir)
+    records = _bridge_records(loaded, _project_key(Path(project_dir), home))
+    bridge_report = bridge_ops.inspect_bridges(
+        Path(project_dir), home, names, records, manifest_state == MANIFEST_NEWER
+    )
     return _target_report(
         target,
         states={status.name: status.state for status in statuses},
         statuses=statuses,
         manifest_state=manifest_state,
         warnings=warnings,
-        link=target.link,
+        bridges={"claude": bridge_report},
+        shadowing=bridge_ops.shadowing(Path(project_dir), names),
     )
 
 
@@ -752,7 +745,7 @@ def sync_project_skills(
 
     Modified skills are never touched unless named in `force`. The manifest is recorded
     for every skill written or already current. `dry_run` reports the same actions and
-    writes nothing (no manifest, no staging directory). An R-SKL-5 refusal writes
+    writes nothing (no manifest, no staging directory). The no-home refusal writes
     nothing at all. Raises `MetaProjectError` for an unknown `force` name (before any
     write), for a manifest written by a newer metaproject when `update` is set, and for
     an I/O failure after rolling the failing skill back.
@@ -781,9 +774,6 @@ def sync_project_skills(
     history = load_history()
     running = running_release()
     warnings: List[str] = list(target.warnings)
-    link: Optional[str] = None
-    if target.link and target.home is not None:
-        link = ensure_skills_link(project_dir, target.home, dry_run=dry_run, tracker=tracker)
     warning = _manifest_warning(manifest_state, writing=not dry_run)
     if warning:
         warnings.append(warning)
@@ -793,6 +783,13 @@ def sync_project_skills(
     statuses: List[SkillStatus] = []
     states: Dict[str, str] = {}
     forced = set(force)
+    bridge_report: Optional["bridge_ops.BridgeReport"] = None
+    new_bridges: Dict[str, Dict] = {
+        k: dict(v) if isinstance(v, dict) else v for k, v in loaded.bridges.items()
+    }
+    names_list = [skill.name for skill in declared]
+    home = target.home if target.home is not None else Path(project_dir)
+    key = _project_key(Path(project_dir), home)
 
     if not dry_run:
         _recover_staging(target.path)
@@ -840,14 +837,35 @@ def sync_project_skills(
                 states[skill.name] = UPDATED
             else:
                 states[skill.name] = status.state
+        bridge_report, new_records = bridge_ops.sync_bridges(
+            Path(project_dir),
+            home,
+            names_list,
+            _bridge_records(loaded, key),
+            manifest_newer=manifest_state == MANIFEST_NEWER,
+            update=update,
+            force=force,
+            dry_run=dry_run,
+            tracker=tracker,
+        )
+        if not dry_run and manifest_state != MANIFEST_NEWER:
+            slot = dict(new_bridges.get(key) or {})
+            if new_records and (new_records.get("entries") or new_records.get("created")):
+                slot["claude"] = new_records
+            else:
+                slot.pop("claude", None)
+            if slot:
+                new_bridges[key] = slot
+            else:
+                new_bridges.pop(key, None)
     finally:
         if not dry_run:
             try:
                 if manifest_state != MANIFEST_NEWER:
-                    if new_entries or manifest_path(target.path).exists():
+                    if new_entries or new_bridges or manifest_path(target.path).exists():
                         _write_manifest(
                             target.path,
-                            Manifest(MANIFEST_PRESENT, new_entries, loaded.bridges),
+                            Manifest(MANIFEST_PRESENT, new_entries, new_bridges),
                             tracker,
                         )
             finally:
@@ -862,7 +880,8 @@ def sync_project_skills(
         statuses=tuple(statuses),
         manifest_state=manifest_state,
         warnings=tuple(warnings),
-        link=link,
+        bridges={"claude": bridge_report} if bridge_report is not None else {},
+        shadowing=bridge_ops.shadowing(Path(project_dir), names_list),
     )
 
 

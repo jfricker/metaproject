@@ -509,30 +509,45 @@ def test_symlinked_skill_is_modified_and_force_replaces_the_link(tmp_path: Path)
 def test_refusals_exit_one_and_write_nothing(
     runner: CliRunner, tmp_path: Path, command: str
 ) -> None:
-    real_dir = _scaffold(tmp_path, "realdir")
-    (real_dir / ".claude" / "skills").unlink()
-    (real_dir / ".claude" / "skills").mkdir()
-    (_skills_root(real_dir) / MANIFEST_NAME).unlink()
-    shutil.rmtree(_skills_root(real_dir) / "wrapup")
+    """The only refusal left: `skills.location: root` with no ancestor project or git root."""
+    proj = _scaffold(tmp_path, "nohome")
+    cfg_path = proj / ".metaproject" / "config.json"
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["skills"] = {"location": "root"}
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    shutil.rmtree(_skills_root(proj))
+    (proj / ".claude" / "skills").unlink()
 
-    linked = _scaffold(tmp_path, "linked")
+    before = _tree(proj)
+    result = runner.invoke(app, ["skills", command, "--dir", str(proj)])
+    assert result.exit_code == 1, result.output
+    assert _tree(proj) == before
+    json_result = runner.invoke(app, ["skills", command, "--dir", str(proj), "-f", "json"])
+    assert json_result.exit_code == 1
+    payload = json.loads(json_result.stdout)
+    assert payload["refusal"] and payload["skills"] == []
+    assert _tree(proj) == before
+
+
+@pytest.mark.parametrize("kind", ["dir", "foreign"])
+def test_real_dir_or_foreign_link_no_longer_refuses_sync(
+    runner: CliRunner, tmp_path: Path, kind: str
+) -> None:
+    proj = _scaffold(tmp_path, kind)
+    skills_link = proj / ".claude" / "skills"
+    skills_link.unlink()
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    (linked / ".claude" / "skills").unlink()
-    os.symlink(elsewhere, linked / ".claude" / "skills")
-    (_skills_root(linked) / MANIFEST_NAME).unlink()
-
-    for proj in (real_dir, linked):
-        before = _tree(proj)
-        result = runner.invoke(app, ["skills", command, "--dir", str(proj)])
-        assert result.exit_code == 1, result.output
-        assert _tree(proj) == before
-        json_result = runner.invoke(app, ["skills", command, "--dir", str(proj), "-f", "json"])
-        assert json_result.exit_code == 1
-        payload = json.loads(json_result.stdout)
-        assert payload["refusal"] and payload["skills"] == []
-        assert _tree(proj) == before
+    if kind == "dir":
+        skills_link.mkdir()
+    else:
+        os.symlink(elsewhere, skills_link)
+    shutil.rmtree(_skills_root(proj) / "wrapup")
+    result = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
+    assert result.exit_code == 0, result.output
+    assert (_skills_root(proj) / "wrapup" / "SKILL.md").is_file()
     assert list(elsewhere.iterdir()) == []
+    assert (skills_link.is_symlink()) == (kind == "foreign")
 
 
 def test_unreadable_manifest_is_noticed_and_rewritten(runner: CliRunner, tmp_path: Path) -> None:
@@ -633,13 +648,16 @@ def test_unmanaged_directory_exits_one_with_adopt_hint(runner: CliRunner, tmp_pa
     assert list(plain.iterdir()) == []
 
 
-def test_sync_without_claude_skills_link_points_at_adopt(runner: CliRunner, tmp_path: Path) -> None:
+def test_sync_without_claude_skills_creates_bridge_entries(
+    runner: CliRunner, tmp_path: Path
+) -> None:
     proj = _scaffold(tmp_path)
     (proj / ".claude" / "skills").unlink()
     result = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
     assert result.exit_code == 0
-    assert "metaproject adopt" in " ".join(result.output.split())
-    assert not (proj / ".claude" / "skills").exists()
+    entry = proj / ".claude" / "skills" / "wrapup"
+    assert entry.is_symlink() and entry.resolve() == (_skills_root(proj) / "wrapup").resolve()
+    assert not (proj / ".claude" / "skills").is_symlink()
 
 
 def test_skills_is_its_own_group_not_a_learn_path(runner: CliRunner) -> None:
@@ -777,3 +795,238 @@ def test_sync_preserves_existing_bridges(tmp_path: Path) -> None:
     assert after["bridges"] == bridges
     assert "wrapup" in after["skills"]
     assert load_manifest(root).bridges == bridges
+
+
+# ------------------------------------------------------------ bridge pass (R-BRG)
+
+
+def _bare(tmp_path: Path, name: str = "proj", skills: dict | None = None) -> Path:
+    proj = tmp_path / name
+    (proj / ".metaproject").mkdir(parents=True)
+    body = {"skills": skills} if skills is not None else {}
+    (proj / ".metaproject" / "config.json").write_text(json.dumps(body), encoding="utf-8")
+    return proj
+
+
+def _skills_dir(proj: Path) -> Path:
+    return proj / ".claude" / "skills"
+
+
+def _bridge_records(proj: Path, key: str = ".") -> dict:
+    return _manifest(proj)["bridges"][key]["claude"]
+
+
+def _age_skill(proj: Path, name: str) -> None:
+    """Make `name` a pristine copy of an older release (source and manifest agree)."""
+    dest = _skills_root(proj) / name
+    (dest / "SKILL.md").write_text("old release\n", encoding="utf-8")
+    manifest = _manifest(proj)
+    manifest["skills"][name] = {"release": "0.0.1", "files": file_map(dest)}
+    (_skills_root(proj) / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_real_claude_skills_dir_keeps_user_skills_and_skips_foreign_bundled(
+    tmp_path: Path,
+) -> None:
+    proj = _bare(tmp_path)
+    (_skills_dir(proj) / "my-skill").mkdir(parents=True)
+    (_skills_dir(proj) / "my-skill" / "SKILL.md").write_text("mine\n", encoding="utf-8")
+    (_skills_dir(proj) / "shipit").mkdir()
+    (_skills_dir(proj) / "shipit" / "SKILL.md").write_text("foreign\n", encoding="utf-8")
+    user_before = _tree(_skills_dir(proj) / "my-skill")
+    foreign_before = _tree(_skills_dir(proj) / "shipit")
+
+    report = sync_project_skills(proj)
+
+    assert report.notice is None
+    assert {s.action for s in report.statuses} == {INSTALLED}
+    bridge = report.bridges["claude"]
+    assert bridge.entries["shipit"]["action"] == "skipped"
+    assert any("shipit" in w and "not managed" in w for w in bridge.warnings)
+    for skill in bundled_skills():
+        if skill.name != "shipit":
+            assert (_skills_dir(proj) / skill.name).is_symlink()
+    assert not (_skills_dir(proj) / "shipit").is_symlink()
+    assert _tree(_skills_dir(proj) / "my-skill") == user_before
+    assert _tree(_skills_dir(proj) / "shipit") == foreign_before
+    assert "shipit" not in _bridge_records(proj)["entries"]
+
+    forced = sync_project_skills(proj, force=["shipit"])
+    assert forced.bridges["claude"].entries["shipit"]["action"] == "updated"
+    assert (_skills_dir(proj) / "shipit").is_symlink()
+    assert "shipit" in _bridge_records(proj)["entries"]
+    assert _tree(_skills_dir(proj) / "my-skill") == user_before
+
+
+def test_force_unknown_name_raises_before_any_write(tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    with pytest.raises(MetaProjectError):
+        sync_project_skills(proj, force=["nope"])
+    assert not (proj / ".agents").exists() and not (proj / ".claude").exists()
+
+
+@pytest.mark.parametrize("kind", ["symlink", "file"])
+def test_foreign_claude_skills_symlink_or_file_installs_sources_only(
+    tmp_path: Path, kind: str
+) -> None:
+    proj = _bare(tmp_path)
+    (proj / ".claude").mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    if kind == "symlink":
+        os.symlink(elsewhere, _skills_dir(proj))
+    else:
+        _skills_dir(proj).write_text("not a directory\n", encoding="utf-8")
+
+    report = sync_project_skills(proj)
+
+    assert report.notice is None
+    assert {s.action for s in report.statuses} == {INSTALLED}
+    assert report.bridges["claude"].notice
+    assert report.bridges["claude"].removed == []
+    assert list(elsewhere.iterdir()) == []
+    if kind == "file":
+        assert _skills_dir(proj).read_text(encoding="utf-8") == "not a directory\n"
+    assert "bridges" not in _manifest(proj) or not _manifest(proj)["bridges"]
+
+
+def test_delegating_subproject_records_bridges_in_the_home_manifest(tmp_path: Path) -> None:
+    root = tmp_path / "mono"
+    (root / ".git").mkdir(parents=True)
+    (root / ".metaproject").mkdir()
+    (root / ".metaproject" / "config.json").write_text("{}", encoding="utf-8")
+    sub = _bare(root / "packages", "a", {"location": "root"})
+
+    report = sync_project_skills(sub)
+
+    assert report.location == "root" and report.home == root.resolve()
+    assert not (sub / ".agents").exists()
+    for skill in bundled_skills():
+        entry = _skills_dir(sub) / skill.name
+        assert entry.is_symlink()
+        assert entry.resolve() == (root / ".agents" / "skills" / skill.name).resolve()
+    records = _bridge_records(root, "packages/a")
+    assert set(records["entries"]) == {s.name for s in bundled_skills()}
+    assert "." not in _manifest(root)["bridges"]
+
+
+def test_update_replaces_copy_entries_and_leaves_symlink_entries(tmp_path: Path) -> None:
+    sym = _bare(tmp_path, "sym")
+    cp = _bare(tmp_path, "cp", {"link_mode": "copy"})
+    for proj in (sym, cp):
+        sync_project_skills(proj)
+        _age_skill(proj, "wrapup")
+    # The copy entry is a pristine copy of the old source, as its record says.
+    old = _skills_root(cp) / "wrapup"
+    shutil.rmtree(_skills_dir(cp) / "wrapup")
+    shutil.copytree(old, _skills_dir(cp) / "wrapup")
+    manifest = _manifest(cp)
+    manifest["bridges"]["."]["claude"]["entries"]["wrapup"]["files"] = file_map(old)
+    (_skills_root(cp) / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
+    link_before = os.readlink(_skills_dir(sym) / "wrapup")
+
+    for proj in (sym, cp):
+        report = sync_project_skills(proj)
+        assert report.states["wrapup"] == UPDATED
+
+    bundled = file_map(next(s.source_dir for s in bundled_skills() if s.name == "wrapup"))
+    assert os.readlink(_skills_dir(sym) / "wrapup") == link_before
+    assert file_map(_skills_root(sym) / "wrapup") == bundled
+    assert file_map(_skills_dir(cp) / "wrapup") == bundled
+    assert not (_skills_dir(cp) / "wrapup").is_symlink()
+
+
+def test_newer_manifest_version_writes_no_bridges(tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    _skills_root(proj).mkdir(parents=True)
+    manifest = _skills_root(proj) / MANIFEST_NAME
+    manifest.write_text(json.dumps({"version": 3, "skills": {}}), encoding="utf-8")
+    before = manifest.read_bytes()
+
+    report = sync_project_skills(proj, update=False)
+
+    assert report.bridges["claude"].notice and "newer" in report.bridges["claude"].notice
+    assert not _skills_dir(proj).exists()
+    assert manifest.read_bytes() == before
+    inspected = inspect_project_skills(proj)
+    assert "newer" in inspected.bridges["claude"].notice
+
+
+def test_permission_error_on_symlink_is_a_notice_not_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj = _bare(tmp_path)
+
+    def denied(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(os, "symlink", denied)
+    report = sync_project_skills(proj)
+
+    assert report.notice is None
+    assert {s.action for s in report.statuses} == {INSTALLED}
+    for skill in bundled_skills():
+        assert (_skills_root(proj) / skill.name / "SKILL.md").is_file()
+    assert "permission denied" in report.bridges["claude"].notice
+    assert not any(
+        (_skills_dir(proj) / s.name).exists() or (_skills_dir(proj) / s.name).is_symlink()
+        for s in bundled_skills()
+    )
+
+
+def test_second_sync_writes_nothing_and_manifest_bytes_are_identical(tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    sync_project_skills(proj)
+    manifest = _skills_root(proj) / MANIFEST_NAME
+    before_bytes = manifest.read_bytes()
+    before_tree = _tree(proj)
+
+    report = sync_project_skills(proj)
+
+    assert manifest.read_bytes() == before_bytes
+    assert _tree(proj) == before_tree
+    assert {e["action"] for e in report.bridges["claude"].entries.values()} == {None}
+    assert {s.action for s in report.statuses} == {KEPT}
+
+
+def test_dry_run_writes_no_bridges_or_manifest(tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    before = _tree(proj)
+    sync_project_skills(proj, dry_run=True)
+    assert _tree(proj) == before
+    sync_project_skills(proj)
+    after = _tree(proj)
+    (_skills_dir(proj) / "wrapup").unlink()
+    sync_project_skills(proj, dry_run=True)
+    assert not (_skills_dir(proj) / "wrapup").exists()
+    assert _tree(proj) != after
+
+
+def test_empty_targets_removes_recorded_entries(tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    sync_project_skills(proj)
+    assert (_skills_dir(proj) / "wrapup").is_symlink()
+    (proj / ".metaproject" / "config.json").write_text(
+        json.dumps({"skills": {"targets": []}}), encoding="utf-8"
+    )
+
+    report = sync_project_skills(proj)
+
+    assert "wrapup" in report.bridges["claude"].removed
+    assert not (_skills_dir(proj) / "wrapup").exists()
+    assert not (_skills_dir(proj) / "wrapup").is_symlink()
+    assert "bridges" not in _manifest(proj) or "." not in _manifest(proj)["bridges"]
+    assert (_skills_root(proj) / "wrapup" / "SKILL.md").is_file()
+
+
+def test_shadowing_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude" / "skills" / "wrapup").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(fake_home))
+    proj = _bare(tmp_path)
+
+    assert any("wrapup" in line for line in inspect_project_skills(proj).shadowing)
+    report = sync_project_skills(proj)
+    assert report.shadowing == [
+        "~/.claude/skills/wrapup overrides the project's wrapup in Claude Code"
+    ]

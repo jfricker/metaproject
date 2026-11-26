@@ -1002,8 +1002,10 @@ def test_backfill_skips_gitkeep_when_claude_skills_is_real_directory(tmp_path: P
     assert res["skills_link"] is None
     assert real_skills_dir.is_dir()
     assert not real_skills_dir.is_symlink()
-    assert (real_skills_dir / "custom.md").exists()
-    assert not (target / ".agents").exists()
+    assert (real_skills_dir / "custom.md").read_text(encoding="utf-8") == "mine\n"
+    # The source is installed regardless of `.claude/skills`; it is never gitkept here.
+    assert (target / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
+    assert not (target / ".agents" / "skills" / ".gitkeep").exists()
 
 
 def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Path) -> None:
@@ -1028,7 +1030,9 @@ def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Pa
 
     assert res["skills_link"] is None
     assert skills_link.resolve() == (target / "elsewhere").resolve()
-    assert not (target / ".agents").exists()
+    assert list((target / "elsewhere").iterdir()) == []
+    assert (target / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
+    assert not (target / ".agents" / "skills" / ".gitkeep").exists()
 
 
 def test_rollback_removes_gitkeep_it_created_but_not_one_that_preexisted(tmp_path: Path) -> None:

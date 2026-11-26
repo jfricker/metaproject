@@ -42,6 +42,8 @@ def container_git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(cmd, **kwargs):
         if cmd[-3:] == ["config", "--get", "user.name"]:
             return SimpleNamespace(returncode=0, stdout="Claude\n", stderr="")
+        if cmd[-3:] == ["config", "--get", "core.symlinks"]:  # the bridge pass's read-only query
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
         raise AssertionError(f"unexpected subprocess: {cmd}")
 
     monkeypatch.setattr("metaproject.git.subprocess.run", fake_run)

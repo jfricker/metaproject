@@ -211,9 +211,10 @@ def test_one_refused_project_does_not_stop_the_rest(
 ) -> None:
     broken = _project(cfg, tmp_path, "alpha")
     good = _project(cfg, tmp_path, "beta")
-    link = broken / ".claude" / "skills"
-    link.unlink()
-    link.mkdir()
+    cfg_path = broken / ".metaproject" / "config.json"
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["skills"] = {"location": "root"}  # no ancestor project or git root: refused
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
     broken_before = _tree(broken / ".agents")
 
     result = runner.invoke(app, ["skills", "sync", "--all", "--yes"])
