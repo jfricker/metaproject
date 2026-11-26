@@ -162,79 +162,51 @@ class TransactionalTracker:
                 pass
 
 
-def link_agent_skills(
+def prepare_agent_skills(
     target_dir: Path,
     tracker: TransactionalTracker,
     dry_run: bool = False,
-    skip_existing: bool = False,
     home: Optional[Path] = None,
 ) -> Optional[Path]:
-    """Create the agent-skills layout: .agents/skills/ plus a .claude/skills symlink to it.
+    """Create `<home or target>/.agents/skills/` and its `.gitkeep` (create-only, tracked).
 
-    `home` (from `skills.skills_home`) is where the skills live. When it is another
-    directory — a sub-project declaring `skills.location: "root"` — the sub-project
-    gets no `.agents/skills` of its own: its `.claude/skills` link (created when absent,
-    or re-pointed when it is the default link to its own `.agents/skills`) points
-    upward at `home/.agents/skills` by a relative path, and the home receives the usual
-    create-only layout.
-
-    Equivalent to `mkdir -p .claude && mkdir -p .agents/skills &&
-    ln -s ../.agents/skills .claude/skills`, but tracked for rollback and
-    skipped on backfill when the operator already has a .claude/skills entry.
-
-    `.agents/skills/.gitkeep` is written whenever it is missing (spec.md R-ID-5): git
-    does not track empty directories, so without it a clone of the scaffolded project
-    leaves `.claude/skills` a dangling link. This still happens on a backfill into a
-    project that already has the symlink, as long as `.claude/skills` resolves into
-    this project's own `.agents/skills` -- never when it is a real directory or a
-    symlink pointing elsewhere. Existing files are never overwritten.
+    Never creates `.claude/skills` (R-BRG-2): the per-skill bridge pass behind
+    `skills.install_project_skills` owns that directory. `home` (from
+    `skills.skills_home`) is where the skills live; for a delegating sub-project it is
+    another directory and only that home receives the layout. `.gitkeep` is written
+    whenever missing so a clone keeps the otherwise-empty directory. Existing files are
+    never overwritten. Returns the skills directory (or that it would create).
     """
-    if home is not None and Path(home).resolve() != Path(target_dir).resolve():
-        from metaproject.skills import ensure_skills_link
-
-        link = target_dir / ".claude" / "skills"
-        home_skills = Path(home) / ".agents" / "skills"
-        if link.is_symlink() and link.resolve() == home_skills.resolve():
-            done = None
-        else:
-            done = ensure_skills_link(target_dir, Path(home), dry_run=dry_run, tracker=tracker)
-            if done is None:
-                # A real directory or a foreign link: R-SKL-5, nothing is written anywhere.
-                return None
-        link_agent_skills(Path(home), tracker, dry_run=dry_run, skip_existing=True)
-        return link if done is not None else None
-
-    agents_skills_dir = target_dir / ".agents" / "skills"
-    claude_dir = target_dir / ".claude"
-    skills_link = claude_dir / "skills"
-    gitkeep_path = agents_skills_dir / ".gitkeep"
-
-    already_linked = skills_link.exists() or skills_link.is_symlink()
-
-    if skip_existing and already_linked:
-        resolves_into_project = (
-            skills_link.is_symlink() and skills_link.resolve() == agents_skills_dir.resolve()
-        )
-        if resolves_into_project and not gitkeep_path.exists() and not dry_run:
-            if not agents_skills_dir.exists():
-                agents_skills_dir.mkdir(parents=True, exist_ok=True)
-                tracker.record_created_dir(agents_skills_dir)
-            gitkeep_path.write_text("", encoding="utf-8")
-            tracker.record_created_file(gitkeep_path)
-        return None
-
+    base = Path(home) if home is not None else Path(target_dir)
+    skills_dir = base / ".agents" / "skills"
+    gitkeep_path = skills_dir / ".gitkeep"
     if not dry_run:
-        for directory in (agents_skills_dir, claude_dir):
+        for directory in (base / ".agents", skills_dir):
             if not directory.exists():
                 directory.mkdir(parents=True, exist_ok=True)
                 tracker.record_created_dir(directory)
         if not gitkeep_path.exists():
             gitkeep_path.write_text("", encoding="utf-8")
             tracker.record_created_file(gitkeep_path)
-        if not already_linked:
-            skills_link.symlink_to(Path("..") / ".agents" / "skills")
-            tracker.record_created_file(skills_link)
-    return skills_link
+    return skills_dir
+
+
+def record_skills_targets(
+    project_dir: Path, tracker: TransactionalTracker, dry_run: bool = False
+) -> Optional[str]:
+    """Record `skills.targets: ["claude"]` when absent (R-BRG-4); a warning string, never a failure.
+
+    The config file is snapshotted on `tracker` first so rollback restores it. Writes
+    nothing under `dry_run`.
+    """
+    if dry_run:
+        return None
+    from metaproject.identity import update_settings
+
+    path = config_path(project_dir)
+    if path.is_file():
+        tracker.record_modified_file(path)
+    return update_settings(project_dir, ("skills", "targets"), ["claude"])
 
 
 def scaffold_project(
@@ -363,13 +335,10 @@ def scaffold_project(
                 )
                 tracker.record_created_file(identity_path)
 
-        # 5. Agent-skills layout: .agents/skills/ with .claude/skills symlinked to it.
-        skills_link = link_agent_skills(
-            target_dir=target_dir,
-            tracker=tracker,
-            dry_run=dry_run,
-            skip_existing=is_backfill,
-        )
+        # 5. Agent-skills layout: .agents/skills/ only; `.claude/skills` is bridged per
+        # skill by the install below (R-BRG-2). Then record `skills.targets` (R-BRG-4).
+        prepare_agent_skills(target_dir, tracker, dry_run=dry_run)
+        targets_warning = record_skills_targets(target_dir, tracker, dry_run=dry_run)
 
         # 5a. Project skills, copied into .agents/skills before git init so the initial
         # commit includes them (R-SKL-2, R-SKL-6). Create-only, rollback-tracked.
@@ -408,13 +377,18 @@ def scaffold_project(
                 [path for path in preserved_paths if path.is_file()] if is_backfill else []
             ),
             "backfilled": is_backfill,
-            "skills_link": skills_link,
+            "skills_link": None,
+            "skills_bridges": skills_report.bridges.get("claude"),
             "skills": skills_report,
             "hooks": hooks_report,
             "git_initialized": git_initialized,
             "git_status": git_status,
             "dry_run": dry_run,
-            "warnings": render_report.warnings,
+            "warnings": [
+                *render_report.warnings,
+                *([targets_warning] if targets_warning else []),
+                *skills_report.warnings,
+            ],
             "identity_file": identity_file,
         }
 
@@ -432,9 +406,12 @@ class AdoptResult:
     identity: Identity
     # True when `.metaproject/config.json` was (or would be) written; False when one existed.
     identity_written: bool
-    # The `.claude/skills` link created (or that would be), None when one existed.
+    # Shim: always None (the directory link is retired; see `skills_bridges`).
     skills_link: Optional[Path]
     backfill: "BackfillResult"
+    # The Claude bridge report from the skills install, None when not bridged.
+    skills_bridges: Any = None
+    warnings: Tuple[str, ...] = ()
 
 
 def adopt_project(
@@ -502,30 +479,30 @@ def adopt_project(
 
     tracker = TransactionalTracker()
     tracker.record_existing(target_dir)
-    # A sub-project declaring `skills.location: "root"` links upward to its home; with no
-    # home (no ancestor project and no git root) no layout is written at all, and the
-    # skills install below reports the refusal.
+    # Only the skills home gets the `.agents/skills` layout; with no home (a delegating
+    # sub-project with no ancestor and no git root) none is written and the skills install
+    # below reports the refusal. `backfill_missing` records `skills.targets` and rolls
+    # that write back if the install fails.
     from metaproject.skills import LOCATION_ROOT, skills_home, skills_location
 
     home = skills_home(target_dir)
-    if home is None and skills_location(target_dir)[0] == LOCATION_ROOT:
-        skills_link = None
-    else:
-        skills_link = link_agent_skills(
-            target_dir=target_dir,
-            tracker=tracker,
-            dry_run=dry_run,
-            skip_existing=True,
-            home=home,
-        )
+    if home is not None or skills_location(target_dir)[0] != LOCATION_ROOT:
+        prepare_agent_skills(target_dir, tracker, dry_run=dry_run, home=home)
 
-    backfill = backfill_missing(
-        target_dir, templates_dir=templates_dir, dry_run=dry_run, config=cfg
-    )
+    try:
+        backfill = backfill_missing(
+            target_dir, templates_dir=templates_dir, dry_run=dry_run, config=cfg
+        )
+    except Exception:
+        if not dry_run:
+            tracker.rollback()
+        raise
     return AdoptResult(
         target_dir=target_dir,
         identity=identity,
         identity_written=identity_written,
-        skills_link=skills_link,
+        skills_link=None,
         backfill=backfill,
+        skills_bridges=backfill.skills_bridges,
+        warnings=tuple(backfill.warnings),
     )

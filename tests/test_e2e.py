@@ -98,6 +98,14 @@ def test_full_lifecycle_and_performance(
         "backlog-factory",
     ):
         assert (project_target / ".claude" / "skills" / skill / "SKILL.md").is_file()
+        entry = project_target / ".claude" / "skills" / skill
+        assert entry.is_symlink()
+        assert entry.resolve() == (project_target / ".agents" / "skills" / skill).resolve()
+    assert not (project_target / ".claude" / "skills").is_symlink()
+    assert not any(p.is_symlink() for p in (project_target / ".agents" / "skills").rglob("*"))
+    assert json.loads((project_target / IDENTITY_FILE).read_text(encoding="utf-8"))["skills"] == {
+        "targets": ["claude"]
+    }
     root_md = {p.name for p in project_target.iterdir() if p.suffix == ".md"}
     assert root_md == {"AGENTS.md", "CLAUDE.md", "README.md"}
     legacy_names = {"intent.md", "spec.md", "design.md", "plan.md"}

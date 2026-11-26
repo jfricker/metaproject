@@ -700,6 +700,10 @@ class BackfillResult:
     # Deliverables that could not be written for a reason outside the project (the hooks
     # under Claude Code's sandbox); reported with `hooks_notice`, not a failure.
     not_written: List[str] = field(default_factory=list)
+    # The Claude bridge report from the skills install, None when not bridged.
+    skills_bridges: Any = None
+    # Notes that are not failures: an unwritable `skills.targets`, manifest trouble.
+    warnings: List[str] = field(default_factory=list)
 
 
 def backfill_missing(
@@ -836,9 +840,25 @@ def backfill_missing(
         created.append(path)
 
     # Skills only in no-files mode: naming files touches exactly those files (R-SKL-3).
-    from metaproject.skills import install_project_skills
+    from metaproject.scaffold import (
+        TransactionalTracker,
+        prepare_agent_skills,
+        record_skills_targets,
+    )
+    from metaproject.skills import install_project_skills, skills_home
 
-    skills = install_project_skills(resolved_proj, dry_run=dry_run)
+    tracker = TransactionalTracker()
+    tracker.record_existing(resolved_proj)
+    home = skills_home(resolved_proj)
+    if home is not None:
+        prepare_agent_skills(resolved_proj, tracker, dry_run=dry_run, home=home)
+    targets_warning = record_skills_targets(resolved_proj, tracker, dry_run=dry_run)
+    try:
+        skills = install_project_skills(resolved_proj, dry_run=dry_run, tracker=tracker)
+    except Exception:
+        if not dry_run:
+            tracker.rollback()
+        raise
 
     return BackfillResult(
         created=created,
@@ -852,6 +872,8 @@ def backfill_missing(
         skills_link=skills.link,
         hooks_notice=hooks_notice,
         not_written=not_written,
+        skills_bridges=skills.bridges.get("claude"),
+        warnings=[*([targets_warning] if targets_warning else []), *skills.warnings],
     )
 
 

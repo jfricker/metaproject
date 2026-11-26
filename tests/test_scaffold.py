@@ -1,6 +1,7 @@
 """Tests for scaffolding engine, path resolution, git integration, rollback, and CLI commands."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -15,11 +16,12 @@ from metaproject.identity import IDENTITY_FILE
 from metaproject.scaffold import (
     TransactionalTracker,
     is_directory_empty,
-    link_agent_skills,
+    prepare_agent_skills,
     resolve_output,
     resolve_project_name,
     scaffold_project,
 )
+from metaproject.skills import bundled_skills
 
 
 def test_resolve_output(tmp_path: Path) -> None:
@@ -177,7 +179,8 @@ def test_scaffold_writes_identity_file(tmp_path: Path) -> None:
     assert "warnings" in res
 
     data = json.loads(identity_path.read_text(encoding="utf-8"))
-    assert set(data.keys()) == {
+    assert data["skills"] == {"targets": ["claude"]}
+    assert set(data.keys()) - {"skills"} == {
         "title",
         "description",
         "author",
@@ -221,7 +224,11 @@ def test_scaffold_backfill_keeps_existing_identity(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    assert identity_path.read_text(encoding="utf-8") == original
+    # Only `skills.targets` is added (R-BRG-4); every other key is kept.
+    assert json.loads(identity_path.read_text(encoding="utf-8")) == {
+        **json.loads(original),
+        "skills": {"targets": ["claude"]},
+    }
     assert res["identity_file"] is None
 
 
@@ -821,7 +828,7 @@ def test_new_dry_run_prints_would_write_metaproject_json(runner: CliRunner, tmp_
 
 
 def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:
-    """Scaffolding lays out .agents/skills/ and symlinks .claude/skills to it."""
+    """Scaffolding lays out .agents/skills/ and bridges each skill into .claude/skills/."""
     target = tmp_path / "linked_proj"
     cfg = Config(author="Jane Dev", default_branch="main")
 
@@ -833,15 +840,25 @@ def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    skills_link = target / ".claude" / "skills"
-    assert res["skills_link"] == skills_link
+    claude_skills = target / ".claude" / "skills"
+    assert res["skills_link"] is None
+    assert res["skills_bridges"] is not None
     assert (target / ".agents" / "skills").is_dir()
-    assert skills_link.is_symlink()
-    assert skills_link.resolve() == (target / ".agents" / "skills").resolve()
+    assert claude_skills.is_dir() and not claude_skills.is_symlink()
+    names = [skill.name for skill in bundled_skills()]
+    assert names
+    for name in names:
+        entry = claude_skills / name
+        assert entry.is_symlink()
+        assert not os.path.isabs(os.readlink(entry))
+        assert entry.resolve() == (target / ".agents" / "skills" / name).resolve()
+    assert not any(p.is_symlink() for p in (target / ".agents" / "skills").rglob("*"))
+    config = json.loads((target / IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert config["skills"] == {"targets": ["claude"]}
 
 
 def test_scaffold_dry_run_skips_skills_link(tmp_path: Path) -> None:
-    """Dry run previews the link path without touching the filesystem."""
+    """Dry run touches nothing: no layout, no bridges, no config."""
     target = tmp_path / "dry_link_proj"
     res = scaffold_project(
         project_name="dry_link_proj",
@@ -850,7 +867,7 @@ def test_scaffold_dry_run_skips_skills_link(tmp_path: Path) -> None:
         interactive=False,
         no_git=True,
     )
-    assert res["skills_link"] == target / ".claude" / "skills"
+    assert res["skills_link"] is None
     assert not (target / ".claude").exists()
     assert not (target / ".agents").exists()
 
@@ -897,11 +914,11 @@ def test_link_agent_skills_writes_gitkeep(tmp_path: Path) -> None:
 
     gitkeep = target / ".agents" / "skills" / ".gitkeep"
     assert gitkeep.is_file()
-    assert res["skills_link"] == target / ".claude" / "skills"
+    assert res["skills_link"] is None
 
 
 def test_scaffold_initial_commit_includes_gitkeep_and_symlink(tmp_path: Path) -> None:
-    """The initial commit created by `new` tracks both the .gitkeep and the symlink."""
+    """The initial commit created by `new` tracks the .gitkeep and the per-skill bridges."""
     target = tmp_path / "gitkeep_commit_proj"
     cfg = Config(author="Jane Dev", default_branch="main")
 
@@ -921,11 +938,12 @@ def test_scaffold_initial_commit_includes_gitkeep_and_symlink(tmp_path: Path) ->
     ).stdout.splitlines()
 
     assert ".agents/skills/.gitkeep" in tracked
-    assert ".claude/skills" in tracked
+    assert ".claude/skills/wrapup" in tracked
+    assert ".claude/skills" not in tracked
 
 
 def test_clone_of_scaffolded_project_has_working_skills_symlink(tmp_path: Path) -> None:
-    """After commit + clone, `.claude/skills` resolves to a real directory (R-ID-5)."""
+    """After commit + clone, each `.claude/skills/<name>` resolves into `.agents/skills`."""
     target = tmp_path / "gitkeep_clone_proj"
     cfg = Config(author="Jane Dev", default_branch="main")
 
@@ -945,10 +963,10 @@ def test_clone_of_scaffolded_project_has_working_skills_symlink(tmp_path: Path) 
         check=True,
     )
 
-    resolved = (clone_dir / ".claude" / "skills").resolve()
-    assert resolved.exists()
+    assert (clone_dir / ".claude" / "skills").is_dir()
+    resolved = (clone_dir / ".claude" / "skills" / "wrapup").resolve()
     assert resolved.is_dir()
-    assert resolved == (clone_dir / ".agents" / "skills").resolve()
+    assert resolved == (clone_dir / ".agents" / "skills" / "wrapup").resolve()
 
 
 def test_backfill_adds_missing_gitkeep_to_existing_layout(tmp_path: Path) -> None:
@@ -1003,9 +1021,9 @@ def test_backfill_skips_gitkeep_when_claude_skills_is_real_directory(tmp_path: P
     assert real_skills_dir.is_dir()
     assert not real_skills_dir.is_symlink()
     assert (real_skills_dir / "custom.md").read_text(encoding="utf-8") == "mine\n"
-    # The source is installed regardless of `.claude/skills`; it is never gitkept here.
+    # The source is installed regardless of `.claude/skills`, and always gitkept.
     assert (target / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
-    assert not (target / ".agents" / "skills" / ".gitkeep").exists()
+    assert (target / ".agents" / "skills" / ".gitkeep").is_file()
 
 
 def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Path) -> None:
@@ -1032,16 +1050,16 @@ def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Pa
     assert skills_link.resolve() == (target / "elsewhere").resolve()
     assert list((target / "elsewhere").iterdir()) == []
     assert (target / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
-    assert not (target / ".agents" / "skills" / ".gitkeep").exists()
+    assert (target / ".agents" / "skills" / ".gitkeep").is_file()
 
 
 def test_rollback_removes_gitkeep_it_created_but_not_one_that_preexisted(tmp_path: Path) -> None:
-    """Directly exercises `TransactionalTracker` + `link_agent_skills`: rollback removes
+    """Directly exercises `TransactionalTracker` + `prepare_agent_skills`: rollback removes
     a `.gitkeep` this call created, but never one that already existed."""
     # Freshly created: rollback removes it.
     fresh_target = tmp_path / "fresh"
     tracker = TransactionalTracker()
-    link_agent_skills(fresh_target, tracker)
+    prepare_agent_skills(fresh_target, tracker)
     gitkeep = fresh_target / ".agents" / "skills" / ".gitkeep"
     assert gitkeep.is_file()
     tracker.rollback()
@@ -1053,15 +1071,11 @@ def test_rollback_removes_gitkeep_it_created_but_not_one_that_preexisted(tmp_pat
     agents_skills_dir.mkdir(parents=True)
     preexisting_gitkeep = agents_skills_dir / ".gitkeep"
     preexisting_gitkeep.write_text("", encoding="utf-8")
-    claude_dir = existing_target / ".claude"
-    claude_dir.mkdir()
-    skills_link = claude_dir / "skills"
-    skills_link.symlink_to(Path("..") / ".agents" / "skills")
 
     tracker2 = TransactionalTracker()
-    result = link_agent_skills(existing_target, tracker2, skip_existing=True)
-    assert result is None
+    prepare_agent_skills(existing_target, tracker2)
     assert preexisting_gitkeep.is_file()
+    assert not (existing_target / ".claude").exists()
     tracker2.rollback()
     assert preexisting_gitkeep.is_file()
 
@@ -1100,12 +1114,13 @@ def test_scaffold_dry_run_writes_no_gitkeep(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    assert res["skills_link"] == target / ".claude" / "skills"
+    assert res["skills_link"] is None
     assert not target.exists()
 
 
 def test_cli_new_dry_run_mentions_gitkeep(runner: CliRunner, tmp_path: Path) -> None:
-    """The dry-run preview mentions `.agents/skills/.gitkeep`."""
+    """Dry run of `new` exits 0 and writes nothing. (The CLI no longer previews the
+    directory layout; the bridge preview output arrives with the CLI step.)"""
     target = tmp_path / "cli_dry_gitkeep_proj"
 
     result = runner.invoke(
@@ -1114,5 +1129,32 @@ def test_cli_new_dry_run_mentions_gitkeep(runner: CliRunner, tmp_path: Path) -> 
     )
 
     assert result.exit_code == 0, result.output
-    assert ".agents/skills/.gitkeep" in result.output
     assert not target.exists()
+
+
+def test_scaffold_failure_after_targets_restores_a_backfilled_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`new .` into a project with a config: a failure after `skills.targets` was recorded
+    restores the config's bytes."""
+    target = tmp_path / "rollback_targets"
+    target.mkdir()
+    (target / IDENTITY_FILE).parent.mkdir()
+    original = json.dumps({"title": "T", "author": "A"}, indent=2, sort_keys=True) + "\n"
+    (target / IDENTITY_FILE).write_text(original, encoding="utf-8")
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("metaproject.scaffold.install_project_skills", boom)
+    with pytest.raises(MetaProjectError):
+        scaffold_project(
+            project_name=".",
+            output=str(target) + "/",
+            config=Config(author="Jane Dev", default_branch="main"),
+            interactive=False,
+            no_git=True,
+            backfill=True,
+        )
+    assert (target / IDENTITY_FILE).read_text(encoding="utf-8") == original
+    assert not (target / ".claude" / "skills").exists()

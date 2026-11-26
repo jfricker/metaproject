@@ -516,7 +516,7 @@ def test_refusals_exit_one_and_write_nothing(
     data["skills"] = {"location": "root"}
     cfg_path.write_text(json.dumps(data), encoding="utf-8")
     shutil.rmtree(_skills_root(proj))
-    (proj / ".claude" / "skills").unlink()
+    shutil.rmtree(proj / ".claude" / "skills")
 
     before = _tree(proj)
     result = runner.invoke(app, ["skills", command, "--dir", str(proj)])
@@ -535,7 +535,7 @@ def test_real_dir_or_foreign_link_no_longer_refuses_sync(
 ) -> None:
     proj = _scaffold(tmp_path, kind)
     skills_link = proj / ".claude" / "skills"
-    skills_link.unlink()
+    shutil.rmtree(skills_link)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     if kind == "dir":
@@ -652,7 +652,7 @@ def test_sync_without_claude_skills_creates_bridge_entries(
     runner: CliRunner, tmp_path: Path
 ) -> None:
     proj = _scaffold(tmp_path)
-    (proj / ".claude" / "skills").unlink()
+    shutil.rmtree(proj / ".claude" / "skills")
     result = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
     assert result.exit_code == 0
     entry = proj / ".claude" / "skills" / "wrapup"

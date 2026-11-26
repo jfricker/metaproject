@@ -24,14 +24,20 @@ def agent_session(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def no_git(monkeypatch: pytest.MonkeyPatch) -> list:
-    """Fail loudly if anything runs git through `metaproject.git`."""
+    """Fail on any subprocess except R-BRG-25's read-only `git config --get <key>` queries.
+
+    Returns the list of allowed queries made (keys), so tests can inspect them.
+    """
     calls: list = []
+    allowed = ("core.symlinks", "user.name", "user.email")
 
-    def refuse(*args, **kwargs):
-        calls.append(args)
-        raise AssertionError(f"adopt ran git: {args}")
+    def guard(cmd, *args, **kwargs):
+        if list(cmd[-3:-1]) == ["config", "--get"] and cmd[-1] in allowed and cmd[0] == "git":
+            calls.append(cmd[-1])
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        raise AssertionError(f"adopt ran a forbidden command: {cmd}")
 
-    monkeypatch.setattr("metaproject.git.subprocess.run", refuse)
+    monkeypatch.setattr("metaproject.git.subprocess.run", guard)
     return calls
 
 
@@ -89,12 +95,20 @@ def test_adopt_in_agent_session_creates_identity_docs_and_skills(
     assert (repo / "CLAUDE.md").is_file()
     for skill in bundled_skills():
         assert (repo / ".agents" / "skills" / skill.name / "SKILL.md").is_file()
-    link = repo / ".claude" / "skills"
-    assert link.is_symlink()
-    assert link.resolve() == (repo / ".agents" / "skills").resolve()
+    claude_skills = repo / ".claude" / "skills"
+    assert claude_skills.is_dir() and not claude_skills.is_symlink()
+    for skill in bundled_skills():
+        entry = claude_skills / skill.name
+        assert entry.is_symlink()
+        assert entry.resolve() == (repo / ".agents" / "skills" / skill.name).resolve()
+    assert not any(p.is_symlink() for p in (repo / ".agents" / "skills").rglob("*"))
+    assert json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))["skills"] == {
+        "targets": ["claude"]
+    }
+    assert result.exit_code == 0
 
-    # No git.
-    assert no_git == []
+    # No git change: only read-only config queries.
+    assert set(no_git) <= {"core.symlinks", "user.name", "user.email"}
     assert sorted(p.name for p in (repo / ".git").iterdir()) == git_before
 
 
@@ -148,12 +162,13 @@ def test_adopt_keeps_existing_identity_and_renders_its_author(
         ),
         encoding="utf-8",
     )
-    before = (repo / IDENTITY_FILE).read_text(encoding="utf-8")
+    before = json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))
 
     result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Flag Author"])
 
     assert result.exit_code == 0, result.output
-    assert (repo / IDENTITY_FILE).read_text(encoding="utf-8") == before
+    after = json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert after == {**before, "skills": {"targets": ["claude"]}}
     intent = (repo / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8")
     assert "Identity Author" in intent
     assert "Config Author" not in intent
@@ -333,3 +348,134 @@ def test_backfill_author_falls_back_to_config_not_container_git(
     intent = (repo / ".metaproject" / "docs" / "INTENT.md").read_text(encoding="utf-8")
     assert "Config Author" in intent
     assert "Claude" not in intent
+
+
+# ------------------------------------------------------------ per-skill bridges (R-BRG-*)
+
+
+def _names() -> list:
+    return [skill.name for skill in bundled_skills()]
+
+
+def test_adopt_into_a_bare_repo_records_targets_and_bridges(tmp_path: Path, no_git) -> None:
+    repo = existing_repo(tmp_path)
+    assert not (repo / "CLAUDE.md").exists() and not (repo / ".claude").exists()
+
+    result = adopt_project(repo, author="Jo F")
+
+    config = json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert config["skills"] == {"targets": ["claude"]}
+    assert result.skills_link is None
+    assert result.skills_bridges is not None
+    for name in _names():
+        assert (repo / ".claude" / "skills" / name).is_symlink()
+    assert not (repo / ".claude" / "skills").is_symlink()
+
+
+def test_adopt_leaves_the_users_own_claude_skills_untouched(tmp_path: Path, no_git) -> None:
+    repo = existing_repo(tmp_path)
+    mine = repo / ".claude" / "skills" / "my-skill"
+    theirs = repo / ".claude" / "skills" / "shipit"
+    mine.mkdir(parents=True)
+    theirs.mkdir(parents=True)
+    (mine / "SKILL.md").write_text("mine\n", encoding="utf-8")
+    (theirs / "SKILL.md").write_text("my own shipit\n", encoding="utf-8")
+
+    result = adopt_project(repo, author="Jo F")
+
+    assert (mine / "SKILL.md").read_bytes() == b"mine\n"
+    assert (theirs / "SKILL.md").read_bytes() == b"my own shipit\n"
+    assert not theirs.is_symlink()
+    for name in _names():
+        if name != "shipit":
+            assert (repo / ".claude" / "skills" / name).is_symlink()
+    report = result.skills_bridges
+    assert report is not None
+    assert report.entries["shipit"]["state"] == "foreign"
+    assert any("shipit" in w for w in report.warnings)
+
+
+def _config_repo(tmp_path: Path, data: dict, legacy: bool = False) -> Path:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    repo = existing_repo(tmp_path)
+    path = repo / (".metaproject.json" if legacy else IDENTITY_FILE)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return repo
+
+
+BASE_IDENTITY = {
+    "title": "T",
+    "description": "d",
+    "author": "A",
+    "created": "2026-01-02",
+    "metaproject_version": "0.8.0",
+}
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_adopt_and_backfill_add_only_skills_targets_in_place(tmp_path: Path, legacy: bool) -> None:
+    from metaproject.identity import config_path
+    from metaproject.review import backfill_missing
+
+    data = {**BASE_IDENTITY, "commands": {"lint": "make lint"}, "extra": [1, 2]}
+    repo = _config_repo(tmp_path, data, legacy=legacy)
+    path = config_path(repo)
+    adopt_project(repo)
+    assert json.loads(path.read_text(encoding="utf-8")) == {
+        **data,
+        "skills": {"targets": ["claude"]},
+    }
+    assert config_path(repo) == path
+
+    repo2 = _config_repo(tmp_path / "b", data, legacy=legacy)
+    backfill_missing(repo2)
+    assert json.loads(config_path(repo2).read_text(encoding="utf-8")) == {
+        **data,
+        "skills": {"targets": ["claude"]},
+    }
+
+
+def test_adopt_and_backfill_leave_empty_targets_alone(tmp_path: Path) -> None:
+    from metaproject.review import backfill_missing
+
+    data = {**BASE_IDENTITY, "skills": {"targets": []}}
+    for fn, sub in ((adopt_project, "a"), (backfill_missing, "b")):
+        repo = _config_repo(tmp_path / sub, data)
+        before = (repo / IDENTITY_FILE).read_bytes()
+        fn(repo)
+        assert (repo / IDENTITY_FILE).read_bytes() == before
+        assert not (repo / ".claude" / "skills").exists()
+
+
+def test_adopt_dry_run_creates_no_claude_skills_and_no_config(tmp_path: Path) -> None:
+    repo = _config_repo(tmp_path, dict(BASE_IDENTITY))
+    before = (repo / IDENTITY_FILE).read_bytes()
+    adopt_project(repo, dry_run=True)
+    assert (repo / IDENTITY_FILE).read_bytes() == before
+    assert not (repo / ".claude" / "skills").exists()
+
+
+def test_adopt_failure_after_targets_restores_the_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _config_repo(tmp_path, dict(BASE_IDENTITY))
+    before = (repo / IDENTITY_FILE).read_bytes()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("metaproject.skills.install_project_skills", boom)
+    with pytest.raises(RuntimeError):
+        adopt_project(repo)
+    assert (repo / IDENTITY_FILE).read_bytes() == before
+    assert not (repo / ".agents" / "skills" / ".gitkeep").exists()
+
+
+def test_cli_adopt_runs_only_read_only_git_queries(
+    runner: CliRunner, tmp_path: Path, no_git
+) -> None:
+    repo = existing_repo(tmp_path)
+    result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Jo F"])
+    assert result.exit_code == 0, result.output
+    assert set(no_git) <= {"core.symlinks", "user.name", "user.email"}

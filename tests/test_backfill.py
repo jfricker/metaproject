@@ -175,6 +175,24 @@ def test_backfill_dry_run_named_refusal_writes_nothing(tmp_path: Path) -> None:
     assert (proj / ".metaproject/docs/SPEC.md").read_bytes() == before
 
 
+def _allow_only_read_only_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail on any subprocess except `git ... config --get core.symlinks|user.name|user.email`."""
+    import subprocess
+    from types import SimpleNamespace
+
+    def _guard(cmd, *args, **kwargs):
+        argv = list(cmd)
+        if (
+            argv[:1] == ["git"]
+            and argv[-3:-1] == ["config", "--get"]
+            and argv[-1] in {"core.symlinks", "user.name", "user.email"}
+        ):
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        raise AssertionError(f"backfill ran a forbidden command: {argv}")
+
+    monkeypatch.setattr(subprocess, "run", _guard)
+
+
 def test_backfill_never_runs_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`backfill_missing` never shells out to git, in any mode."""
     proj, templates = scaffolded_project(tmp_path)
@@ -182,12 +200,7 @@ def test_backfill_never_runs_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     (proj / ".metaproject/docs/TECH-DESIGN.md").unlink()
     (proj / ".metaproject/docs/STATE.md").unlink()
 
-    import subprocess
-
-    def _forbidden(*args, **kwargs):
-        raise AssertionError("backfill_missing must never invoke a subprocess (git)")
-
-    monkeypatch.setattr(subprocess, "run", _forbidden)
+    _allow_only_read_only_git(monkeypatch)
 
     result = backfill_missing(proj, templates_dir=templates)
     assert set(result.created) == {
@@ -371,12 +384,7 @@ def test_cli_backfill_no_git_ever(
     proj, templates = scaffolded_project(tmp_path)
     (proj / ".metaproject/docs/SPEC.md").unlink()
 
-    import subprocess
-
-    def _forbidden(*args, **kwargs):
-        raise AssertionError("backfill CLI must never invoke a subprocess (git)")
-
-    monkeypatch.setattr(subprocess, "run", _forbidden)
+    _allow_only_read_only_git(monkeypatch)
 
     result = runner.invoke(
         app,

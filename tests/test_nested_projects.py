@@ -17,7 +17,7 @@ from metaproject.cli import app
 from metaproject.doctor import check_project_skills, fix_project_skills
 from metaproject.hooks import get_bundled_hook_script, get_bundled_session_script
 from metaproject.identity import IDENTITY_FILE, Identity, write_identity
-from metaproject.scaffold import TransactionalTracker, adopt_project, link_agent_skills
+from metaproject.scaffold import TransactionalTracker, adopt_project, prepare_agent_skills
 from metaproject.skills import (
     CURRENT,
     INSTALLED,
@@ -369,35 +369,25 @@ def test_root_mode_cli_payload_and_doctor(
 # ----------------------------------------------------------------- scaffold layout
 
 
-def test_link_agent_skills_with_a_home_writes_no_sub_layout(delegating: dict) -> None:
+def test_prepare_agent_skills_with_a_home_writes_no_sub_layout(delegating: dict) -> None:
     sub, root = delegating["sub"], delegating["root"]
     tracker = TransactionalTracker()
     tracker.record_existing(sub)
-    link = link_agent_skills(sub, tracker, home=root)
-    assert link == sub / ".claude" / "skills"
-    assert os.readlink(link) == "../../../.agents/skills"
+    skills_dir = prepare_agent_skills(sub, tracker, home=root)
+    assert skills_dir == root / ".agents" / "skills"
     assert not (sub / ".agents").exists()
-    assert (root / ".agents" / "skills" / ".gitkeep").is_file()
-    assert os.readlink(root / ".claude" / "skills") == "../.agents/skills"
-
-    tracker.rollback()
     assert not (sub / ".claude").exists()
-    assert not (root / ".agents" / "skills").exists()
+    assert (root / ".agents" / "skills" / ".gitkeep").is_file()
     assert not (root / ".claude").exists()
 
-
-def test_link_agent_skills_keeps_an_existing_home_link(delegating: dict, tmp_path: Path) -> None:
-    sub, root = delegating["sub"], delegating["root"]
-    (root / ".claude").mkdir()
-    (root / ".claude" / "skills").symlink_to(tmp_path)
-    link_agent_skills(sub, TransactionalTracker(), home=root)
-    assert os.readlink(root / ".claude" / "skills") == str(tmp_path)
+    tracker.rollback()
+    assert not (root / ".agents" / "skills").exists()
 
 
 def test_adopt_a_delegating_sub_project(delegating: dict) -> None:
     sub, root = delegating["sub"], delegating["root"]
     result = adopt_project(sub, templates_dir=Path(TEMPLATES))
-    assert result.skills_link == sub / ".claude" / "skills"
+    assert result.skills_link is None
     assert not (sub / ".agents").exists()
     assert (root / ".agents" / "skills" / "metaproject").is_dir()
     assert result.backfill.skills_target == root / ".agents" / "skills"
