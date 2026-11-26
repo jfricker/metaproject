@@ -7,8 +7,8 @@
 - [x] 2. generate-spec: SPEC.md approved
 - [x] 3. generate-design: TECH-DESIGN.md approved
 - [x] 4. generate-plan: PLAN.md approved
-- [ ] 5. implement-plan: code and tests written
-- [ ] 6. execute-tests: tests passing
+- [x] 5. implement-plan: code and tests written
+- [x] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
 
 ## Implementation phases
@@ -38,6 +38,8 @@
 ## Open items carried into PLAN.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
+- AC 23 not met yet: this repository still has the legacy `.claude/skills` link; the operator must run `.venv/bin/python -m metaproject doctor .` in a terminal (doctor fixes are report-only in agent sessions), then commit `.claude/skills`, the manifest and `.metaproject/config.json`. Dry run (2026-11-26) shows: legacy link, skills targets, outdated `metaproject` skill; no user skills lost.
+- Real Windows checkout (copy mode, unmaterialised symlink handling) not exercised; simulated in tests only.
 - Step 5 deviations: doctor `_apply` now turns a `MetaProjectError` from any fix into a "fix failed" finding (previously raised); the legacy-migration post-fix message prints through a local rich Console; identical unrecorded bridge entries are not doctor findings; a manifest write failure after a successful migration is not rolled back (the entries then read as identical foreign).
 - Step 7: the bundled skill text may not contain the literal "SessionStart" (`tests/test_sdlc_skills.py`), so `references/commands.md` names "the web session bootstrap script (`scripts/metaproject-session.sh`)" instead.
 - Recording `skills.targets` re-serialises the config as sorted, indented JSON (keys and values preserved, formatting not).
@@ -45,3 +47,8 @@
 ## Verified facts (do not re-investigate)
 
 <!-- written by implement-plan/execute-tests; appended to .metaproject/docs/VERIFIED-FACTS.md by wrapup -->
+- Copilot (runtime bundled with VS Code 1.148.0, `@github/copilot` 1.0.73) dedupes skills by name, scanning `.github` > `.agents` > `.claude`; VS Code chat skips repeated names (`.agents` > `.github` > `.claude`). Confirmed by calling the native `skillsLoad` on fixture repos, 2026-11-25, and again on an adopted repo with per-skill bridges, 2026-11-26.
+- Claude Code (2.1.332 docs) reads only `.claude/skills` (+ personal, nested, plugins), supports per-skill symlinked entries and loads a shared target once; `.agents/skills` discovery is open as anthropics/claude-code#31005.
+- ZCode 4.0 reads `.zcode/skills` and `.agents/skills` (not `.claude/skills`), per its bundled `zcode-configuration-guide` skill.
+- Full gate on `harness-neutral-skills` (2026-11-26): format clean, lint clean, 1238 passed, wheel and sdist build.
+- Manual: `adopt` into a repo with user `.claude/skills/my-skill` and `shipit` leaves both untouched, bridges the other 11 bundled skills, `skills status` exits 0; a legacy-link fixture makes `skills sync` exit 0 with the doctor hint and `doctor --dry-run` names the user skill that would be lost.
