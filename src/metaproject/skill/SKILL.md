@@ -32,8 +32,8 @@ project→templates?"
 
 Every project's documents move through one cycle, each stage owned by a project skill
 and ticked off in `.metaproject/docs/STATE.md`'s Process list. The skills ship in the metaproject
-wheel; `new` and `backfill` copy them into the project's `.agents/skills/` (reachable as
-`.claude/skills/`), where they are committed with the project and invoked by bare name
+wheel; `new` and `backfill` copy them into the project's `.agents/skills/` (Claude Code reaches each
+through a per-skill bridge entry at `.claude/skills/<name>`), where they are committed with the project and invoked by bare name
 (`/write-intent`, `/generate-spec`, …, plus utility skills such as `/backlog-new` and `/verify-browser`):
 
 ```
@@ -85,8 +85,8 @@ root) is the project root, so in a monorepo every command run inside a sub-proje
 on that sub-project; `--dir`/`PROJECT` overrides it. `adopt` with no `--dir` inside a
 managed project re-adopts that project — use `adopt --dir .` to create a sub-project.
 A sub-project declaring `"skills": {"location": "root"}` keeps no skills of its own: they
-live once in the nearest ancestor project (or the git root) and its `.claude/skills`
-links up to them.
+live once in the nearest ancestor project (or the git root) and its own
+`.claude/skills/<name>` entries point up to them.
 
 ## The blank rule
 
@@ -218,7 +218,7 @@ it never clobbers real content. `--dry-run` previews without writing.
 For a repository that is already cloned but has never been under metaproject — always
 the case in a web session — run `metaproject adopt` (optionally `--title`). It writes
 `.metaproject/config.json`, the `.agents/skills` layout, and every missing deliverable and
-project skill; it never overwrites, runs no git, needs no confirmation, and is permitted
+project skill; it never overwrites, never changes the repository, needs no confirmation, and is permitted
 in agent sessions. Re-running it is a no-op. Use it instead of `new .`, which needs an
 operator.
 

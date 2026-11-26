@@ -231,6 +231,14 @@
       {
         "digest": "9b959b679220c0ea471a14d6aef3b7fb6a56c275b09219461f7f12f4bf8385f7",
         "release": "0.10.0"
+      },
+      {
+        "digest": "e639eb29243f76ba523584d3ab31ae3461b9ba5c3ade2078d2f178fd537157a2",
+        "release": "0.11.0"
+      },
+      {
+        "digest": "9fef2b0c046155a0a3d9ce6f27ea02244aeeee1ce6ddbb53c7f781239888293f",
+        "release": "0.11.0"
       }
     ],
     "shipit": [

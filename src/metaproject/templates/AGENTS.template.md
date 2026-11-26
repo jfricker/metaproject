@@ -10,7 +10,7 @@
 This process is based on https://claude.com/blog/the-ai-native-sdlc-playbook with modifications. This document adds to the playbook and merges ideas. It doesn't supersede the playbook unless explicitly stated.
 
 The cycle runs through seven stages, each a project skill in `.agents/skills/`
-(reachable as `.claude/skills/`), copied in by `metaproject new`/`backfill`. All cycle
+(bridged per skill into `.claude/skills/<name>` for Claude Code), copied in by `metaproject new`/`backfill`. All cycle
 documents live in `.metaproject/docs/` (a hidden dot-directory: tools like `rg` and `fd`
 skip it by default unless passed `--hidden` or an explicit `.metaproject/docs/` path):
 

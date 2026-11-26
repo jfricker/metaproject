@@ -1497,7 +1497,9 @@ def backfill_cmd(
         help="Preview what would be created without writing to disk.",
     ),
 ) -> None:
-    """Create missing deliverables from the template store. Never overwrites, never runs git.
+    """Create missing deliverables from the template store.
+
+    Never overwrites; leaves the repository alone.
 
     Unlike `new .`, this is a non-interactive, create-only write and is permitted in
     agent sessions (R-TPL-8): it is how a skill or hook fills in a document that review
@@ -1551,7 +1553,7 @@ def adopt_cmd(
         help="Preview what would be created without writing to disk.",
     ),
 ) -> None:
-    """Adopt an existing repository. Create-only, runs no git, needs no confirmation.
+    """Adopt an existing repository. Create-only, leaves the repository alone, no confirmation.
 
     Writes `.metaproject/config.json`, the `.agents/skills` layout, every missing deliverable
     and every missing project skill. Nothing that exists is overwritten, so it is the
@@ -2178,7 +2180,7 @@ def skills_sync_cmd(
 
     `--all` syncs every cataloged project that carries .metaproject/config.json, one line
     per project. It asks once at a terminal (`--yes` skips it); in an agent session
-    without `--yes` it reports what it would do, as `--dry-run`. It never runs git
+    without `--yes` it reports what it would do, as `--dry-run`. It never changes the repository
     and never commits.
     """
     from metaproject.skills import sync_project_skills

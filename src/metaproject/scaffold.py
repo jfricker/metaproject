@@ -425,7 +425,8 @@ def adopt_project(
     The agent-safe counterpart to `new .` (no confirmation, permitted under CLAUDECODE).
     Create-only end to end: an existing `.metaproject/config.json` is kept as written, an
     existing `.claude/skills` entry is left alone, and deliverables and skills go through
-    `review.backfill_missing`, which never overwrites. It runs no git command.
+    `review.backfill_missing`, which never overwrites. It never changes the repository
+    (read-only `git config` only).
 
     Identity is resolved the way `variables.project_variables` would render a project
     with no `.metaproject/config.json` (`--title` > README / manifest > directory name), so

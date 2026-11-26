@@ -5,7 +5,7 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 ## Features
 - **Instant Scaffolding (`metaproject new`)**: Scaffold projects with full SDLC documentation and automatic git initialization.
 - **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
-- **Agent-Safe Adoption (`metaproject adopt`)**: Bring an already-cloned repository under metaproject — identity, every missing document and skill — create-only, no git, no confirmation.
+- **Agent-Safe Adoption (`metaproject adopt`)**: Bring an already-cloned repository under metaproject — identity, every missing document and skill — create-only, never changes the repository, no confirmation.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
 - **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`, plus the `/verify-browser` cross-browser loop and the `/backlog-factory` parallel orchestrator) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new`, `backfill` and `adopt`, and kept current by `metaproject skills sync`.
 - **Repair & Migration (`metaproject doctor`)**: Bring the template store, config and cataloged projects up to date after an upgrade, behind per-fix confirmation.
@@ -31,7 +31,8 @@ A CLI tool for setting up and managing agentic projects. Template based system t
 
 3. **Start or adopt a project:** `metaproject new my-app` for a new one, or
    `cd existing-repo && metaproject adopt` for one you already have. Either copies the
-   project skills into `.agents/skills/` and links `.claude/skills` to them.
+   project skills into `.agents/skills/` and writes a per-skill bridge entry in
+   `.claude/skills/` for Claude Code.
 
 4. **Verify:** `metaproject --version`, then `metaproject skills status` inside the
    project.
@@ -84,7 +85,7 @@ uv tool uninstall metaproject    # or: pipx uninstall metaproject
 
 `skills sync` installs missing skills and replaces outdated ones you have not edited. A
 skill you edited is kept and reported, never overwritten unless you name it with
-`--force NAME`. Sync never runs git: review the diff in each project and commit it
+`--force NAME`. Sync never changes the repository (its only git is read-only `git config` queries): review the diff in each project and commit it
 yourself. Updates arrive only this way — a project's skills are its own committed copies,
 not a global install.
 
@@ -97,7 +98,7 @@ Skills convention.
 
 | Harness | Sees the skills via | Invoke |
 |---|---|---|
-| Claude Code (CLI, desktop, web) | `.claude/skills` → `../.agents/skills` symlink, created by `new`/`adopt` | `/write-intent` |
+| Claude Code (CLI, desktop, web) | one bridge entry per skill at `.claude/skills/<name>` (relative symlink, or a copy), written by `new`/`backfill`/`adopt`/`skills sync` | `/write-intent` |
 | OpenAI Codex CLI | `.agents/skills`, natively | `$write-intent` or implicitly |
 | Amp | `.agents/skills`, natively | implicitly |
 | OpenCode | `.agents/skills` (also `.claude/skills`) | implicitly |
@@ -110,10 +111,23 @@ directories.
 
 - A harness without skills support can still be told to read
   `.agents/skills/write-intent/SKILL.md`.
-- Where symlinks are unavailable (some Windows setups) Claude Code will not see the
-  skills; metaproject refuses to write skills when `.claude/skills` is a real directory.
+- Bridge entries are symlinks where available and copies on Windows, with
+  `core.symlinks=false`, or when `skills.link_mode` is `"copy"` (`auto` is the default;
+  `symlink` and `copy` force a mode). `skills.targets` in `.metaproject/config.json`
+  (`["claude"]` by default; `[]` removes the bridge) chooses who gets one.
+- metaproject owns only the bridge entries recorded in `.agents/skills/.metaproject-skills.json`.
+  Your own entries in `.claude/skills/` are never touched; an unrecorded entry with a
+  bundled skill's name is foreign and replaced only by `metaproject skills sync --force NAME`.
+  A real `.claude/skills` directory is fine; a foreign `.claude/skills` symlink or file
+  means the sources install and no bridge entries are written (reported, exit 0).
+- A project from an earlier release whose `.claude/skills` links to `.agents/skills`
+  keeps working. `metaproject doctor` reports it as "skills legacy link", names any of
+  your skills in `.agents/skills` that Claude Code will stop seeing, and migrates it on
+  confirmation (then commit `.claude/skills`). Its `skill shadowing` check warns when
+  `~/.claude/skills/<name>` or `.github/skills/<name>` takes precedence over the
+  project copy.
 - A harness that wants its own directory can be given a symlink to `.agents/skills` by
-  hand; metaproject creates only the Claude Code one.
+  hand; metaproject bridges only Claude Code.
 
 ### Monorepos: nested sub-projects
 
@@ -136,9 +150,8 @@ To keep one copy of the skills per monorepo, a sub-project declares
 
 in its `.metaproject/config.json`. Its skills then live in the nearest ancestor project that
 does not itself declare `"root"` (or the git root if none does), and its own
-`.claude/skills` becomes a relative symlink up to them (`../../../.agents/skills` from
-`packages/a`). `skills sync` and `adopt` create that link, or re-point the default one;
-a real directory or a foreign link is still refused. Copies left in the sub-project's
+`.claude/skills/<name>` bridge entries point up to them (`../../../.agents/skills/<name>`
+from `packages/a`); it keeps no source of its own. Copies left in the sub-project's
 own `.agents/skills` are reported, never deleted.
 
 ## Claude Code on the web
@@ -291,7 +304,7 @@ It automatically initializes your SQLite catalog at `~/.metaproject/universe.db`
 #### Project Skills
 `init` installs no skill. Twelve skills ship inside the package and are copied into each
 project by `metaproject new` and `metaproject backfill`, into `.agents/skills/<name>/`
-(reachable as `.claude/skills/<name>/` through the symlink `new` creates), and committed
+(Claude Code reaches each through a bridge entry at `.claude/skills/<name>`), and committed
 with the project like any other file:
 
 - the eleven SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
@@ -311,9 +324,9 @@ the project's directory or an ancestor, and `metaproject` must be on `PATH`, oth
 `metaproject new .`.
 
 `new`, `backfill` (with no file arguments) and `adopt` are create-only: they add a skill
-whose directory is missing and never write into an existing one. If `.claude/skills` is a
-real directory, or a symlink to somewhere other than `.agents/skills`, no skill is written
-and a notice says why.
+whose directory is missing and never write into an existing one. They then write the
+Claude Code bridge entries. If `.claude/skills` is a symlink or file metaproject did not
+create, the sources still install, no bridge entries are written and a notice says why.
 
 Every install records `.agents/skills/.metaproject-skills.json` — the release that wrote
 each skill and the sha256 of each file — so a later release can tell a pristine older
@@ -511,9 +524,9 @@ listing the file(s) under "Refused — already exists, nothing written".
 `metaproject adopt [--dir PATH] [--title T]` brings a repository that already exists —
 typically one that was just cloned — under metaproject. It writes `.metaproject/config.json`
 (title from `--title`, else the README heading, `pyproject.toml`/`package.json` name, or
-the directory name), the `.agents/skills` layout with its `.claude/skills` link, and
+the directory name), the `.agents/skills` layout with its `.claude/skills/<name>` bridge entries, and
 every missing deliverable and project skill. It never overwrites a file (an existing
-`.metaproject/config.json` is kept as written), runs no git command, needs no confirmation, and
+`.metaproject/config.json` is kept as written), never changes the repository (only read-only `git config` queries), needs no confirmation, and
 is permitted in agent sessions. `--dry-run` previews; re-running it is a no-op. The
 author comes from `--author`, config, then git/`$USER` (never a container identity such
 as "Claude"); when none yields a real name, adopt writes nothing and asks for `--author`,

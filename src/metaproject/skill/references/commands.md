@@ -75,8 +75,8 @@ catalog summary instead of changing anything — a safe way to inspect the envir
 
 Also writes `.metaproject/config.json` (`title`, `description`, `author`, `created`,
 `metaproject_version`) and copies the project skills (this one plus the eleven SDLC
-skills) into `.agents/skills/<name>/`, reachable as `.claude/skills/<name>/`; both are
-tracked in the initial commit. Also installs the Claude Code hooks: the scripts
+skills) into `.agents/skills/<name>/` (Claude Code is served by a per-skill bridge entry at
+`.claude/skills/<name>`); both are tracked in the initial commit. Also installs the Claude Code hooks: the scripts
 `.claude/hooks/metaproject_hook.py` and `scripts/metaproject-session.sh` (create-only)
 and three entries (`PostToolUse`, `PreToolUse`, web-only session-start) merged into
 `.claude/settings.json` (merge, never overwrite; invalid JSON there is reported and left
@@ -102,7 +102,8 @@ agent is allowed to create unattended.
 ## backfill
 
 `metaproject backfill [FILE...] [--dir PROJECT_DIR]` — create missing deliverables from
-the template store. Never overwrites, never runs git, and is **permitted in agent
+the template store. Never overwrites, never changes the repository (its only git is the
+read-only `git config --get core.symlinks|user.name|user.email`), and is **permitted in agent
 sessions** (spec R-TPL-8) — this is how a skill or hook fills in a document `review`
 reports missing, without `new .`'s confirmations.
 
@@ -120,9 +121,10 @@ Two modes:
   "Skipped (already exists)" rather than touched. Then copies each project skill whose
   `.agents/skills/<name>/` directory is absent; an existing skill directory is never
   written into (a copy from an earlier release is reported outdated, a locally edited
-  one modified; `metaproject skills sync` updates the former). If
-  `.claude/skills` is a real directory, or a symlink to somewhere other than
-  `.agents/skills`, no skill is written and a notice says why.
+  one modified; `metaproject skills sync` updates the former). Bridge entries
+  for Claude Code are then written at `.claude/skills/<name>`. If `.claude/skills` is a
+  symlink or file that metaproject did not create, sources still install, no bridge
+  entries are written and a notice says why (exit 0).
   `.claude/settings.json` counts as missing until the metaproject hooks are merged into
   it; backfilling it merges them and keeps every existing key. An invalid settings file
   is listed under "Refused — hooks not installed" with a notice, and backfill exits 1.
@@ -151,8 +153,8 @@ metaproject backfill .metaproject/docs/SPEC.md          # exits 1, writes nothin
 ## adopt
 
 `metaproject adopt [--dir PATH] [--title T]` — adopt an existing repository (typically
-one that is already cloned). **Permitted in agent sessions**: create-only, runs no git
-command, needs no confirmation. This is the agent's way in; `new .` keeps its
+one that is already cloned). **Permitted in agent sessions**: create-only, never changes the
+repository (read-only `git config` queries only), needs no confirmation. This is the agent's way in; `new .` keeps its
 interactive, operator-confirmed semantics and is refused in an agent session.
 
 | Flag | Effect |
@@ -166,7 +168,7 @@ interactive, operator-confirmed semantics and is refused in an agent session.
 
 It writes `.metaproject/config.json` (kept as written if one exists; an unreadable one stops
 the command with exit 1 rather than being replaced), the `.agents/skills` directory with
-its `.claude/skills` link, then everything `backfill` with no `FILE` would: every missing
+its `.claude/skills/<name>` bridge entries, then everything `backfill` with no `FILE` would: every missing
 scaffolded deliverable and every missing project skill. Re-running it is a no-op.
 
 ```bash
@@ -290,6 +292,7 @@ left behind by an upgrade, and repairs each finding behind its own confirmation.
 | Project config (per project) | Moves a legacy root `.metaproject.json` to `.metaproject/config.json` (`git mv` when tracked); removes an identical leftover; reports a differing pair (and the differing keys) without changing either |
 | Project docs (per project) | Moves legacy root or `docs/` cycle documents (plus `docs/{archive,backlog,discovery}/` and `.gitkeep`) into `.metaproject/docs/` (`git mv` when tracked), cleans emptied/junk-only `docs/` while keeping non-empty project `docs/`; never overwrites conflicts and never commits |
 | Project skills (per project) | Installs missing project skills and updates outdated, unmodified ones (same classification as `skills status`); modified ones are reported, never overwritten |
+| Skills legacy link, targets, shadowing (per project) | Migrates a legacy `.claude/skills` → `.agents/skills` directory link to per-skill bridge entries (names user skills Claude Code will stop seeing); reports a bad `skills.targets` and `~/.claude/skills/<n>` or `.github/skills/<n>` shadowing, which only the operator resolves |
 | Project hook scripts (per project) | Replaces an installed `.claude/hooks/metaproject_hook.py` or `scripts/metaproject-session.sh` that predates `.metaproject/config.json` with the bundled copy |
 
 The project checks cover `universe`-cataloged projects that have `.metaproject/config.json`, one
@@ -318,7 +321,7 @@ Each bundled skill is in one of four states:
 |---|---|---|
 | `✓ current` | Matches this release's copy | Keeps it (records the manifest if needed) |
 | `↻ outdated` | A pristine copy of an earlier release (matches its recorded manifest, or a released digest) | Replaces it |
-| `~ modified` | Local edits, extra or missing files, a symlink — or a legacy install matching no known release | Keeps it and names it, unless `--force NAME` |
+| `~ modified` | Local edits, extra or missing files, a symlink inside the skill — or a legacy install matching no known release | Keeps it and names it, unless `--force NAME` |
 | `! missing` | Not installed | Installs it |
 
 `sync` exits 0 even when modified skills were kept. `--force NAME` (repeatable) replaces
@@ -332,9 +335,34 @@ Every install path (`new`, `backfill`, `adopt`, `skills sync`, doctor's fix) rec
 sha256 of each file. Commit it with the project; it is what lets `sync` tell a pristine
 older copy from a local edit. A skill installed by a newer metaproject is reported current
 and never downgraded; a manifest written by a newer metaproject makes `sync` exit 1 and
-is left untouched. A refusal (`.claude/skills` a real directory, or a symlink elsewhere)
-writes nothing and exits 1. `sync` does not create the `.claude/skills` link; it points
-at `adopt` when the link is absent.
+is left untouched. A real `.claude/skills` directory is fine. A foreign `.claude/skills`
+symlink or file means sources install and no bridge entries are written (reported,
+exit 0). `status` and `sync` exit 1 only for an unknown `--force` name, a newer manifest
+under `sync`, an I/O failure, or a delegating sub-project with no home.
+
+**Claude Code bridge.** The sources in `.agents/skills/<name>/` are real files. For each
+`skills.targets` entry (`["claude"]` by default, recorded by `new`/`backfill`/`adopt` when
+absent; `[]` removes the bridge) metaproject writes one entry per bundled skill at
+`.claude/skills/<name>`: a relative symlink, or a copy on Windows, with
+`core.symlinks=false`, or when `skills.link_mode` is `"copy"` (`auto` is the default;
+`symlink` and `copy` force a mode). Only entries recorded in the manifest's `bridges`
+section (manifest format version 2) are metaproject's: the user's own entries in
+`.claude/skills/` are never touched, and an unrecorded entry with a bundled name is
+foreign and replaced only by `skills sync --force NAME`. There is no whole-directory
+`.claude/skills` link. `doctor` reports a legacy `.claude/skills` → `.agents/skills`
+directory link as "skills legacy link", names any user skills in `.agents/skills` that
+Claude Code will stop seeing, and migrates on confirmation (then commit `.claude/skills`).
+Its `skills targets` and `skill shadowing` checks report a bad `skills.targets` and a
+`~/.claude/skills/<n>` or `.github/skills/<n>` that takes precedence over the project copy.
+
+| Harness | Reads `.agents/skills` natively? | How metaproject serves it |
+|---|---|---|
+| Claude Code (CLI, desktop, web) | No | Per-skill bridge entries at `.claude/skills/<name>` |
+| GitHub Copilot, OpenAI Codex, Antigravity, ZCode, Gemini CLI, Cursor | Yes | Nothing extra; the sources are read in place |
+| Other harnesses | Check its docs | Point it at `.agents/skills/<name>/SKILL.md` by hand |
+
+The web session bootstrap script (`scripts/metaproject-session.sh`) is unchanged. A pinned CLI older than this release that meets
+the version 2 manifest reports `newer` and still exits 0.
 
 **One copy per monorepo: `skills.location`.** A sub-project's `.metaproject/config.json` may
 declare `"skills": {"location": "root"}` (an enum, never a path; absent or `"project"`
@@ -342,19 +370,17 @@ is the default, and an invalid value is a notice, not an error). Its skills then
 in the nearest ancestor project that does not itself declare `"root"` — or, failing
 that, the git root — so `new`/`backfill`/`adopt`/`sync` install and update one copy
 (and one manifest) there and none in the sub-project. The sub-project's
-`.claude/skills` becomes a relative symlink up to that copy (e.g.
-`../../../.agents/skills` from `packages/a`): `sync` and `adopt` create it when absent
-and re-point the default link to the sub-project's own `.agents/skills`; a real
-directory or a link elsewhere is still a refusal. With no ancestor project and no git
+own `.claude/skills/<name>` bridge entries point up to that copy (e.g.
+`../../../.agents/skills/<name>` from `packages/a`); the sub-project keeps no source. With no ancestor project and no git
 root, nothing is written and the command exits 1. Copies left in the sub-project's own
 `.agents/skills` after switching are reported, never deleted.
 
-`--format json` writes `{"project", "target", "location", "home", "link", "release",
-"manifest", "refusal", "dry_run", "skills": [{"name", "state", "installed_release",
+`--format json` writes `{"project", "target", "location", "home", "release",
+"manifest", "refusal", "bridges", "shadowing", "dry_run", "skills": [{"name", "state", "installed_release",
 "basis", "changed", "note", "action"}]}` to stdout (`state` is the state before the
 pass; `action` is null for `status`; `location` is `project` or `root`, `home` the
-directory holding the skills, `link` the sub-project link created or pending), with
-notices on stderr.
+directory holding the skills, `bridges` the per-target bridge mode and entry states,
+`shadowing` the entries a higher-precedence copy hides), with notices on stderr.
 
 ### Every managed project: `--all`
 
@@ -363,7 +389,7 @@ notices on stderr.
 cataloged project in `universe.db` that still exists and carries `.metaproject/config.json` —
 the same set `doctor` checks. Each project goes through the single-project code path;
 `sync --all` prints one line per project (`updated N  installed N  kept-modified N`, or
-`refused <reason>`) and a totals line. It never runs git and never commits.
+`refused <reason>`) and a totals line. It never changes the repository and never commits.
 
 - `--all` with `--dir` or `--force` is a usage error (exit 2).
 - Needs the `tui` extra (the catalog is SQLite); without it, one line and exit 1.
@@ -394,8 +420,8 @@ that need an operator. Detection reads environment markers no ordinary login she
 | `learn` acceptance reviewer | The queue table, then exits 0 |
 | `learn scan` / bare `learn [ROOT]` | Refused, exit 1, printing the command to hand over |
 | Scaffolding into an existing directory (`new .`'s two confirmations) | Refused, exit 1; `--dry-run` still previews |
-| `metaproject backfill` | **Allowed** — create-only, no confirmations needed, never runs git |
-| `metaproject adopt` | **Allowed** — create-only, no confirmations needed, never runs git |
+| `metaproject backfill` | **Allowed** — create-only, no confirmations needed, never changes the repository |
+| `metaproject adopt` | **Allowed** — create-only, no confirmations needed, never changes the repository |
 | `metaproject doctor` | Refused, exit 1; `doctor --dry-run` still reports |
 | Everything else | Unchanged |
 
@@ -516,9 +542,9 @@ metaproject universe --list --all --format json
 | `~/.metaproject/universe.db` | Project catalog and the `learn` proposal ledger |
 | `~/.metaproject/review-ignore.json` | Projects allowed to stay out of compliance |
 | `~/.metaproject/cache/templates/` | Shallow checkouts of projects' git `templates.source` |
-| `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`/`adopt`, updated by `skills sync`, committed with the project (`.claude/skills` links here) |
+| `<project>/.agents/skills/<name>/` | Project skills, copied by `new`/`backfill`/`adopt`, updated by `skills sync`, committed with the project (Claude Code is bridged per skill via `.claude/skills/<name>`) |
 | `<project>/.agents/skills/.metaproject-skills.json` | Skills install manifest: release and per-file sha256 for each installed skill; committed |
-| `<project>/.metaproject/config.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. The nearest one at or above the current directory marks the project root. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, `templates.source`, and `skills.location` (`"root"` keeps a sub-project's skills in an ancestor) |
+| `<project>/.metaproject/config.json` | Per-project identity: title, description, author, created, metaproject_version — written by `new`/`adopt`, read by `review`/`learn`/`backfill`/`universe`. The nearest one at or above the current directory marks the project root. Optional `commands.lint`, `commands.typecheck`, `e2e_port` for the hooks, `templates.source`, and `skills.location` (`"root"` keeps a sub-project's skills in an ancestor), `skills.targets` and `skills.link_mode` |
 | `<project>/.claude/settings.json` | Claude Code settings; `new`/`backfill` merge the metaproject hook entries in, keeping everything else |
 | `<project>/.claude/hooks/metaproject_hook.py` | The hook script (`post-edit`, `pre-bash`; `pre-bash` also advises a worktree-local `PLAYWRIGHT_BROWSERS_PATH` when the Playwright install lock is held), copied create-only |
 | `<project>/scripts/metaproject-session.sh` | The web session-start bootstrap script, copied create-only |
