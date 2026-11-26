@@ -3,10 +3,10 @@
 ## Process
 
 <!-- each stage ticks its own item here as it completes -->
-- [ ] 1. write-intent: INTENT.md approved
-- [ ] 2. generate-spec: SPEC.md approved
-- [ ] 3. generate-design: TECH-DESIGN.md approved
-- [ ] 4. generate-plan: PLAN.md approved
+- [x] 1. write-intent: INTENT.md approved
+- [x] 2. generate-spec: SPEC.md approved
+- [x] 3. generate-design: TECH-DESIGN.md approved
+- [x] 4. generate-plan: PLAN.md approved
 - [ ] 5. implement-plan: code and tests written
 - [ ] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
