@@ -17,7 +17,7 @@
 - [x] 1. Foundations: `treeops.py`, manifest v2, `identity.update_settings`, `git.read_only_query` (10a4a5e, 77bdbfe; 1142 passed)
 - [x] 2. `bridges.py` in isolation (1cca5fe; 1187 passed)
 - [x] 3. Wire bridges into skills (827929f; 1201 passed)
-- [ ] 4. Scaffold / backfill / adopt
+- [x] 4. Scaffold / backfill / adopt (39df8bd; 1215 passed)
 - [ ] 5. Doctor
 - [ ] 6. CLI output and shim removal
 - [ ] 7. Docs, skill history, self-migration
@@ -30,11 +30,14 @@
 - `bridges.py` never imports `skills`; it writes under `.claude/skills/<name>` only for manifest-recorded entries, and a foreign entry is changed only with `--force NAME` (`tests/test_bridges.py`).
 - The source (`.agents/skills`) is installed whatever `.claude/skills` is; only "root with no home" refuses (R-SKL-5 retired) (`tests/test_skills_sync.py`).
 - Manifest entry names are untrusted: unsafe names are dropped, writes/removals require the entry parent to be `.claude/skills`, and nothing is changed when `.claude` or `.claude/skills` resolves outside the project (c48165a, `tests/test_bridges.py`).
+- `backfill` and `adopt` run only allowlisted read-only git queries (`tests/test_backfill.py`, `tests/test_adopt.py` allowlist tests).
 - A sync carries the manifest's `bridges` object through unchanged; v1 manifests are rewritten as v2 (`tests/test_skills_sync.py`).
 
 ## Open items carried into PLAN.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
+- Step 4 relaxed `test_cli_new_dry_run_mentions_gitkeep` (the `.gitkeep` preview line came from `cli.py` reading `skills_link`); step 6 restores it with the bridge preview output.
+- Recording `skills.targets` re-serialises the config as sorted, indented JSON (keys and values preserved, formatting not).
 
 ## Verified facts (do not re-investigate)
 
