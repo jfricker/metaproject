@@ -255,6 +255,7 @@ def print_skills_report(
     dry_run: bool,
     target: Optional[Path] = None,
     project: Optional[Path] = None,
+    bridges: Any = None,
 ) -> None:
     """Narrate one project-skills install pass (`new`, `backfill`, `adopt`).
 
@@ -304,6 +305,56 @@ def print_skills_report(
             + ". [bold cyan]metaproject skills sync --force NAME[/bold cyan] discards "
             "local edits."
         )
+    print_bridge_report(bridges, dry_run, states)
+
+
+def print_bridge_report(
+    report: Any, dry_run: bool, states: Optional[Dict[str, str]] = None
+) -> None:
+    """Narrate one `.claude/skills` bridge pass: entries written, mode, warnings, notice.
+
+    Under `dry_run` a skill the same pass would still install has no source to bridge yet;
+    its bridge is reported as it would be written, not as skipped.
+    """
+    if report is None:
+        return
+    touched = False
+    pending = set()
+    if dry_run and report.notice is None:
+        for name, info in report.entries.items():
+            if (
+                info.get("action") == "skipped"
+                and info.get("state") == "missing"
+                and (states or {}).get(name) == INSTALLED
+            ):
+                pending.add(name)
+    for name, info in report.entries.items():
+        action = "created" if name in pending else info.get("action")
+        if action in ("created", "updated", "recorded"):
+            shown = f"would be {action}" if dry_run else action
+            console.print(
+                f"[dim].claude/skills/{escape(name)} -> {shown} ({escape(report.mode)})[/dim]",
+                soft_wrap=True,
+            )
+            touched = True
+    for name in report.removed:
+        shown = "would be removed" if dry_run else "removed"
+        console.print(
+            f"[dim].claude/skills/{escape(name)} -> {shown} ({escape(report.mode)})[/dim]",
+            soft_wrap=True,
+        )
+        touched = True
+    if touched:
+        console.print(
+            f"[dim]bridge mode: {escape(report.mode)} ({escape(report.mode_reason)})[/dim]",
+            soft_wrap=True,
+        )
+    for warning in report.warnings:
+        if any(warning.startswith(f"{name}: source missing") for name in pending):
+            continue
+        console.print(f"[yellow]Warning:[/] {escape(warning)}", soft_wrap=True)
+    if report.notice:
+        console.print(f"[yellow]Notice:[/] {escape(report.notice)}", soft_wrap=True)
 
 
 def print_hooks_report(
@@ -890,15 +941,22 @@ def new_cmd(
         else:
             console.print("[dim]wrote .metaproject/config.json[/dim]")
 
-    skills_link = result.get("skills_link")
-    if dry_run and skills_link is not None:
-        console.print(
-            f"[dim]would create agent-skills layout: {skills_link.relative_to(target_dir)} "
-            f"(-> ../.agents/skills) plus .agents/skills/.gitkeep[/dim]"
-        )
     skills_report = result.get("skills")
+    if dry_run and skills_report is not None and not skills_report.notice:
+        gitkeep = skills_report.target / ".gitkeep"
+        if not gitkeep.exists():
+            try:
+                shown = gitkeep.relative_to(target_dir).as_posix()
+            except ValueError:
+                shown = str(gitkeep)
+            console.print(f"[dim]would create {escape(shown)}[/dim]", soft_wrap=True)
     if skills_report is not None:
-        print_skills_report(skills_report.states, skills_report.notice, dry_run)
+        print_skills_report(
+            skills_report.states,
+            skills_report.notice,
+            dry_run,
+            bridges=result.get("skills_bridges"),
+        )
     hooks_report = result.get("hooks")
     if hooks_report is not None:
         print_hooks_report(
@@ -1388,9 +1446,14 @@ def print_backfill_result(result, dry_run: bool, target: Path) -> None:
             table.add_row(path)
         console.print(table)
 
-    if result.skills_link:
-        console.print(f"[dim].claude/skills {escape(result.skills_link)}[/dim]", soft_wrap=True)
-    print_skills_report(result.skills, result.skills_notice, dry_run, result.skills_target, target)
+    print_skills_report(
+        result.skills,
+        result.skills_notice,
+        dry_run,
+        result.skills_target,
+        target,
+        bridges=result.skills_bridges,
+    )
     if result.hooks_notice:
         console.print(f"[yellow]Notice:[/] {result.hooks_notice}")
     elif ".claude/settings.json" in result.created:
@@ -1523,16 +1586,6 @@ def adopt_cmd(
         )
     else:
         console.print("[dim].metaproject/config.json already present — kept as-is[/dim]")
-    if result.skills_link is not None:
-        from metaproject.skills import link_target, skills_home
-
-        home = skills_home(result.target_dir) or result.target_dir
-        action = "would create" if dry_run else "created"
-        if home != result.target_dir:
-            action = "would link" if dry_run else "linked"
-        pointer = link_target(result.target_dir, home)
-        console.print(f"[dim]{action} .claude/skills -> {escape(pointer)}[/dim]", soft_wrap=True)
-
     print_backfill_result(result.backfill, dry_run, target)
     if result.backfill.missing_template:
         raise typer.Exit(code=1)
@@ -1753,10 +1806,22 @@ def _skills_payload(project: Path, report, dry_run: bool, with_action: bool) -> 
         "target": target,
         "location": report.location,
         "home": str(report.home) if report.home is not None else None,
-        "link": report.link,
         "release": running_release(),
         "manifest": report.manifest_state,
         "refusal": report.notice,
+        "bridges": {
+            name: {
+                "mode": bridge.mode,
+                "mode_reason": bridge.mode_reason,
+                "notice": bridge.notice,
+                "entries": {
+                    entry: {"state": info.get("state"), "action": info.get("action")}
+                    for entry, info in bridge.entries.items()
+                },
+            }
+            for name, bridge in report.bridges.items()
+        },
+        "shadowing": list(report.shadowing),
         "dry_run": dry_run,
         "skills": [
             {
@@ -1783,10 +1848,18 @@ def _skill_detail(status) -> str:
     return "—"
 
 
+def _bridge_cell(info: Optional[Dict[str, Any]]) -> str:
+    if not info:
+        return "—"
+    state = info.get("state") or "—"
+    action = info.get("action")
+    return f"{state} → {action}" if action else state
+
+
 def _render_skills_report(
     project: Path, report, output_format: str, dry_run: bool, with_action: bool
 ) -> None:
-    """Print one status/sync report; exit 1 on a refusal."""
+    """Print one status/sync report; exit 1 only on the no-home refusal (R-BRG-29)."""
     import json
 
     out = _skills_console(output_format)
@@ -1808,6 +1881,8 @@ def _render_skills_report(
     table.add_column("Installed release")
     if with_action:
         table.add_column("Action")
+    for bridge_name in report.bridges:
+        table.add_column(f"Bridge ({bridge_name})")
     table.add_column("Detail")
     for status in report.statuses:
         row = [
@@ -1817,9 +1892,34 @@ def _render_skills_report(
         ]
         if with_action:
             row.append(SKILL_ACTION_LABELS.get(status.action or "", status.action or "—"))
+        for bridge in report.bridges.values():
+            row.append(_bridge_cell(bridge.entries.get(status.name)))
         row.append(_skill_detail(status))
         table.add_row(*row)
     console.print(table)
+    for bridge_name, bridge in report.bridges.items():
+        console.print(
+            f"[dim]bridge {escape(bridge_name)}: mode {escape(bridge.mode)} "
+            f"({escape(bridge.mode_reason)})[/dim]",
+            soft_wrap=True,
+        )
+        for warning in bridge.warnings:
+            console.print(f"[yellow]Notice:[/] {escape(warning)}", soft_wrap=True)
+        if bridge.notice:
+            console.print(f"[yellow]Notice:[/] {escape(bridge.notice)}", soft_wrap=True)
+        for entry, info in bridge.entries.items():
+            note = info.get("note")
+            if note and note != "identical":
+                console.print(
+                    f"[yellow]Notice:[/] .claude/skills/{escape(entry)}: {escape(note)}",
+                    soft_wrap=True,
+                )
+    if report.shadowing:
+        console.print(
+            "[yellow]Notice:[/] skill(s) shadowed by a user-level or Copilot directory: "
+            + escape(", ".join(report.shadowing)),
+            soft_wrap=True,
+        )
     modified = [s.name for s in report.statuses if s.state == "modified" and s.action != "forced"]
     if modified:
         console.print(
@@ -2096,16 +2196,7 @@ def skills_sync_cmd(
     except MetaProjectError as exc:
         out.print(f"[bold red]Skills Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=1)
-    if report.link and output_format != "json":
-        out.print(f"[dim].claude/skills {escape(report.link)}[/dim]", soft_wrap=True)
     _render_skills_report(project, report, output_format, dry_run=dry_run, with_action=True)
-    claude_skills = project / ".claude" / "skills"
-    if report.location != "root" and not claude_skills.exists() and not claude_skills.is_symlink():
-        out.print(
-            "[yellow]Notice:[/] .claude/skills is absent, so Claude Code will not see these "
-            "skills; run [bold cyan]metaproject adopt[/bold cyan] to create the link.",
-            soft_wrap=True,
-        )
 
 
 # ----------------------------------------------------------------------- templates

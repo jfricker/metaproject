@@ -30,8 +30,6 @@ from metaproject.skills import (
     STAGING_NAME,
     UPDATED,
     bundled_skills,
-    file_map,
-    hash_content,
     inspect_project_skills,
     load_manifest,
     render_manifest,
@@ -39,6 +37,7 @@ from metaproject.skills import (
     skill_digest,
     sync_project_skills,
 )
+from metaproject.treeops import file_map, hash_content
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -123,7 +122,7 @@ def test_symlink_inside_skill_never_matches(tmp_path: Path) -> None:
     d.mkdir()
     (d / "real.md").write_text("x", encoding="utf-8")
     os.symlink(d / "real.md", d / "link.md")
-    assert file_map(d)["link.md"] == skills_module.NON_REGULAR
+    assert file_map(d)["link.md"] == treeops.NON_REGULAR
 
 
 # ------------------------------------------------------------------ install paths
@@ -1030,3 +1029,129 @@ def test_shadowing_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert report.shadowing == [
         "~/.claude/skills/wrapup overrides the project's wrapup in Claude Code"
     ]
+
+
+# ------------------------------------------------------- CLI reporting (R-BRG-27/28/29)
+
+
+def _flat(output: str) -> str:
+    return " ".join(output.split())
+
+
+def test_status_text_shows_bridge_states_and_mode_line(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj)])
+    assert result.exit_code == 0, result.output
+    out = _flat(result.output)
+    assert "Bridge (claude)" in out
+    assert "bridge claude: mode" in out
+    assert "current" in out
+
+
+def test_status_json_has_bridges_and_shadowing_and_no_link(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    proj = _scaffold(tmp_path)
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj), "-f", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert "link" not in payload
+    assert payload["refusal"] is None
+    assert isinstance(payload["shadowing"], list)
+    claude = payload["bridges"]["claude"]
+    assert set(claude) == {"mode", "mode_reason", "notice", "entries"}
+    assert {s.name for s in bundled_skills()} == set(claude["entries"])
+    assert all(set(e) == {"state", "action"} for e in claude["entries"].values())
+    assert {e["state"] for e in claude["entries"].values()} == {CURRENT}
+
+
+def test_status_reports_modified_copy_note(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _bare(tmp_path, skills={"link_mode": "copy"})
+    sync = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
+    assert sync.exit_code == 0, sync.output
+    assert (_skills_dir(proj) / "wrapup").is_dir()
+    (_skills_dir(proj) / "wrapup" / "SKILL.md").write_text("edited\n", encoding="utf-8")
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj)])
+    assert result.exit_code == 0, result.output
+    assert "differs from .agents/skills" in _flat(result.output)
+
+
+def test_unknown_target_warns_once(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _bare(tmp_path, skills={"targets": ["claude", "bogus"]})
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj)])
+    assert result.exit_code == 0, result.output
+    assert _flat(result.output).count("unknown skills target 'bogus' ignored") == 1
+
+
+def test_sync_text_shows_bridge_action(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    result = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
+    assert result.exit_code == 0, result.output
+    assert "created" in _flat(result.output)
+
+
+def test_exit_zero_for_foreign_entry(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    (_skills_dir(proj) / "wrapup").mkdir(parents=True)
+    (_skills_dir(proj) / "wrapup" / "SKILL.md").write_text("mine\n", encoding="utf-8")
+    for command in ("status", "sync"):
+        result = runner.invoke(app, ["skills", command, "--dir", str(proj)])
+        assert result.exit_code == 0, result.output
+    assert (_skills_dir(proj) / "wrapup" / "SKILL.md").read_text() == "mine\n"
+
+
+def test_exit_zero_for_legacy_link_with_doctor_hint(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    (proj / ".claude").mkdir()
+    os.symlink(Path("..") / ".agents" / "skills", _skills_dir(proj))
+    _skills_root(proj).mkdir(parents=True)
+    for command in ("status", "sync"):
+        result = runner.invoke(app, ["skills", command, "--dir", str(proj)])
+        assert result.exit_code == 0, result.output
+        assert "metaproject doctor" in _flat(result.output)
+    assert _skills_dir(proj).is_symlink()
+
+
+def test_exit_zero_for_foreign_claude_skills_symlink(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _bare(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (proj / ".claude").mkdir()
+    os.symlink(elsewhere, _skills_dir(proj))
+    for command in ("status", "sync"):
+        result = runner.invoke(app, ["skills", command, "--dir", str(proj)])
+        assert result.exit_code == 0, result.output
+    assert list(elsewhere.iterdir()) == []
+
+
+def test_exit_zero_when_symlink_denied(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proj = _bare(tmp_path)
+
+    def denied(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(os, "symlink", denied)
+    result = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
+    assert result.exit_code == 0, result.output
+    assert "permission denied" in _flat(result.output)
+
+
+def test_exit_one_for_unknown_force_newer_manifest_and_no_home(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    proj = _scaffold(tmp_path)
+    forced = runner.invoke(app, ["skills", "sync", "--dir", str(proj), "--force", "nope"])
+    assert forced.exit_code == 1
+
+    (_skills_root(proj) / MANIFEST_NAME).write_text(
+        json.dumps({"version": 3, "skills": {}}), encoding="utf-8"
+    )
+    newer = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
+    assert newer.exit_code == 1
+
+    nohome = _bare(tmp_path, "nohome", skills={"location": "root"})
+    for command in ("status", "sync"):
+        result = runner.invoke(app, ["skills", command, "--dir", str(nohome)])
+        assert result.exit_code == 1, result.output

@@ -17,12 +17,12 @@ from metaproject.skills import (
     MODIFIED,
     bundled_skills,
     classify_skill,
-    file_map,
     get_bundled_skill_dir,
     install_project_skills,
     legacy_global_skill_dir,
     project_skills_dir,
 )
+from metaproject.treeops import file_map
 
 
 def is_skill_current(source_dir: Path, target_dir: Path) -> bool:
@@ -260,7 +260,7 @@ def test_foreign_symlink_does_not_refuse_the_source(tmp_path: Path) -> None:
     os.symlink(elsewhere, proj / ".claude" / "skills")
 
     target = project_skills_dir(proj)
-    assert target.refusal is None and target.link is None
+    assert target.refusal is None
     report = install_project_skills(proj)
     assert report.notice is None
     assert report.states and set(report.states.values()) == {"installed"}

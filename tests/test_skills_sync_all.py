@@ -1,6 +1,8 @@
 """`metaproject skills status|sync --all` over the cataloged, managed projects (#4)."""
 
 import json
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -11,7 +13,8 @@ from metaproject import catalog, db, doctor
 from metaproject.cli import app
 from metaproject.config import Config, save_config
 from metaproject.scaffold import scaffold_project
-from metaproject.skills import MANIFEST_NAME, file_map
+from metaproject.skills import MANIFEST_NAME
+from metaproject.treeops import file_map
 from tests.test_extras import run_core
 from tests.test_skills_sync import _tree
 
@@ -335,3 +338,21 @@ def test_managed_projects_does_not_create_a_missing_catalog(tmp_path: Path) -> N
     config = Config(templates_dir=str(tmp_path / "s"), universe_db=str(tmp_path / "u.db"))
     assert catalog.managed_projects(config) == []
     assert not (tmp_path / "u.db").exists()
+
+
+def test_sync_all_counts_only_real_failures(runner: CliRunner, cfg: Config, tmp_path: Path) -> None:
+    legacy = _project(cfg, tmp_path, "legacy", outdated=False)
+    shutil.rmtree(legacy / ".claude" / "skills")
+    os.symlink(Path("..") / ".agents" / "skills", legacy / ".claude" / "skills")
+
+    result = runner.invoke(app, ["skills", "sync", "--all", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "failed 0" in _flat(result.output)
+
+    newer = _project(cfg, tmp_path, "newer", outdated=False)
+    (newer / ".agents" / "skills" / MANIFEST_NAME).write_text(
+        json.dumps({"version": 3, "skills": {}}), encoding="utf-8"
+    )
+    result = runner.invoke(app, ["skills", "sync", "--all", "--yes"])
+    assert result.exit_code == 1, result.output
+    assert "failed 1" in _flat(result.output)

@@ -1229,7 +1229,7 @@ def test_modified_copy_and_foreign_entries_are_report_only(tmp_path: Path) -> No
     # Record wrapup as a copy bridge, then edit it.
     manifest_path = project / ".agents" / "skills" / ".metaproject-skills.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    from metaproject.skills import file_map
+    from metaproject.treeops import file_map
 
     recs = manifest["bridges"]["."]["claude"]["entries"]
     recs["wrapup"] = {"mode": "copy", "files": file_map(skills_dir / "wrapup")}

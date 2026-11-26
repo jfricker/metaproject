@@ -43,17 +43,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from metaproject import bridges as bridge_ops
 from metaproject.exceptions import MetaProjectError
-from metaproject.treeops import (  # noqa: F401  (re-exported for callers and tests)
-    NON_REGULAR,
-    _copy_tree,
-    _fingerprint,
-    _record_tree,
-    _remove,
-    file_map,
-    hash_content,
-    recover_staging,
-    swap_tree,
-)
+from metaproject.treeops import _fingerprint, file_map, recover_staging, swap_tree
 
 if TYPE_CHECKING:
     from metaproject.scaffold import TransactionalTracker
@@ -101,14 +91,13 @@ class SkillsTarget:
 
     `home` is the project whose `.agents/skills` is `path`: the project itself, or —
     for a sub-project declaring `"skills": {"location": "root"}` — the ancestor that
-    keeps the one shared copy (`delegated`). `link` is always None (shim).
+    keeps the one shared copy (`delegated`).
     """
 
     path: Path
     refusal: Optional[str] = None
     home: Optional[Path] = None
     delegated: bool = False
-    link: Optional[str] = None
     warnings: Tuple[str, ...] = ()
 
 
@@ -144,8 +133,6 @@ class SkillsReport:
     # `project` (the default) or `root` (skills kept by an ancestor; see SkillsTarget).
     location: str = "project"
     home: Optional[Path] = None
-    # Shim: always None.
-    link: Optional[str] = None
     bridges: Dict[str, "bridge_ops.BridgeReport"] = field(default_factory=dict)
     shadowing: List[str] = field(default_factory=list)
 
@@ -205,17 +192,6 @@ def legacy_global_skill_dir() -> Path:
 
 
 # ------------------------------------------------------------------------- hashing
-
-
-def _bundled_files(source_dir: Path) -> List[Path]:
-    from metaproject.templates import is_junk_file_name
-
-    return sorted(
-        item
-        for item in source_dir.rglob("*")
-        if item.is_file()
-        and not any(is_junk_file_name(part) for part in item.relative_to(source_dir).parts)
-    )
 
 
 def skill_digest(files: Dict[str, str]) -> str:
@@ -437,35 +413,6 @@ def skills_home(project_dir: Path) -> Optional[Path]:
     return repo_root
 
 
-def _link_refusal(owner_dir: Path, agents_skills: Path) -> Optional[str]:
-    """Why `owner_dir/.claude/skills` would hide `agents_skills` from Claude Code (R-SKL-5).
-
-    None when the link is absent or a symlink resolving to `agents_skills`.
-    """
-    claude_skills = Path(owner_dir) / ".claude" / "skills"
-    if claude_skills.is_symlink():
-        if claude_skills.resolve() != agents_skills.resolve():
-            return (
-                f"{claude_skills} is a symlink to {claude_skills.resolve()}, not this "
-                "project's .agents/skills; project skills were not installed."
-            )
-    elif claude_skills.exists():
-        return (
-            f"{claude_skills} is a real directory, not a symlink to .agents/skills; "
-            "project skills were not installed."
-        )
-    return None
-
-
-def link_target(project_dir: Path, home: Path) -> str:
-    """The relative `.claude/skills` link text from `project_dir` to `home/.agents/skills`.
-
-    Both ends are resolved first, so a symlinked path component never skews it.
-    """
-    agents = (Path(home) / ".agents" / "skills").resolve()
-    return os.path.relpath(agents, start=(Path(project_dir) / ".claude").resolve())
-
-
 def _leftover_warning(project_dir: Path) -> Optional[str]:
     own = Path(project_dir) / ".agents" / "skills"
     names = [skill.name for skill in bundled_skills() if (own / skill.name).exists()]
@@ -506,46 +453,7 @@ def project_skills_dir(project_dir: Path) -> SkillsTarget:
     leftover = _leftover_warning(project_dir)
     if leftover:
         warnings += (leftover,)
-    return SkillsTarget(home / ".agents" / "skills", None, home, True, None, warnings)
-
-
-def ensure_skills_link(
-    project_dir: Path,
-    home: Path,
-    dry_run: bool = False,
-    tracker: "Optional[TransactionalTracker]" = None,
-) -> Optional[str]:
-    """Point a delegating sub-project's `.claude/skills` at `home/.agents/skills`.
-
-    Creates the link when absent, or re-points the default link to the sub-project's
-    own `.agents/skills`. Never touches a real directory or a link anywhere else.
-    Returns what was (or, under `dry_run`, would be) done, or None when nothing was.
-    """
-    project_dir = Path(project_dir)
-    claude_dir = project_dir / ".claude"
-    claude_skills = claude_dir / "skills"
-    own = project_dir / ".agents" / "skills"
-    wanted = link_target(project_dir, home)
-    if claude_skills.is_symlink():
-        if claude_skills.resolve() != own.resolve():
-            return None
-        verb = "re-pointed"
-    elif claude_skills.exists():
-        return None
-    else:
-        verb = "created"
-    if dry_run:
-        return f"would be {verb}: {claude_skills} -> {wanted}"
-    if not claude_dir.exists():
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        if tracker is not None:
-            tracker.record_created_dir(claude_dir)
-    if verb == "re-pointed":
-        claude_skills.unlink()
-    claude_skills.symlink_to(wanted)
-    if tracker is not None and verb == "created":
-        tracker.record_created_file(claude_skills)
-    return f"{verb}: {claude_skills} -> {wanted}"
+    return SkillsTarget(home / ".agents" / "skills", None, home, True, warnings)
 
 
 def _target_report(target: SkillsTarget, **kwargs) -> SkillsReport:

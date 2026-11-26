@@ -841,7 +841,6 @@ def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:
     )
 
     claude_skills = target / ".claude" / "skills"
-    assert res["skills_link"] is None
     assert res["skills_bridges"] is not None
     assert (target / ".agents" / "skills").is_dir()
     assert claude_skills.is_dir() and not claude_skills.is_symlink()
@@ -860,14 +859,13 @@ def test_scaffold_creates_agents_skills_symlink(tmp_path: Path) -> None:
 def test_scaffold_dry_run_skips_skills_link(tmp_path: Path) -> None:
     """Dry run touches nothing: no layout, no bridges, no config."""
     target = tmp_path / "dry_link_proj"
-    res = scaffold_project(
+    scaffold_project(
         project_name="dry_link_proj",
         output=target,
         dry_run=True,
         interactive=False,
         no_git=True,
     )
-    assert res["skills_link"] is None
     assert not (target / ".claude").exists()
     assert not (target / ".agents").exists()
 
@@ -881,7 +879,7 @@ def test_scaffold_backfill_preserves_existing_skills_link(tmp_path: Path) -> Non
     existing.parent.mkdir()
     existing.symlink_to(target / "elsewhere")
 
-    res = scaffold_project(
+    scaffold_project(
         project_name="occupied_link",
         output=str(target) + "/",
         config=Config(author="Jane Dev", default_branch="main"),
@@ -890,7 +888,6 @@ def test_scaffold_backfill_preserves_existing_skills_link(tmp_path: Path) -> Non
         backfill=True,
     )
 
-    assert res["skills_link"] is None
     assert existing.is_symlink()
     assert existing.resolve() == (target / "elsewhere").resolve()
 
@@ -904,7 +901,7 @@ def test_link_agent_skills_writes_gitkeep(tmp_path: Path) -> None:
     target = tmp_path / "gitkeep_proj"
     cfg = Config(author="Jane Dev", default_branch="main")
 
-    res = scaffold_project(
+    scaffold_project(
         project_name="gitkeep_proj",
         output=target,
         config=cfg,
@@ -914,7 +911,6 @@ def test_link_agent_skills_writes_gitkeep(tmp_path: Path) -> None:
 
     gitkeep = target / ".agents" / "skills" / ".gitkeep"
     assert gitkeep.is_file()
-    assert res["skills_link"] is None
 
 
 def test_scaffold_initial_commit_includes_gitkeep_and_symlink(tmp_path: Path) -> None:
@@ -982,7 +978,7 @@ def test_backfill_adds_missing_gitkeep_to_existing_layout(tmp_path: Path) -> Non
     skills_link = claude_dir / "skills"
     skills_link.symlink_to(Path("..") / ".agents" / "skills")
 
-    res = scaffold_project(
+    scaffold_project(
         project_name="occupied_no_gitkeep",
         output=str(target) + "/",
         config=Config(author="Jane Dev", default_branch="main"),
@@ -991,7 +987,6 @@ def test_backfill_adds_missing_gitkeep_to_existing_layout(tmp_path: Path) -> Non
         backfill=True,
     )
 
-    assert res["skills_link"] is None
     assert skills_link.is_symlink()
     assert skills_link.resolve() == agents_skills_dir.resolve()
     assert (agents_skills_dir / ".gitkeep").is_file()
@@ -1008,7 +1003,7 @@ def test_backfill_skips_gitkeep_when_claude_skills_is_real_directory(tmp_path: P
     real_skills_dir.mkdir(parents=True)
     (real_skills_dir / "custom.md").write_text("mine\n", encoding="utf-8")
 
-    res = scaffold_project(
+    scaffold_project(
         project_name="occupied_real_dir",
         output=str(target) + "/",
         config=Config(author="Jane Dev", default_branch="main"),
@@ -1017,7 +1012,6 @@ def test_backfill_skips_gitkeep_when_claude_skills_is_real_directory(tmp_path: P
         backfill=True,
     )
 
-    assert res["skills_link"] is None
     assert real_skills_dir.is_dir()
     assert not real_skills_dir.is_symlink()
     assert (real_skills_dir / "custom.md").read_text(encoding="utf-8") == "mine\n"
@@ -1037,7 +1031,7 @@ def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Pa
     skills_link = claude_dir / "skills"
     skills_link.symlink_to(target / "elsewhere")
 
-    res = scaffold_project(
+    scaffold_project(
         project_name="occupied_elsewhere",
         output=str(target) + "/",
         config=Config(author="Jane Dev", default_branch="main"),
@@ -1046,7 +1040,6 @@ def test_backfill_skips_gitkeep_when_claude_skills_points_elsewhere(tmp_path: Pa
         backfill=True,
     )
 
-    assert res["skills_link"] is None
     assert skills_link.resolve() == (target / "elsewhere").resolve()
     assert list((target / "elsewhere").iterdir()) == []
     assert (target / ".agents" / "skills" / "wrapup" / "SKILL.md").is_file()
@@ -1106,7 +1099,7 @@ def test_scaffold_dry_run_writes_no_gitkeep(tmp_path: Path) -> None:
     """Dry-run never writes the .gitkeep, `.agents/`, or `.claude/`."""
     target = tmp_path / "dry_gitkeep_proj"
 
-    res = scaffold_project(
+    scaffold_project(
         project_name="dry_gitkeep_proj",
         output=target,
         dry_run=True,
@@ -1114,13 +1107,11 @@ def test_scaffold_dry_run_writes_no_gitkeep(tmp_path: Path) -> None:
         no_git=True,
     )
 
-    assert res["skills_link"] is None
     assert not target.exists()
 
 
 def test_cli_new_dry_run_mentions_gitkeep(runner: CliRunner, tmp_path: Path) -> None:
-    """Dry run of `new` exits 0 and writes nothing. (The CLI no longer previews the
-    directory layout; the bridge preview output arrives with the CLI step.)"""
+    """Dry run of `new` previews the `.gitkeep` and the bridge entries; writes nothing."""
     target = tmp_path / "cli_dry_gitkeep_proj"
 
     result = runner.invoke(
@@ -1129,7 +1120,24 @@ def test_cli_new_dry_run_mentions_gitkeep(runner: CliRunner, tmp_path: Path) -> 
     )
 
     assert result.exit_code == 0, result.output
+    out = " ".join(result.output.split())
+    assert "would create .agents/skills/.gitkeep" in out
+    assert ".claude/skills/wrapup -> would be created" in out
+    assert "bridge mode:" in out
+    assert "create the link" not in out and "R-SKL-5" not in out
     assert not target.exists()
+
+
+def test_cli_new_narrates_bridge_lines(runner: CliRunner, tmp_path: Path) -> None:
+    target = tmp_path / "cli_bridge_proj"
+    result = runner.invoke(
+        app, ["new", "cli_bridge_proj", "--output", str(target), "--yes", "--no-git"]
+    )
+    assert result.exit_code == 0, result.output
+    out = " ".join(result.output.split())
+    assert ".claude/skills/wrapup -> created" in out
+    assert "bridge mode:" in out
+    assert "create the link" not in out and "R-SKL-5" not in out
 
 
 def test_scaffold_failure_after_targets_restores_a_backfilled_config(

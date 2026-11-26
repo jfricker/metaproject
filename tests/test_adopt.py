@@ -365,7 +365,6 @@ def test_adopt_into_a_bare_repo_records_targets_and_bridges(tmp_path: Path, no_g
 
     config = json.loads((repo / IDENTITY_FILE).read_text(encoding="utf-8"))
     assert config["skills"] == {"targets": ["claude"]}
-    assert result.skills_link is None
     assert result.skills_bridges is not None
     for name in _names():
         assert (repo / ".claude" / "skills" / name).is_symlink()
@@ -479,3 +478,23 @@ def test_cli_adopt_runs_only_read_only_git_queries(
     result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Jo F"])
     assert result.exit_code == 0, result.output
     assert set(no_git) <= {"core.symlinks", "user.name", "user.email"}
+
+
+def test_cli_adopt_narrates_bridge_lines(runner: CliRunner, tmp_path: Path, no_git) -> None:
+    repo = existing_repo(tmp_path)
+    result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Jo F"])
+    assert result.exit_code == 0, result.output
+    out = " ".join(result.output.split())
+    assert ".claude/skills/wrapup -> created" in out
+    assert "bridge mode:" in out
+    assert "create the link" not in out and "R-SKL-5" not in out
+
+
+def test_cli_adopt_dry_run_narrates_would_be_bridges(
+    runner: CliRunner, tmp_path: Path, no_git
+) -> None:
+    repo = existing_repo(tmp_path)
+    result = runner.invoke(app, ["adopt", "--dir", str(repo), "--author", "Jo F", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "would be created" in " ".join(result.output.split())
+    assert not (repo / ".claude").exists()

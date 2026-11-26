@@ -268,6 +268,22 @@ def test_cli_backfill_ac10_all_missing_in_one_call(runner: CliRunner, tmp_path: 
     assert "AGENTS.md" in result.output
 
 
+def test_cli_backfill_narrates_bridge_lines(runner: CliRunner, tmp_path: Path) -> None:
+    import shutil
+
+    proj, templates = scaffolded_project(tmp_path)
+    shutil.rmtree(proj / ".claude" / "skills")
+    shutil.rmtree(proj / ".agents" / "skills")
+
+    result = runner.invoke(app, ["backfill", "--dir", str(proj), "--templates", str(templates)])
+
+    assert result.exit_code == 0, result.output
+    out = " ".join(result.output.split())
+    assert ".claude/skills/wrapup -> created" in out
+    assert "bridge mode:" in out
+    assert "create the link" not in out and "R-SKL-5" not in out
+
+
 def test_backfill_by_name_creates_on_demand_todo(tmp_path: Path) -> None:
     """`backfill .metaproject/docs/TODO.md` creates the on-demand file `new` never scaffolds."""
     proj, templates = scaffolded_project(tmp_path)

@@ -377,7 +377,6 @@ def scaffold_project(
                 [path for path in preserved_paths if path.is_file()] if is_backfill else []
             ),
             "backfilled": is_backfill,
-            "skills_link": None,
             "skills_bridges": skills_report.bridges.get("claude"),
             "skills": skills_report,
             "hooks": hooks_report,
@@ -406,8 +405,6 @@ class AdoptResult:
     identity: Identity
     # True when `.metaproject/config.json` was (or would be) written; False when one existed.
     identity_written: bool
-    # Shim: always None (the directory link is retired; see `skills_bridges`).
-    skills_link: Optional[Path]
     backfill: "BackfillResult"
     # The Claude bridge report from the skills install, None when not bridged.
     skills_bridges: Any = None
@@ -501,7 +498,6 @@ def adopt_project(
         target_dir=target_dir,
         identity=identity,
         identity_written=identity_written,
-        skills_link=None,
         backfill=backfill,
         skills_bridges=backfill.skills_bridges,
         warnings=tuple(backfill.warnings),

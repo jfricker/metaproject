@@ -282,7 +282,7 @@ def test_root_mode_updates_outdated_and_keeps_modified_at_the_home(delegating: d
     entry = manifest["skills"]["wrapup"]
     entry["release"] = "0.0.1"
     entry["files"] = dict(entry["files"])
-    from metaproject.skills import hash_content
+    from metaproject.treeops import hash_content
 
     entry["files"]["SKILL.md"] = hash_content(b"old release\n")
     (home / MANIFEST_NAME).write_text(json.dumps(manifest), encoding="utf-8")
@@ -303,7 +303,7 @@ def test_root_mode_legacy_default_link_is_reported_not_rewritten(delegating: dic
     (sub / ".claude").mkdir()
     (sub / ".claude" / "skills").symlink_to(Path("..") / ".agents" / "skills")
     pending = inspect_project_skills(sub)
-    assert pending.notice is None and pending.link is None
+    assert pending.notice is None
     assert "legacy" in pending.bridges["claude"].notice
     report = sync_project_skills(sub)
     assert "legacy" in report.bridges["claude"].notice
@@ -332,8 +332,7 @@ def test_root_mode_installs_home_sources_whatever_claude_skills_is(
 
 def test_root_mode_dry_run_writes_nothing(delegating: dict) -> None:
     sub, root = delegating["sub"], delegating["root"]
-    report = sync_project_skills(sub, dry_run=True)
-    assert report.link is None
+    sync_project_skills(sub, dry_run=True)
     assert not (root / ".agents").exists()
     assert not (sub / ".claude").exists()
 
@@ -387,7 +386,6 @@ def test_prepare_agent_skills_with_a_home_writes_no_sub_layout(delegating: dict)
 def test_adopt_a_delegating_sub_project(delegating: dict) -> None:
     sub, root = delegating["sub"], delegating["root"]
     result = adopt_project(sub, templates_dir=Path(TEMPLATES))
-    assert result.skills_link is None
     assert not (sub / ".agents").exists()
     assert (root / ".agents" / "skills" / "metaproject").is_dir()
     assert result.backfill.skills_target == root / ".agents" / "skills"
