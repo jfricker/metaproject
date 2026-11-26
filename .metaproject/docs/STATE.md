@@ -20,7 +20,7 @@
 - [x] 4. Scaffold / backfill / adopt (39df8bd; 1215 passed)
 - [x] 5. Doctor (e367e64; 1223 passed)
 - [x] 6. CLI output and shim removal (7730506; 1238 passed)
-- [ ] 7. Docs, skill history, self-migration
+- [x] 7. Docs, skill history (3ecf5c0; 1238 passed) — self-migration (`metaproject doctor .`) pending, operator-run
 
 ## Design invariants (regression guards)
 
@@ -39,6 +39,7 @@
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
 - Step 5 deviations: doctor `_apply` now turns a `MetaProjectError` from any fix into a "fix failed" finding (previously raised); the legacy-migration post-fix message prints through a local rich Console; identical unrecorded bridge entries are not doctor findings; a manifest write failure after a successful migration is not rolled back (the entries then read as identical foreign).
+- Step 7: the bundled skill text may not contain the literal "SessionStart" (`tests/test_sdlc_skills.py`), so `references/commands.md` names "the web session bootstrap script (`scripts/metaproject-session.sh`)" instead.
 - Recording `skills.targets` re-serialises the config as sorted, indented JSON (keys and values preserved, formatting not).
 
 ## Verified facts (do not re-investigate)
