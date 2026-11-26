@@ -155,3 +155,11 @@ From [.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-
 - The editable install's metadata had drifted to 0.9.1 while `pyproject.toml` said 0.10.0, failing `test_baseline`/`test_readme`; `make install` fixed it (no code change).
 - This repository has no installed hook scripts (`.claude/hooks/` and `scripts/metaproject-session.sh` are absent), so the hook-refresh check has nothing to do here (`metaproject doctor . --dry-run`: all healthy after the move).
 - Gate on 2026-11-21: `make lint` clean, `make test` 1115 passed, `make build` built sdist and wheel.
+
+## 2026-11-26 — [harness-neutral-project-skills](archive/2026-11-26-harness-neutral-project-skills/)
+
+- Copilot (runtime bundled with VS Code 1.148.0, `@github/copilot` 1.0.73) dedupes skills by name, scanning `.github` > `.agents` > `.claude`; VS Code chat skips repeated names (`.agents` > `.github` > `.claude`). Confirmed by calling the native `skillsLoad` on fixture repos, 2026-11-25, and again on an adopted repo with per-skill bridges, 2026-11-26.
+- Claude Code (2.1.332 docs) reads only `.claude/skills` (+ personal, nested, plugins), supports per-skill symlinked entries and loads a shared target once; `.agents/skills` discovery is open as anthropics/claude-code#31005.
+- ZCode 4.0 reads `.zcode/skills` and `.agents/skills` (not `.claude/skills`), per its bundled `zcode-configuration-guide` skill.
+- Full gate on `harness-neutral-skills` (2026-11-26): format clean, lint clean, 1238 passed, wheel and sdist build.
+- Manual: `adopt` into a repo with user `.claude/skills/my-skill` and `shipit` leaves both untouched, bridges the other 11 bundled skills, `skills status` exits 0; a legacy-link fixture makes `skills sync` exit 0 with the doctor hint and `doctor --dry-run` names the user skill that would be lost.

@@ -49,3 +49,15 @@ last. Format:
 - [ ] Doctor migration in a real tracked repository with old hook copies (only tested in temporary repos)
   1. After installing the release, run `metaproject doctor` in a project that still has `.metaproject.json` and an old `.claude/hooks/metaproject_hook.py`; accept "project config" and "project hook scripts".
   2. `git status` shows `R .metaproject.json -> .metaproject/config.json`, the hook script matches the bundled one, and an edit still triggers `commands.lint`.
+
+## 2026-11-26: Needs manual verification (harness-neutral-project-skills)
+
+- [ ] Migrate this repository off the legacy `.claude/skills` directory link (doctor fixes are report-only in agent sessions)
+  1. In a terminal at the repo root: `.venv/bin/python -m metaproject doctor .` (the uv-installed `metaproject` is the previous release until it is reinstalled); accept "skills legacy link", "skills targets" and "project skills".
+  2. `.claude/skills` is a real directory of one relative symlink per bundled skill; `.metaproject/config.json` has `"skills": {"targets": ["claude"]}`; `.agents/skills/.metaproject-skills.json` is version 2 with a `bridges` section; no user skill is reported lost.
+  3. Start Claude Code in the repo: `/write-intent` … `/wrapup` are listed. Commit `.claude/skills`, the manifest and `.metaproject/config.json`.
+- [ ] Real Windows checkout (only simulated in tests)
+  1. Clone a project with committed symlink bridge entries on Windows (or with `git config core.symlinks false`) and run `metaproject skills sync`.
+  2. Entries checked out as text files are reported `outdated` and rewritten as copies (`bridge mode: copy (Windows)`); `metaproject doctor` on a project still carrying the legacy link (checked out as a text file) offers the migration.
+- [ ] Reinstall the global CLI after release so plain `metaproject` writes manifest v2 (`make install-global`); an older CLI meeting a v2 manifest reports `newer` and leaves bridges alone.
+  1. `metaproject --version` shows the new release; `metaproject skills status` in this repo shows the `Bridge (claude)` column.

@@ -166,3 +166,16 @@ From [.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-
 - Doctor never touches a differing legacy/new pair; it reports the differing keys (`test_config_location.py::test_doctor_reports_a_differing_pair_and_changes_nothing`, `::test_doctor_store_identical_and_differing_pairs`).
 - `review` puts a legacy `.metaproject.json` in `ReviewResult.legacy` (OUTOFDATE) (`test_config_location.py::test_review_reports_the_legacy_config_as_out_of_date`).
 - Hook scripts read `.metaproject/config.json`, falling back to the legacy file (`test_hooks.py::test_post_edit_reads_a_legacy_config_when_the_new_one_is_absent`, `test_session_hook.py::test_script_reads_the_pin_from_a_legacy_config`).
+
+## 2026-11-26 — [harness-neutral-project-skills](archive/2026-11-26-harness-neutral-project-skills/)
+
+- Staging recovery never trusts repository content: a `.dest.txt` destination that is absolute, uses `..`, or resolves outside the home (symlinks included) is skipped (`tests/test_treeops.py`).
+- `git.read_only_query` is the only git call reachable from agent-safe commands and refuses keys outside `READ_ONLY_KEYS` (`tests/test_git_read_only.py`).
+- `bridges.py` never imports `skills`; it writes under `.claude/skills/<name>` only for manifest-recorded entries, and a foreign entry is changed only with `--force NAME` (`tests/test_bridges.py`).
+- The source (`.agents/skills`) is installed whatever `.claude/skills` is; only "root with no home" refuses (R-SKL-5 retired) (`tests/test_skills_sync.py`).
+- Manifest entry names are untrusted: unsafe names are dropped, writes/removals require the entry parent to be `.claude/skills`, and nothing is changed when `.claude` or `.claude/skills` resolves outside the project (c48165a, `tests/test_bridges.py`).
+- `backfill` and `adopt` run only allowlisted read-only git queries (`tests/test_backfill.py`, `tests/test_adopt.py` allowlist tests).
+- `doctor` checks run in order config, docs, skills legacy link, skills targets, project skills, skill shadowing, hook scripts; each is confirmed separately and agent sessions only report (`tests/test_doctor.py`).
+- `skills status|sync` exit 1 only for unknown `--force`, newer manifest under update, I/O failure, no-home refusal; legacy link, foreign entries, write denied and shadowing exit 0 (`tests/test_skills_sync.py`, `tests/test_skills_sync_all.py`).
+- A sync carries the manifest's `bridges` object through unchanged; v1 manifests are rewritten as v2 (`tests/test_skills_sync.py`).
+- **Superseded** by this cycle: the R-SKL-5 refusal (2026-11-12, `.claude/skills` real dir / foreign link refuses the install) — now the source always installs and only the bridge pass is affected; "adopt … runs no git" / "never runs git" (2026-09-29, AGENTS.md) — restated as "never changes the repository; only allowlisted read-only `git config --get` queries"; "an existing config is kept as written" (2026-09-29) — kept, except an absent `skills.targets` is added.
