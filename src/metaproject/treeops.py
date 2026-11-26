@@ -116,14 +116,22 @@ def swap_tree(
     key: str,
     tracker: "Optional[TransactionalTracker]",
     warnings: List[str],
+    root: Path,
 ) -> bool:
     """Swap a copy of `source` into `dest` atomically. False when `dest` changed meanwhile.
 
     The copy is built and verified (`file_map == expected`) in `staging`, the old tree is
     renamed aside, the new one renamed in; a failed rename puts the old one back and
-    raises. `<staging>/<key>.dest.txt` records `dest` while the old tree is aside so
-    `recover_staging` can restore it after a crash. `key` may contain `/`.
+    raises. `<staging>/<key>.dest.txt` records `dest` (POSIX, relative to `root`, which
+    must contain it) while the old tree is aside so `recover_staging` can restore it
+    after a crash. `key` may contain `/`.
     """
+    try:
+        rel_dest = Path(os.path.normpath(Path(dest).absolute())).relative_to(
+            Path(os.path.normpath(Path(root).absolute()))
+        )
+    except ValueError:
+        raise MetaProjectError(f"{dest} is not inside {root}") from None
     new = staging / f"{key}.new"
     old = staging / f"{key}.old"
     marker = staging / f"{key}.dest.txt"
@@ -141,7 +149,7 @@ def swap_tree(
         return False
     existed = dest.exists() or dest.is_symlink()
     if existed:
-        marker.write_text(str(Path(dest).absolute()), encoding="utf-8")
+        marker.write_text(rel_dest.as_posix(), encoding="utf-8")
         os.rename(dest, old)
     try:
         os.rename(new, dest)
@@ -166,26 +174,42 @@ def swap_tree(
     return True
 
 
-def recover_staging(staging: Path, default_target: Path) -> None:
+def _confined(root: Path, text: str) -> Optional[Path]:
+    """`root / text` when `text` is a relative, `..`-free path resolving inside `root`."""
+    rel = Path(text)
+    if not text or rel.is_absolute() or ".." in rel.parts:
+        return None
+    candidate = root / rel
+    if not candidate.resolve().is_relative_to(root.resolve()):
+        return None
+    return candidate
+
+
+def recover_staging(staging: Path, default_target: Path, root: Path) -> None:
     """Undo a crash mid-swap: restore each `*.old` whose destination is gone, then clean.
 
-    The destination is the matching `.dest.txt`'s content when present, else
-    `default_target / <name without .old>`.
+    The destination is the matching `.dest.txt`'s content (a path relative to `root`)
+    when present, else `default_target / <name without .old>`. The staging directory
+    sits inside the repository, so nothing it contains is trusted: a destination that is
+    absolute, uses `..`, or resolves outside `root` (symlinks included) is never renamed
+    to; that entry is skipped.
     """
     if not staging.exists():
         return
     for old in sorted(staging.rglob("*.old")):
         marker = old.with_name(old.name[: -len(".old")] + ".dest.txt")
-        dest: Optional[Path] = None
+        dest: Optional[Path]
         if marker.is_file():
             try:
                 text = marker.read_text(encoding="utf-8").strip()
-            except OSError:
-                text = ""
-            if text:
-                dest = Path(text)
+            except (OSError, UnicodeDecodeError):
+                continue
+            dest = _confined(root, text)
+        else:
+            candidate = default_target / old.name[: -len(".old")]
+            dest = candidate if candidate.resolve().is_relative_to(root.resolve()) else None
         if dest is None:
-            dest = default_target / old.name[: -len(".old")]
+            continue
         if not dest.exists() and not dest.is_symlink():
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.rename(old, dest)

@@ -706,7 +706,7 @@ def inspect_project_skills(project_dir: Path) -> SkillsReport:
 
 def _recover_staging(target: Path) -> None:
     """Undo a crash mid-swap: restore `<name>.old` whose destination is gone, then clean."""
-    recover_staging(target.parent / STAGING_NAME, target)
+    recover_staging(target.parent / STAGING_NAME, target, target.parent.parent)
 
 
 def _replace_skill(
@@ -720,7 +720,15 @@ def _replace_skill(
 ) -> bool:
     """Swap the bundled copy into `dest` atomically. False when `dest` changed meanwhile."""
     return swap_tree(
-        skill.source_dir, dest, bundle, snapshot, staging, skill.name, tracker, warnings
+        skill.source_dir,
+        dest,
+        bundle,
+        snapshot,
+        staging,
+        skill.name,
+        tracker,
+        warnings,
+        staging.parent.parent,
     )
 
 
