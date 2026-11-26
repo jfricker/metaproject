@@ -330,6 +330,47 @@ def _ensure_skills_dir(
     return changed
 
 
+def _safe_name(name: Any) -> bool:
+    """True only for a plain single-component entry name (manifest data is untrusted)."""
+    if not isinstance(name, str) or not name or name in (".", ".."):
+        return False
+    if name.startswith(".") or "\0" in name or "/" in name or "\\" in name:
+        return False
+    if os.sep in name or (os.altsep and os.altsep in name):
+        return False
+    return Path(name).name == name
+
+
+def _confined(entry: Path, skills_dir: Path) -> bool:
+    """The entry's parent must really be `skills_dir` (the entry itself may be a link)."""
+    try:
+        return entry.parent.resolve() == skills_dir.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _outside_project(project_dir: Path, skills: bool = True) -> Optional[str]:
+    """A notice when `.claude` (or `.claude/skills`) resolves outside the project."""
+    root = Path(project_dir).resolve()
+    paths = [Path(project_dir) / ".claude"]
+    if skills:
+        paths.append(Path(project_dir) / TARGETS["claude"].dir)
+    for path in paths:
+        try:
+            inside = path.resolve().is_relative_to(root)
+        except (OSError, RuntimeError):
+            inside = False
+        if not inside:
+            return (
+                f".claude/skills resolves outside the project ({path}); bridge entries not changed"
+            )
+    return None
+
+
+def _unsafe_warning(name: Any) -> str:
+    return f"ignored unsafe bridge entry name {name!r} in the skills manifest"
+
+
 def _rmdir_if_created(path: Path, rel: str, new: Dict[str, Any]) -> bool:
     if rel not in new["created"]:
         return False
@@ -375,17 +416,49 @@ def _pass(
         )
         return report, records
 
+    outside = _outside_project(project_dir)
+    if outside is not None:
+        report.notice = outside
+        return report, records
+
     writing = not dry_run and not inspect
     new: Dict[str, Any] = copy.deepcopy(records) if records else {}
-    new.setdefault("created", [])
-    new.setdefault("entries", {})
     changed = False
+    if not isinstance(new.get("created"), list):
+        new["created"] = []
+    if not isinstance(new.get("entries"), dict):
+        new["entries"] = {}
+    kept_created = [c for c in new["created"] if c in (".claude/skills", ".claude")]
+    if kept_created != new["created"]:
+        new["created"] = kept_created
+        changed = True
+    for bad in [n for n in new["entries"] if not _safe_name(n)]:
+        report.warnings.append(_unsafe_warning(bad))
+        del new["entries"][bad]
+        changed = True
+    for key in [k for k, v in new["entries"].items() if not isinstance(v, dict)]:
+        del new["entries"][key]
+        changed = True
+    safe_names: List[str] = []
+    for name in names:
+        if _safe_name(name):
+            safe_names.append(name)
+        else:
+            msg = _unsafe_warning(name)
+            if msg not in report.warnings:
+                report.warnings.append(msg)
+    names = safe_names
     source_dir = home / ".agents" / "skills"
     skills_dir = project_dir / TARGETS["claude"].dir
 
     if "claude" not in targets:
         for name, rec in list(new["entries"].items()):
             entry = skills_dir / name
+            if not _confined(entry, skills_dir):
+                report.warnings.append(
+                    f"{name}: bridge entry resolves outside .claude/skills; skipped"
+                )
+                continue
             state, _ = classify_entry(entry, source_dir / name, rec, mode, explicit_mode)
             note = drift_note(state, rec.get("mode"))
             if state == MISSING:
@@ -426,6 +499,10 @@ def _pass(
         source = source_dir / name
         entry = skills_dir / name
         rec = new["entries"].get(name)
+        if not _confined(entry, skills_dir):
+            report.warnings.append(f"{name}: bridge entry resolves outside .claude/skills; skipped")
+            report.entries[name] = {"state": None, "action": "skipped", "note": None}
+            continue
         state, identical = classify_entry(entry, source, rec, mode, explicit_mode)
         info: Dict[str, Any] = {
             "state": state,
@@ -563,6 +640,9 @@ def migrate_legacy_link(
     names = list(bundled_names)
     if claude_skills_shape(project_dir, home) != LEGACY:
         raise MetaProjectError(f"{project_dir / TARGETS['claude'].dir} is not a legacy link")
+    outside = _outside_project(project_dir, skills=False)
+    if outside is not None:
+        raise MetaProjectError(outside)
     lost = lost_user_skills(home / ".agents" / "skills", names)
     path = project_dir / TARGETS["claude"].dir
     link_snapshot: Optional[str] = None

@@ -672,3 +672,112 @@ def test_drift_note():
     assert bridges.drift_note(MODIFIED, SYMLINK) is None
     assert bridges.drift_note(CURRENT, COPY) is None
     assert FOREIGN == "foreign" and FOREIGN_FILE == "foreign_file"
+
+
+# ------------------------------------------------------------------ untrusted manifest data
+
+
+HOSTILE = ["../../victim", "/abs/victim", ".hidden", "a/b"]
+
+
+def _hostile_records(extra=None):
+    entries = {n: {"mode": COPY, "files": {}} for n in HOSTILE}
+    return {"created": [], "entries": {**entries, **(extra or {})}}
+
+
+def test_hostile_names_never_touch_filesystem_on_target_removal(tmp_path):
+    project = tmp_path / "work" / "proj"
+    project.mkdir(parents=True)
+    write_config(project, {"targets": []})
+    (project / ".claude" / "skills").mkdir(parents=True)
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "f.txt").write_text("x", encoding="utf-8")
+    abs_victim = tmp_path / "abs_victim"
+    abs_victim.mkdir()
+    records = _hostile_records()
+    records["entries"][str(abs_victim)] = {"mode": COPY, "files": {}}
+    report, new = sync(project, [], records, update=True)
+    assert (victim / "f.txt").exists() and abs_victim.exists()
+    joined = " ".join(report.warnings)
+    for name in HOSTILE:
+        assert repr(name) in joined
+    assert not set(new["entries"]) & (set(HOSTILE) | {str(abs_victim)})
+
+
+def test_hostile_names_during_normal_sync(tmp_path):
+    project = tmp_path / "work" / "proj"
+    project.mkdir(parents=True)
+    make_skill(project, "good")
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "f.txt").write_text("x", encoding="utf-8")
+    before = sorted(p.name for p in tmp_path.iterdir())
+    report, new = sync(project, ["good", *HOSTILE], _hostile_records(), update=True)
+    assert (victim / "f.txt").exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+    assert not (project / ".claude" / "skills" / ".hidden").exists()
+    assert set(new["entries"]) == {"good"}
+    assert any("unsafe bridge entry name" in w for w in report.warnings)
+
+
+def test_created_list_only_acts_on_literals(tmp_path):
+    project = tmp_path / "work" / "proj"
+    project.mkdir(parents=True)
+    write_config(project, {"targets": []})
+    (project / ".claude" / "skills").mkdir(parents=True)
+    outside = tmp_path / "work" / "outside"
+    outside.mkdir()
+    records = {"created": ["../outside", ".claude/skills"], "entries": {}}
+    _, new = sync(project, [], records, update=True)
+    assert outside.exists()
+    assert "../outside" not in new["created"]
+
+
+def test_failed_parent_check_writes_nothing_outside(tmp_path, monkeypatch):
+    project = tmp_path / "work" / "proj"
+    project.mkdir(parents=True)
+    make_skill(project, "good")
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "good").mkdir()
+    (outside / "good" / "keep.txt").write_text("x", encoding="utf-8")
+    (project / ".claude").mkdir()
+    (project / ".claude" / "skills").symlink_to(outside)
+    monkeypatch.setattr(bridges, "claude_skills_shape", lambda *a: DIRECTORY)
+    sync(project, ["good"], {"created": [], "entries": {"good": {"mode": COPY, "files": {}}}})
+    write_config(project, {"targets": []})
+    sync(project, [], {"created": [], "entries": {"good": {"mode": COPY, "files": {}}}})
+    assert (outside / "good" / "keep.txt").exists()
+    assert sorted(p.name for p in outside.iterdir()) == ["good"]
+
+
+def test_confined_rejects_foreign_parent(tmp_path):
+    skills = tmp_path / "skills"
+    skills.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    assert bridges._confined(skills / "x", skills)
+    assert not bridges._confined(other / "x", skills)
+
+
+def test_claude_dir_symlinked_outside_project(tmp_path):
+    project = tmp_path / "work" / "proj"
+    project.mkdir(parents=True)
+    make_skill(project, "good")
+    outside = tmp_path / "outside"
+    (outside / "skills" / "good").mkdir(parents=True)
+    (outside / "skills" / "good" / "keep.txt").write_text("x", encoding="utf-8")
+    (project / ".claude").symlink_to(outside)
+    recs = {"created": [], "entries": {"good": {"mode": COPY, "files": {}}}}
+    report, new = sync(project, ["good"], recs, update=True)
+    assert "resolves outside the project" in report.notice
+    assert new == recs
+    write_config(project, {"targets": []})
+    report, _ = sync(project, [], recs, update=True)
+    assert "resolves outside the project" in report.notice
+    assert inspect_bridges(project, project, ["good"], recs, False).notice
+    assert sorted(p.name for p in (outside / "skills").iterdir()) == ["good"]
+    assert (outside / "skills" / "good" / "keep.txt").exists()
+    with pytest.raises(MetaProjectError):
+        migrate_legacy_link(project, project, ["good"])
