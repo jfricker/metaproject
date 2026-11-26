@@ -25,7 +25,7 @@ I now use this process to write MetaProject as well as all my 30+ projects I've 
 1. **Install the CLI** (needs [uv](https://docs.astral.sh/uv/); Python 3.11+):
 
    ```bash
-   uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.11.0"
+   uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.12.0"
    ```
 
    pipx and pip work too ([other installers](#other-installers)). metaproject is **not
@@ -57,11 +57,11 @@ web. A command that needs the extra without it says so in one line and exits 1.
 
 ```bash
 # Full, with pipx, or with pip inside a virtualenv
-pipx install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.11.0"
-python3 -m pip install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.11.0"
+pipx install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.12.0"
+python3 -m pip install "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.12.0"
 
 # Core only
-uv tool install "git+https://github.com/jfricker/metaproject@v0.11.0"
+uv tool install "git+https://github.com/jfricker/metaproject@v0.12.0"
 
 # Track main instead of a release tag (then `uv tool upgrade metaproject` updates it)
 uv tool install "metaproject[tui] @ git+https://github.com/jfricker/metaproject"
@@ -76,7 +76,7 @@ uv tool uninstall metaproject    # or: pipx uninstall metaproject
    re-run the install command with the new tag:
 
    ```bash
-   uv tool install --force "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.11.0"
+   uv tool install --force "metaproject[tui] @ git+https://github.com/jfricker/metaproject@v0.12.0"
    ```
 
    (pipx: `pipx install --force ...`; pip: `python3 -m pip install --upgrade ...`.) If
