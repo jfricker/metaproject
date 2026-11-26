@@ -29,6 +29,7 @@
 - `git.read_only_query` is the only git call reachable from agent-safe commands and refuses keys outside `READ_ONLY_KEYS` (`tests/test_git_read_only.py`).
 - `bridges.py` never imports `skills`; it writes under `.claude/skills/<name>` only for manifest-recorded entries, and a foreign entry is changed only with `--force NAME` (`tests/test_bridges.py`).
 - The source (`.agents/skills`) is installed whatever `.claude/skills` is; only "root with no home" refuses (R-SKL-5 retired) (`tests/test_skills_sync.py`).
+- Manifest entry names are untrusted: unsafe names are dropped, writes/removals require the entry parent to be `.claude/skills`, and nothing is changed when `.claude` or `.claude/skills` resolves outside the project (c48165a, `tests/test_bridges.py`).
 - A sync carries the manifest's `bridges` object through unchanged; v1 manifests are rewritten as v2 (`tests/test_skills_sync.py`).
 
 ## Open items carried into PLAN.md
