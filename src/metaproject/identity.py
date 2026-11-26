@@ -322,3 +322,39 @@ def fallback_identity(project_dir: Path) -> Tuple[str, str]:
             return title, description
 
     return _titlecase(project_dir.name), ""
+
+
+def update_settings(project_dir: Path, keys: tuple[str, ...], value: object) -> Optional[str]:
+    """Set a nested key in the project config only when it is absent; never overwrite.
+
+    Written where `config_path` points (a legacy file is updated in place). Returns a
+    warning string, writing nothing, when the file is missing, unreadable, not a JSON
+    object, or an intermediate key is not an object; None otherwise (including when the
+    final key is already present, which is left as it is).
+    """
+    path = config_path(project_dir)
+    if not path.is_file():
+        return f"{path} does not exist; nothing was written."
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return f"{path} could not be read as JSON; nothing was written."
+    if not isinstance(data, dict):
+        return f"{path} is not a JSON object; nothing was written."
+    node = data
+    for key in keys[:-1]:
+        child = node.get(key)
+        if child is None and key not in node:
+            break
+        if not isinstance(child, dict):
+            return f"{path}: '{key}' is not an object; nothing was written."
+        node = child
+    else:
+        if keys[-1] in node:
+            return None
+    node = data
+    for key in keys[:-1]:
+        node = node.setdefault(key, {})
+    node[keys[-1]] = value
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return None

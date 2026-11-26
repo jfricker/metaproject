@@ -40,11 +40,11 @@ def container_git_identity(monkeypatch: pytest.MonkeyPatch) -> None:
     """A web container: `git config user.name` is "Claude" and $USER is root."""
 
     def fake_run(cmd, **kwargs):
-        if cmd[:3] == ["git", "config", "user.name"]:
+        if cmd[-3:] == ["config", "--get", "user.name"]:
             return SimpleNamespace(returncode=0, stdout="Claude\n", stderr="")
         raise AssertionError(f"unexpected subprocess: {cmd}")
 
-    monkeypatch.setattr(config_module.subprocess, "run", fake_run)
+    monkeypatch.setattr("metaproject.git.subprocess.run", fake_run)
     monkeypatch.setenv("USER", "root")
 
 

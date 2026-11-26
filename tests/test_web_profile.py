@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pytest
 from typer.testing import CliRunner
 
-from metaproject import config as config_module
 from metaproject.cli import app
 from metaproject.config import (
     Config,
@@ -35,11 +34,11 @@ def web(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def git_user(monkeypatch: pytest.MonkeyPatch, name: str, user: str = "root") -> None:
     def fake_run(cmd, **kwargs):
-        if cmd[:3] == ["git", "config", "user.name"]:
+        if cmd[-3:] == ["config", "--get", "user.name"]:
             return SimpleNamespace(returncode=0, stdout=f"{name}\n", stderr="")
         raise AssertionError(f"unexpected subprocess: {cmd}")
 
-    monkeypatch.setattr(config_module.subprocess, "run", fake_run)
+    monkeypatch.setattr("metaproject.git.subprocess.run", fake_run)
     monkeypatch.setenv("USER", user)
 
 

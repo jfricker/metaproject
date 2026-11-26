@@ -437,3 +437,60 @@ def test_write_identity_creates_dot_metaproject_for_a_new_project(tmp_path: Path
     )
     assert path == tmp_path / IDENTITY_FILE
     assert not (tmp_path / LEGACY_IDENTITY_FILE).exists()
+
+
+# --------------------------------------------------------------- update_settings
+
+
+def test_update_settings_adds_nested_key_and_keeps_others(tmp_path: Path) -> None:
+    from metaproject.identity import update_settings
+
+    proj = _write_new(tmp_path / "p", {"title": "T", "skills": {"location": "root"}})
+    assert update_settings(proj, ("skills", "bridge", "mode"), "link") is None
+    data = json.loads((proj / IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert data == {"title": "T", "skills": {"location": "root", "bridge": {"mode": "link"}}}
+    assert (proj / IDENTITY_FILE).read_text(encoding="utf-8").endswith("}\n")
+
+
+def test_update_settings_present_key_writes_nothing(tmp_path: Path) -> None:
+    from metaproject.identity import update_settings
+
+    proj = _write_new(tmp_path / "p", {"a": {"b": 1}})
+    before = (proj / IDENTITY_FILE).read_text(encoding="utf-8")
+    assert update_settings(proj, ("a", "b"), 2) is None
+    assert (proj / IDENTITY_FILE).read_text(encoding="utf-8") == before
+
+
+def test_update_settings_invalid_json_warns_and_keeps_file(tmp_path: Path) -> None:
+    from metaproject.identity import update_settings
+
+    proj = _write_new(tmp_path / "p", {})
+    (proj / IDENTITY_FILE).write_text("{not json", encoding="utf-8")
+    warning = update_settings(proj, ("a",), 1)
+    assert warning
+    assert (proj / IDENTITY_FILE).read_text(encoding="utf-8") == "{not json"
+
+
+def test_update_settings_non_dict_intermediate_and_missing_file_warn(tmp_path: Path) -> None:
+    from metaproject.identity import update_settings
+
+    proj = _write_new(tmp_path / "p", {"a": 5})
+    before = (proj / IDENTITY_FILE).read_text(encoding="utf-8")
+    assert update_settings(proj, ("a", "b"), 1)
+    assert (proj / IDENTITY_FILE).read_text(encoding="utf-8") == before
+    empty = tmp_path / "none"
+    empty.mkdir()
+    assert update_settings(empty, ("a",), 1)
+    assert not (empty / IDENTITY_FILE).exists()
+
+
+def test_update_settings_updates_legacy_file_in_place(tmp_path: Path) -> None:
+    from metaproject.identity import update_settings
+
+    proj = _write_legacy(tmp_path / "p", {"title": "Old"})
+    assert update_settings(proj, ("x", "y"), True) is None
+    assert json.loads((proj / LEGACY_IDENTITY_FILE).read_text(encoding="utf-8")) == {
+        "title": "Old",
+        "x": {"y": True},
+    }
+    assert not (proj / IDENTITY_FILE).exists()

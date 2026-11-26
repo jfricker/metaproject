@@ -35,6 +35,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from metaproject.exceptions import MetaProjectError
+from metaproject.treeops import (  # noqa: F401  (re-exported for callers and tests)
+    NON_REGULAR,
+    _copy_tree,
+    _fingerprint,
+    _record_tree,
+    _remove,
+    file_map,
+    hash_content,
+    recover_staging,
+    swap_tree,
+)
 
 if TYPE_CHECKING:
     from metaproject.scaffold import TransactionalTracker
@@ -42,7 +53,7 @@ if TYPE_CHECKING:
 SKILL_NAME = "metaproject"
 
 MANIFEST_NAME = ".metaproject-skills.json"
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 # Staging lives beside `.agents/skills`, never inside it, so a half-built copy is never
 # discoverable as a skill.
 STAGING_NAME = ".metaproject-skills-tmp"
@@ -66,10 +77,6 @@ MANIFEST_PRESENT = "present"
 MANIFEST_ABSENT = "absent"
 MANIFEST_UNREADABLE = "unreadable"
 MANIFEST_NEWER = "newer"
-
-# The hash of anything inside a skill that is not a regular file. It matches no
-# sha256 digest, so such a skill never classifies as pristine.
-NON_REGULAR = "symlink"
 
 
 @dataclass(frozen=True)
@@ -202,63 +209,10 @@ def _bundled_files(source_dir: Path) -> List[Path]:
     )
 
 
-def hash_content(data: bytes) -> str:
-    """sha256 of one file's bytes; text has `\\r\\n` normalised so autocrlf is not an edit."""
-    if b"\0" not in data:
-        data = data.replace(b"\r\n", b"\n")
-    return hashlib.sha256(data).hexdigest()
-
-
-def file_map(directory: Path) -> Dict[str, str]:
-    """`{posix relpath: sha256}` for every non-junk entry under `directory`, sorted.
-
-    The same filter applies to the bundle and to an installed copy, so an extra file in
-    the installed directory makes the maps differ. A symlink or other non-regular entry
-    hashes as `NON_REGULAR`, which never matches. Symlinked directories are not entered.
-    """
-    from metaproject.templates import is_junk_file_name
-
-    directory = Path(directory)
-    out: Dict[str, str] = {}
-    for root, dirs, files in os.walk(directory, followlinks=False):
-        root_path = Path(root)
-        rel_root = root_path.relative_to(directory)
-        kept = []
-        for name in dirs:
-            if is_junk_file_name(name):
-                continue
-            if (root_path / name).is_symlink():
-                out[(rel_root / name).as_posix()] = NON_REGULAR
-                continue
-            kept.append(name)
-        dirs[:] = kept
-        for name in files:
-            if is_junk_file_name(name):
-                continue
-            path = root_path / name
-            rel = (rel_root / name).as_posix()
-            if path.is_symlink() or not path.is_file():
-                out[rel] = NON_REGULAR
-            else:
-                out[rel] = hash_content(path.read_bytes())
-    return dict(sorted(out.items()))
-
-
 def skill_digest(files: Dict[str, str]) -> str:
     """One digest for a whole file map; used only for ledger lookups."""
     body = "\n".join(f"{rel}\t{digest}" for rel, digest in sorted(files.items()))
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
-
-
-def _fingerprint(dest: Path) -> Tuple:
-    """What `dest` looks like now, for the classify-then-swap (TOCTOU) comparison."""
-    if dest.is_symlink():
-        return ("symlink", os.readlink(dest))
-    if not dest.exists():
-        return ("absent",)
-    if not dest.is_dir():
-        return ("other",)
-    return ("dir", tuple(file_map(dest).items()))
 
 
 # ----------------------------------------------------------------- release parsing
@@ -330,41 +284,69 @@ def _valid_entry(entry: object) -> bool:
     )
 
 
-def load_manifest(target: Path) -> Tuple[str, Dict[str, Dict]]:
-    """The manifest's load state and, when usable, its per-skill entries.
+@dataclass(frozen=True)
+class Manifest:
+    """The install manifest as loaded: its state, per-skill entries and bridge entries."""
+
+    state: str
+    skills: Dict[str, Dict] = field(default_factory=dict)
+    bridges: Dict[str, Dict] = field(default_factory=dict)
+
+
+def load_manifest(target: Path) -> Manifest:
+    """The manifest's load state and, when usable, its skill and bridge entries.
 
     `absent` (a legacy install) and `unreadable` (bad JSON or wrong shape) both yield no
     entries; `newer` (a format version above this release's) yields none either, so the
-    caller falls back to legacy classification and never rewrites the file.
+    caller falls back to legacy classification and never rewrites the file. A version 1
+    file has no bridges.
     """
     path = manifest_path(target)
     if not path.exists() and not path.is_symlink():
-        return MANIFEST_ABSENT, {}
+        return Manifest(MANIFEST_ABSENT)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return MANIFEST_UNREADABLE, {}
+        return Manifest(MANIFEST_UNREADABLE)
     if not isinstance(data, dict):
-        return MANIFEST_UNREADABLE, {}
+        return Manifest(MANIFEST_UNREADABLE)
     version = data.get("version")
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        return MANIFEST_UNREADABLE, {}
+        return Manifest(MANIFEST_UNREADABLE)
     if version > MANIFEST_VERSION:
-        return MANIFEST_NEWER, {}
+        return Manifest(MANIFEST_NEWER)
     entries = data.get("skills")
     if not isinstance(entries, dict) or not all(_valid_entry(e) for e in entries.values()):
-        return MANIFEST_UNREADABLE, {}
-    return MANIFEST_PRESENT, {name: dict(entry) for name, entry in entries.items()}
+        return Manifest(MANIFEST_UNREADABLE)
+    bridges: Dict[str, Dict] = {}
+    if version >= 2:
+        raw = data.get("bridges", {})
+        if not isinstance(raw, dict):
+            return Manifest(MANIFEST_UNREADABLE)
+        bridges = {name: dict(b) if isinstance(b, dict) else b for name, b in raw.items()}
+    return Manifest(
+        MANIFEST_PRESENT, {name: dict(entry) for name, entry in entries.items()}, bridges
+    )
 
 
-def render_manifest(entries: Dict[str, Dict]) -> str:
+def render_manifest(manifest: "Manifest | Dict[str, Dict]", bridges: Optional[Dict] = None) -> str:
     """Deterministic manifest text: sorted keys, indent 2, trailing newline."""
-    body = {"version": MANIFEST_VERSION, "skills": entries}
+    if isinstance(manifest, Manifest):
+        skills, kept = manifest.skills, manifest.bridges
+    else:
+        skills, kept = manifest, {}
+    body = {
+        "version": MANIFEST_VERSION,
+        "skills": skills,
+        "bridges": kept if bridges is None else bridges,
+    }
     return json.dumps(body, indent=2, sort_keys=True) + "\n"
 
 
 def _write_manifest(
-    target: Path, entries: Dict[str, Dict], tracker: "Optional[TransactionalTracker]"
+    target: Path,
+    entries: "Manifest | Dict[str, Dict]",
+    tracker: "Optional[TransactionalTracker]",
 ) -> None:
     """Write the manifest atomically (temp file in the same directory, then replace)."""
     path = manifest_path(target)
@@ -689,7 +671,8 @@ def inspect_project_skills(project_dir: Path) -> SkillsReport:
     target = project_skills_dir(project_dir)
     if target.refusal is not None:
         return _target_report(target, notice=target.refusal, warnings=target.warnings)
-    manifest_state, entries = load_manifest(target.path)
+    loaded = load_manifest(target.path)
+    manifest_state, entries = loaded.state, loaded.skills
     history = load_history()
     running = running_release()
     statuses = tuple(
@@ -721,40 +704,9 @@ def inspect_project_skills(project_dir: Path) -> SkillsReport:
 # --------------------------------------------------------------------- writing
 
 
-def _remove(path: Path) -> None:
-    if path.is_symlink() or path.is_file():
-        path.unlink()
-    elif path.is_dir():
-        shutil.rmtree(path)
-
-
-def _copy_tree(source_dir: Path, dest: Path) -> None:
-    for item in _bundled_files(source_dir):
-        out = dest / item.relative_to(source_dir)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(item, out)
-
-
 def _recover_staging(target: Path) -> None:
     """Undo a crash mid-swap: restore `<name>.old` whose destination is gone, then clean."""
-    staging = target.parent / STAGING_NAME
-    if not staging.exists():
-        return
-    for old in staging.glob("*.old"):
-        dest = target / old.name[: -len(".old")]
-        if not dest.exists() and not dest.is_symlink():
-            target.mkdir(parents=True, exist_ok=True)
-            os.rename(old, dest)
-    shutil.rmtree(staging, ignore_errors=True)
-
-
-def _record_tree(dest: Path, tracker: "TransactionalTracker") -> None:
-    tracker.record_created_dir(dest)
-    for item in sorted(dest.rglob("*")):
-        if item.is_dir():
-            tracker.record_created_dir(item)
-        else:
-            tracker.record_created_file(item)
+    recover_staging(target.parent / STAGING_NAME, target)
 
 
 def _replace_skill(
@@ -766,45 +718,10 @@ def _replace_skill(
     tracker: "Optional[TransactionalTracker]",
     warnings: List[str],
 ) -> bool:
-    """Swap the bundled copy into `dest` atomically. False when `dest` changed meanwhile.
-
-    The new copy is built and verified in staging, the old one is renamed aside, the
-    new one renamed in; a failed rename puts the old one back and raises.
-    """
-    staging.mkdir(parents=True, exist_ok=True)
-    new = staging / f"{skill.name}.new"
-    old = staging / f"{skill.name}.old"
-    for leftover in (new, old):
-        if leftover.exists() or leftover.is_symlink():
-            _remove(leftover)
-    _copy_tree(skill.source_dir, new)
-    if file_map(new) != bundle:
-        _remove(new)
-        raise MetaProjectError(f"the staged copy of skill {skill.name} does not match the bundle")
-
-    if _fingerprint(dest) != snapshot:
-        _remove(new)
-        return False
-    existed = dest.exists() or dest.is_symlink()
-    if existed:
-        os.rename(dest, old)
-    try:
-        os.rename(new, dest)
-    except OSError as exc:
-        if existed:
-            try:
-                os.rename(old, dest)
-            except OSError:
-                pass
-        raise MetaProjectError(f"could not replace skill {skill.name}: {exc}") from exc
-    if existed:
-        try:
-            _remove(old)
-        except OSError as exc:
-            warnings.append(f"could not remove the previous copy of {skill.name}: {exc}")
-    if tracker is not None and not existed:
-        _record_tree(dest, tracker)
-    return True
+    """Swap the bundled copy into `dest` atomically. False when `dest` changed meanwhile."""
+    return swap_tree(
+        skill.source_dir, dest, bundle, snapshot, staging, skill.name, tracker, warnings
+    )
 
 
 def _ensure_target(target: Path, tracker: "Optional[TransactionalTracker]") -> None:
@@ -846,7 +763,8 @@ def sync_project_skills(
             + f" (bundled: {', '.join(sorted(names))})"
         )
 
-    manifest_state, entries = load_manifest(target.path)
+    loaded = load_manifest(target.path)
+    manifest_state, entries = loaded.state, loaded.skills
     if manifest_state == MANIFEST_NEWER and update:
         raise MetaProjectError(
             f"{manifest_path(target.path)} was written by a newer metaproject; upgrade "
@@ -917,11 +835,13 @@ def sync_project_skills(
     finally:
         if not dry_run:
             try:
-                if manifest_state != MANIFEST_NEWER and (
-                    new_entries != entries or manifest_state == MANIFEST_UNREADABLE
-                ):
+                if manifest_state != MANIFEST_NEWER:
                     if new_entries or manifest_path(target.path).exists():
-                        _write_manifest(target.path, new_entries, tracker)
+                        _write_manifest(
+                            target.path,
+                            Manifest(MANIFEST_PRESENT, new_entries, loaded.bridges),
+                            tracker,
+                        )
             finally:
                 if staging.exists():
                     shutil.rmtree(staging, ignore_errors=True)

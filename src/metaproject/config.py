@@ -2,7 +2,6 @@
 
 import json
 import os
-import subprocess
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -65,14 +64,10 @@ def detect_git_user_name() -> str:
     A detected name that is a container default (`CONTAINER_DEFAULT_AUTHORS`) is
     skipped, so a web container's "Claude" never becomes an author by detection.
     """
+    from metaproject.git import read_only_query
+
     try:
-        res = subprocess.run(
-            ["git", "config", "user.name"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        name = res.stdout.strip() if res.returncode == 0 else ""
+        name = read_only_query(None, "user.name")
         if name and not is_container_default_author(name):
             return name
     except Exception:

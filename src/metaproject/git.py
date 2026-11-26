@@ -1,5 +1,6 @@
 """Git integration, pre-flight verification, repository initialisation, and commit helpers."""
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
@@ -16,34 +17,32 @@ def is_git_installed() -> bool:
         return False
 
 
+READ_ONLY_KEYS = frozenset({"core.symlinks", "user.name", "user.email"})
+
+
+def read_only_query(cwd: Optional[Path], key: str) -> Optional[str]:
+    """`git config --get <key>` for an allow-listed key; None when unset or git fails."""
+    if key not in READ_ONLY_KEYS:
+        raise ValueError(f"git config key {key!r} is not allowed")
+    cmd = ["git", *(["-C", str(cwd)] if cwd else []), "config", "--get", key]
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = res.stdout.strip() if res.returncode == 0 else ""
+    return value or None
+
+
 def get_git_identity(repo_dir: Optional[Path] = None) -> Tuple[Optional[str], Optional[str]]:
     """Retrieve configured git user.name and user.email."""
-    cmd_name = ["git"]
-    cmd_email = ["git"]
-    if repo_dir:
-        cmd_name.extend(["-C", str(repo_dir)])
-        cmd_email.extend(["-C", str(repo_dir)])
-    cmd_name.extend(["config", "user.name"])
-    cmd_email.extend(["config", "user.email"])
-
-    try:
-        res_name = subprocess.run(cmd_name, capture_output=True, text=True, check=False)
-        name = (
-            res_name.stdout.strip()
-            if res_name.returncode == 0 and res_name.stdout.strip()
-            else None
-        )
-
-        res_email = subprocess.run(cmd_email, capture_output=True, text=True, check=False)
-        email = (
-            res_email.stdout.strip()
-            if res_email.returncode == 0 and res_email.stdout.strip()
-            else None
-        )
-
-        return name, email
-    except Exception:
-        return None, None
+    return read_only_query(repo_dir, "user.name"), read_only_query(repo_dir, "user.email")
 
 
 def is_git_repository(target_dir: Path) -> bool:

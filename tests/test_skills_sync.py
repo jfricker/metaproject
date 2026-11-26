@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from metaproject import skills as skills_module
+from metaproject import treeops
 from metaproject.cli import app
 from metaproject.doctor import check_project_skills, fix_project_skills
 from metaproject.exceptions import MetaProjectError
@@ -131,14 +132,14 @@ def test_symlink_inside_skill_never_matches(tmp_path: Path) -> None:
 def test_new_writes_manifest_for_every_skill(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     data = _manifest(proj)
-    assert data["version"] == 1
+    assert data["version"] == 2
     assert set(data["skills"]) == {skill.name for skill in bundled_skills()}
     for skill in bundled_skills():
         entry = data["skills"][skill.name]
         assert entry["release"] == running_release()
         assert entry["files"] == file_map(skill.source_dir)
     text = (_skills_root(proj) / MANIFEST_NAME).read_text(encoding="utf-8")
-    assert text == render_manifest(data["skills"])
+    assert text == render_manifest(data["skills"], data["bridges"])
     assert not (proj / ".agents" / STAGING_NAME).exists()
 
 
@@ -468,14 +469,14 @@ def test_skill_changed_between_classify_and_swap_is_skipped(
 ) -> None:
     proj = _scaffold(tmp_path)
     dest = _make_outdated_via_manifest(proj, "wrapup")
-    real_copy = skills_module._copy_tree
+    real_copy = treeops._copy_tree
 
     def copy_then_edit(source_dir, out):
         real_copy(source_dir, out)
         if out.name == "wrapup.new":
             (dest / "SKILL.md").write_text("# edited mid-sync\n", encoding="utf-8")
 
-    monkeypatch.setattr(skills_module, "_copy_tree", copy_then_edit)
+    monkeypatch.setattr(treeops, "_copy_tree", copy_then_edit)
 
     status = _state(sync_project_skills(proj), "wrapup")
 
@@ -544,13 +545,13 @@ def test_unreadable_manifest_is_noticed_and_rewritten(runner: CliRunner, tmp_pat
 
     synced = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
     assert synced.exit_code == 0, synced.output
-    assert load_manifest(_skills_root(proj))[0] == "present"
+    assert load_manifest(_skills_root(proj)).state == "present"
 
 
 def test_newer_manifest_status_works_sync_refuses(runner: CliRunner, tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     manifest = _skills_root(proj) / MANIFEST_NAME
-    manifest.write_text(json.dumps({"version": 2, "skills": {"wrapup": "?"}}), encoding="utf-8")
+    manifest.write_text(json.dumps({"version": 3, "skills": {"wrapup": "?"}}), encoding="utf-8")
     before = manifest.read_bytes()
 
     status = runner.invoke(app, ["skills", "status", "--dir", str(proj), "-f", "json"])
@@ -733,3 +734,46 @@ def test_sync_api_rejects_unknown_force_before_any_write(tmp_path: Path) -> None
     with pytest.raises(MetaProjectError, match="unknown skill"):
         sync_project_skills(proj, force=["ghost"])
     assert not (_skills_root(proj) / MANIFEST_NAME).exists()
+
+
+# ------------------------------------------------------------------ manifest v2
+
+
+def test_v1_manifest_loads_without_bridges_and_sync_rewrites_as_v2(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    path = _skills_root(proj) / MANIFEST_NAME
+    data = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(
+        json.dumps({"version": 1, "skills": data["skills"]}, indent=2) + "\n", encoding="utf-8"
+    )
+    loaded = load_manifest(_skills_root(proj))
+    assert loaded.state == "present"
+    assert loaded.bridges == {}
+    sync_project_skills(proj)
+    rewritten = json.loads(path.read_text(encoding="utf-8"))
+    assert rewritten["version"] == 2
+    assert rewritten["bridges"] == {}
+    assert rewritten["skills"] == data["skills"]
+
+
+def test_version_3_manifest_is_newer(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    path = _skills_root(proj) / MANIFEST_NAME
+    path.write_text(json.dumps({"version": 3, "skills": {}}), encoding="utf-8")
+    assert load_manifest(_skills_root(proj)).state == skills_module.MANIFEST_NEWER
+
+
+def test_sync_preserves_existing_bridges(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    root = _skills_root(proj)
+    path = root / MANIFEST_NAME
+    bridges = {".claude/skills": {"kind": "symlink", "target": "../.agents/skills"}}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["bridges"] = bridges
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    shutil.rmtree(root / "wrapup")
+    sync_project_skills(proj)
+    after = json.loads(path.read_text(encoding="utf-8"))
+    assert after["bridges"] == bridges
+    assert "wrapup" in after["skills"]
+    assert load_manifest(root).bridges == bridges
