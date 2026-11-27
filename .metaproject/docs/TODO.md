@@ -16,6 +16,12 @@ each open item the operator chose to carry forward; tick it when a cycle picks i
 - [ ] Doctor's "project identity" fix writes `.metaproject.json` into every cataloged folder without one, including non-projects from a home-wide `universe` scan (`~/.config/opencode`, `~/bin`); make it confirm per project or skip folders without git or `AGENTS.md` — carried from `.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-config/` (2026-11-21)
 - [ ] Process note: this cycle's implement-plan ran in the main session instead of the prescribed subagent delegation, and generate-plan skipped plan mode under the operator's pre-approval; decide whether the skills should allow this explicitly — carried from `.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-config/` (2026-11-21)
 
+- [ ] Agent output cosmetics: `skills status --all` table has no agents column and `skills sync --all` totals exclude agents; named-file `backfill` lists a disabled/symlink-blocked agent under "Refused — already exists" — carried from `.metaproject/docs/archive/2026-11-26-ship-project-subagents-as-a-deliverable/` (2026-11-26)
+- [ ] `doctor` does not mention modified agents (SPEC R-AGT-16 said "reported"; only `skills status` shows them) — carried from `.metaproject/docs/archive/2026-11-26-ship-project-subagents-as-a-deliverable/` (2026-11-26)
+- [ ] `review --format json` can shallow-fetch an uncached git `templates.source` into `~/.metaproject/cache/templates/` (R-AGT-22 said "never writes") — carried from `.metaproject/docs/archive/2026-11-26-ship-project-subagents-as-a-deliverable/` (2026-11-26)
+- [ ] `review --managed --format json` top-level `"templates"` is the first project's store; consider per-project only — carried from `.metaproject/docs/archive/2026-11-26-ship-project-subagents-as-a-deliverable/` (2026-11-26)
+- [ ] Regenerate `skill_history.json` right after the next version bump: new agent/skill digests are labelled `0.12.0` (already tagged) and `backlog-worker` has an unreleased intermediate digest — carried from `.metaproject/docs/archive/2026-11-26-ship-project-subagents-as-a-deliverable/` (2026-11-26)
+
 <!-- Manual verification log: wrapup appends one dated entry per cycle below, newest
 last. Format:
 
@@ -61,3 +67,11 @@ last. Format:
   2. Entries checked out as text files are reported `outdated` and rewritten as copies (`bridge mode: copy (Windows)`); `metaproject doctor` on a project still carrying the legacy link (checked out as a text file) offers the migration.
 - [ ] Reinstall the global CLI after release so plain `metaproject` writes manifest v2 (`make install-global`); an older CLI meeting a v2 manifest reports `newer` and leaves bridges alone.
   1. `metaproject --version` shows the new release; `metaproject skills status` in this repo shows the `Bridge (claude)` column.
+
+## 2026-11-26: Needs manual verification (ship-project-subagents-as-a-deliverable)
+
+- [ ] **learn proposal quality after the synthesis change.** Outside an agent session, in this repo: `metaproject learn scan --all` (or your usual scan root), then `metaproject learn list`. Expected: proposals are still produced, cite verbatim `source_lines`, and are no worse than before; the `claude -p` call now runs with no tools, no MCP, no project context and the `learn-synthesizer` system prompt. If quality dropped, compare against `git show 31e8917:src/metaproject/learn/synth.py` behaviour.
+- [ ] **doctor sees the agents.** Outside an agent session, in this repo: `metaproject doctor .`. Expected: a "project agents" check right after "project skills", healthy, with `backlog-worker`, `project-auditor`, `spec-reviewer` current.
+- [ ] **Shipped agents load in Claude Code.** In a project synced by this release, start Claude Code and check the agent list includes `spec-reviewer`, `backlog-worker`, `project-auditor` with the tool lists from their frontmatter (`project-auditor`: Read, Glob, Grep, read-only git; `spec-reviewer`: read-only). Expected: listed, not "All tools".
+- [ ] **review-fleet end to end.** Run `/review-fleet` in a session with several cataloged projects. Expected: one `metaproject review --managed --format json` call, one `project-auditor` per non-clean project in parallel, a merged table grouped by action, no files changed.
+

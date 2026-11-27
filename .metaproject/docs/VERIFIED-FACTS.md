@@ -163,3 +163,10 @@ From [.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-
 - ZCode 4.0 reads `.zcode/skills` and `.agents/skills` (not `.claude/skills`), per its bundled `zcode-configuration-guide` skill.
 - Full gate on `harness-neutral-skills` (2026-11-26): format clean, lint clean, 1238 passed, wheel and sdist build.
 - Manual: `adopt` into a repo with user `.claude/skills/my-skill` and `shipit` leaves both untouched, bridges the other 11 bundled skills, `skills status` exits 0; a legacy-link fixture makes `skills sync` exit 0 with the doctor hint and `doctor --dry-run` names the user skill that would be lost.
+
+## 2026-11-26 — [ship-project-subagents-as-a-deliverable](archive/2026-11-26-ship-project-subagents-as-a-deliverable/)
+
+- Claude Code 2.1.332: `claude -p --tools "" --strict-mcp-config` init event has `tools: []`, `mcp: []`; `--tools default` lists all built-ins. An agent file with `tools: []` is listed as "All tools" (frontmatter does not disable tools). Confirmed by running both, 2026-11-26.
+- `synth.claude_command("claude", "haiku")` run live from an empty temp dir: stream-json init has `tools: []`, `mcp: []`, 0 slash commands, and the model replies (acceptance criterion 14). Confirmed 2026-11-26.
+- execute-tests 2026-11-26: lint clean, 1332 tests pass, `make build` wheel contains `agents/*.md`, `learn/agents/learn-synthesizer.md` and `sdlc_skills/review-fleet`; scratch `adopt` → 2 agents installed, pre-existing user `my-agent.md` and hand-made `spec-reviewer.md` untouched (reported modified), `--force` restores byte-equal, repeat sync changes nothing, `review --format json` parses.
+- This repository synced to the shipped agents: three `.claude/agents/*.md` byte-equal to the bundle, manifest v3 with an `agents` section; a second `skills sync --yes` wrote nothing. Confirmed 2026-11-26.

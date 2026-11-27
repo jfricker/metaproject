@@ -179,3 +179,18 @@ From [.metaproject/docs/archive/2026-11-21-move-project-identity-to-metaproject-
 - `skills status|sync` exit 1 only for unknown `--force`, newer manifest under update, I/O failure, no-home refusal; legacy link, foreign entries, write denied and shadowing exit 0 (`tests/test_skills_sync.py`, `tests/test_skills_sync_all.py`).
 - A sync carries the manifest's `bridges` object through unchanged; v1 manifests are rewritten as v2 (`tests/test_skills_sync.py`).
 - **Superseded** by this cycle: the R-SKL-5 refusal (2026-11-12, `.claude/skills` real dir / foreign link refuses the install) — now the source always installs and only the bridge pass is affected; "adopt … runs no git" / "never runs git" (2026-09-29, AGENTS.md) — restated as "never changes the repository; only allowlisted read-only `git config --get` queries"; "an existing config is kept as written" (2026-09-29) — kept, except an absent `skills.targets` is added.
+
+## 2026-11-26 — [ship-project-subagents-as-a-deliverable](archive/2026-11-26-ship-project-subagents-as-a-deliverable/)
+
+- `skills._write_manifest` accepts only a `Manifest`; every manifest write carries the `agents` section through, so a skills pass never drops agents and an agents pass never drops skills/bridges (`tests/test_skills_sync.py`, `tests/test_subagents.py`).
+- `subagents.py` is the only writer of `<home>/.claude/agents/<name>.md` and the manifest `agents` section; `skills` never imports `subagents` (`tests/test_subagents.py`).
+- Agent files are written temp-then-`os.replace` after a hash check; a failed write leaves the original and the manifest unchanged; a symlinked `.claude`/`.claude/agents` is never written through; staging uses `tempfile.mkstemp` (O_EXCL, random name) so a planted symlink is never followed (`tests/test_subagents.py::test_planted_temp_symlink_is_not_followed`).
+- `backfill` with named files touches exactly the named agents (`only=`), never other missing ones (`tests/test_backfill.py`).
+- Named-file `backfill` reports an agent as created only when it was written; warnings from the agents pass reach `BackfillResult.warnings` (`tests/test_backfill.py`).
+- `.claude/agents` is declared once (`deliverables.AGENTS_DIR`); `skills.py`/`bridges.py` never import `subagents` (`tests/test_subagents.py`).
+- `review --format json` writes nothing and prints only JSON on stdout; `compliance_cell` derives from `review.compliance_state`, so board and JSON cannot disagree (`tests/test_review.py`).
+- `review --managed` never opens the interactive board when projects resolve to different template stores (Deploy/Update write from one store) (`tests/test_review.py::test_review_managed_mixed_stores_never_open_the_board`).
+- `synth.claude_command` always passes `--tools "" --strict-mcp-config --disable-slash-commands --system-prompt <learn-synthesizer body>`, and `run_claude` runs in an empty temp cwd; the synthesizer system prompt counts against the chunk budget (`tests/test_learn_synth.py`).
+- `.claude/agents` paths are `DeliverableClass.SUBAGENT` and never appear in `scaffolded()` or `learn_targets()` (`tests/test_subagents.py`).
+- `doctor` checks run in order config, docs, skills legacy link, skills targets, project skills, **project agents**, skill shadowing, hook scripts; only missing/outdated agents are findings (`tests/test_doctor.py`).
+- **Superseded** by this cycle: the 2026-11-26 doctor order line (no project-agents check); "manifest format version 2" (now v3 with an `agents` section; v1/v2 still read).
