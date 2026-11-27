@@ -24,7 +24,7 @@
 - [x] 8. review --format json and --managed
 - [x] 9. learn synthesizer wiring
 - [x] 10. Skills and docs
-- [ ] 11. Dogfood this repository
+- [x] 11. Dogfood this repository
 - [ ] 12. Final gate and manual checks
 
 ## Design invariants (regression guards)

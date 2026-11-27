@@ -1,4 +1,18 @@
 {
+  "agents": {
+    "backlog-worker": {
+      "release": "0.12.0",
+      "sha256": "f1d87abe3308409734ae51fc184b9f29cd52b4817424f7dce11e2d482d23d110"
+    },
+    "project-auditor": {
+      "release": "0.12.0",
+      "sha256": "ede6a8e8766ca4eacadacc8fe3fa2351c86af89e4e224c7241e67a309c12478d"
+    },
+    "spec-reviewer": {
+      "release": "0.12.0",
+      "sha256": "f4fce5413872c041745cd2d0a2a0a4dd7a35dea35e200ead50625b2c2cf53975"
+    }
+  },
   "bridges": {
     ".": {
       "claude": {
@@ -38,6 +52,10 @@
             "link": "../../.agents/skills/metaproject",
             "mode": "symlink"
           },
+          "review-fleet": {
+            "link": "../../.agents/skills/review-fleet",
+            "mode": "symlink"
+          },
           "shipit": {
             "link": "../../.agents/skills/shipit",
             "mode": "symlink"
@@ -61,9 +79,9 @@
   "skills": {
     "backlog-factory": {
       "files": {
-        "SKILL.md": "47ceb17a01d353c0e42809d9084605ef4c4a7a3709fef9a129fdbbe9a1c9c816"
+        "SKILL.md": "b963d28dee61577420306fe91d682ca25bb3223e553678e1edbbd0f0fd73e401"
       },
-      "release": "0.10.0"
+      "release": "0.12.0"
     },
     "backlog-new": {
       "files": {
@@ -73,9 +91,9 @@
     },
     "execute-tests": {
       "files": {
-        "SKILL.md": "7d35659f440e2cc180328a9603f61f6063d80e2c2c1fc3aad454dc7d53d8c09c"
+        "SKILL.md": "160dea9359fb18d430b0219e733adb558cd688193d72458865873cdac0fd657b"
       },
-      "release": "0.10.0"
+      "release": "0.12.0"
     },
     "generate-design": {
       "files": {
@@ -103,11 +121,17 @@
     },
     "metaproject": {
       "files": {
-        "SKILL.md": "2bd936fec1e9c3dbf4ad49000b28f060eaa54a1a91cd6a15ad7296f74b27a4d0",
-        "references/commands.md": "ebf4e0954efa169cd1761ed927979e2bb6ddb2fcc9865f946e7a7f46fa4228c6",
+        "SKILL.md": "b1911d8a44790092a9f11b52b9a4e4a508f858857a12e8f5b7e2e209c53e8f6b",
+        "references/commands.md": "157dd8b617f4eee1aebf363d8b82ba2f6c7a8dedd067c4f308b577306b1e1377",
         "references/documents.md": "70e3e1eb4710be4614a690b72a138d3309604d3feaf2c9476bd0cd4f8ff4cd89"
       },
-      "release": "0.11.0"
+      "release": "0.12.0"
+    },
+    "review-fleet": {
+      "files": {
+        "SKILL.md": "2c6fbccc8d7853490204f93f4db94971c1f59b83cf3f6e14e19c5db2d12e104c"
+      },
+      "release": "0.12.0"
     },
     "shipit": {
       "files": {
@@ -134,5 +158,5 @@
       "release": "0.10.0"
     }
   },
-  "version": 2
+  "version": 3
 }

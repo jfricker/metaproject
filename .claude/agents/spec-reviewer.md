@@ -1,8 +1,7 @@
 ---
 name: spec-reviewer
-description: Read-only reviewer for projects that follow the MetaProject document pattern. It checks the current branch's changes against the cycle documents in .metaproject/docs/ (SPEC.md, TECH-DESIGN.md, PLAN.md, STATE.md) and against the invariants the project declares in AGENTS.md, CLAUDE.md and its long-lived docs. Use after implement-plan and before execute-tests or wrapup, or whenever asked to "review against the spec". It never edits files. It returns a verdict and a list of findings.
+description: Read-only reviewer for projects that follow the metaproject document pattern. It checks the current branch's changes against the cycle documents in .metaproject/docs/ (SPEC.md, TECH-DESIGN.md, PLAN.md, STATE.md) and against the invariants the project declares in AGENTS.md, CLAUDE.md and its long-lived docs. Use after implement-plan and before execute-tests or wrapup, or whenever asked to "review against the spec". It never edits files. It returns a verdict and a list of findings.
 tools: Read, Grep, Glob, Bash(git diff:*), Bash(git log:*), Bash(git status:*), Bash(git merge-base:*), Bash(rg:*), Bash(fd:*)
-model: sonnet
 effort: high
 ---
 
