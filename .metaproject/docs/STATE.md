@@ -15,7 +15,7 @@
 
 <!-- written by implement-plan as steps land -->
 - [x] 1. Bundle agents and packaging
-- [ ] 2. Manifest v3 in skills.py
+- [x] 2. Manifest v3 in skills.py
 - [ ] 3. subagents.py core
 - [ ] 4. Ledger agents section
 - [ ] 5. Scaffold/backfill/adopt call sites

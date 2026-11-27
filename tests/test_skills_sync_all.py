@@ -351,7 +351,7 @@ def test_sync_all_counts_only_real_failures(runner: CliRunner, cfg: Config, tmp_
 
     newer = _project(cfg, tmp_path, "newer", outdated=False)
     (newer / ".agents" / "skills" / MANIFEST_NAME).write_text(
-        json.dumps({"version": 3, "skills": {}}), encoding="utf-8"
+        json.dumps({"version": 4, "skills": {}}), encoding="utf-8"
     )
     result = runner.invoke(app, ["skills", "sync", "--all", "--yes"])
     assert result.exit_code == 1, result.output

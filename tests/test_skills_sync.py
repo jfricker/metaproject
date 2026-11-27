@@ -131,14 +131,17 @@ def test_symlink_inside_skill_never_matches(tmp_path: Path) -> None:
 def test_new_writes_manifest_for_every_skill(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     data = _manifest(proj)
-    assert data["version"] == 2
+    assert data["version"] == 3
+    assert data["agents"] == {}
     assert set(data["skills"]) == {skill.name for skill in bundled_skills()}
     for skill in bundled_skills():
         entry = data["skills"][skill.name]
         assert entry["release"] == running_release()
         assert entry["files"] == file_map(skill.source_dir)
     text = (_skills_root(proj) / MANIFEST_NAME).read_text(encoding="utf-8")
-    assert text == render_manifest(data["skills"], data["bridges"])
+    assert text == render_manifest(
+        skills_module.Manifest("present", data["skills"], data["bridges"], data["agents"])
+    )
     assert not (proj / ".agents" / STAGING_NAME).exists()
 
 
@@ -565,7 +568,7 @@ def test_unreadable_manifest_is_noticed_and_rewritten(runner: CliRunner, tmp_pat
 def test_newer_manifest_status_works_sync_refuses(runner: CliRunner, tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     manifest = _skills_root(proj) / MANIFEST_NAME
-    manifest.write_text(json.dumps({"version": 3, "skills": {"wrapup": "?"}}), encoding="utf-8")
+    manifest.write_text(json.dumps({"version": 4, "skills": {"wrapup": "?"}}), encoding="utf-8")
     before = manifest.read_bytes()
 
     status = runner.invoke(app, ["skills", "status", "--dir", str(proj), "-f", "json"])
@@ -756,7 +759,7 @@ def test_sync_api_rejects_unknown_force_before_any_write(tmp_path: Path) -> None
 # ------------------------------------------------------------------ manifest v2
 
 
-def test_v1_manifest_loads_without_bridges_and_sync_rewrites_as_v2(tmp_path: Path) -> None:
+def test_v1_manifest_loads_without_bridges_and_sync_rewrites_as_v3(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     path = _skills_root(proj) / MANIFEST_NAME
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -768,15 +771,16 @@ def test_v1_manifest_loads_without_bridges_and_sync_rewrites_as_v2(tmp_path: Pat
     assert loaded.bridges == {}
     sync_project_skills(proj)
     rewritten = json.loads(path.read_text(encoding="utf-8"))
-    assert rewritten["version"] == 2
+    assert rewritten["version"] == 3
+    assert rewritten["agents"] == {}
     assert rewritten["bridges"] == {}
     assert rewritten["skills"] == data["skills"]
 
 
-def test_version_3_manifest_is_newer(tmp_path: Path) -> None:
+def test_version_4_manifest_is_newer(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     path = _skills_root(proj) / MANIFEST_NAME
-    path.write_text(json.dumps({"version": 3, "skills": {}}), encoding="utf-8")
+    path.write_text(json.dumps({"version": 4, "skills": {}}), encoding="utf-8")
     assert load_manifest(_skills_root(proj)).state == skills_module.MANIFEST_NEWER
 
 
@@ -939,7 +943,7 @@ def test_newer_manifest_version_writes_no_bridges(tmp_path: Path) -> None:
     proj = _bare(tmp_path)
     _skills_root(proj).mkdir(parents=True)
     manifest = _skills_root(proj) / MANIFEST_NAME
-    manifest.write_text(json.dumps({"version": 3, "skills": {}}), encoding="utf-8")
+    manifest.write_text(json.dumps({"version": 4, "skills": {}}), encoding="utf-8")
     before = manifest.read_bytes()
 
     report = sync_project_skills(proj, update=False)
@@ -1146,7 +1150,7 @@ def test_exit_one_for_unknown_force_newer_manifest_and_no_home(
     assert forced.exit_code == 1
 
     (_skills_root(proj) / MANIFEST_NAME).write_text(
-        json.dumps({"version": 3, "skills": {}}), encoding="utf-8"
+        json.dumps({"version": 4, "skills": {}}), encoding="utf-8"
     )
     newer = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
     assert newer.exit_code == 1
@@ -1155,3 +1159,70 @@ def test_exit_one_for_unknown_force_newer_manifest_and_no_home(
     for command in ("status", "sync"):
         result = runner.invoke(app, ["skills", command, "--dir", str(nohome)])
         assert result.exit_code == 1, result.output
+
+
+# ------------------------------------------------------------------ manifest v3 (agents)
+
+_SHA = "a" * 64
+
+
+def _agents_manifest(proj: Path, agents: object, version: int = 3) -> Path:
+    path = _skills_root(proj) / MANIFEST_NAME
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["version"] = version
+    data["agents"] = agents
+    if version < 3:
+        data.pop("agents")
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def test_v2_manifest_loads_with_empty_agents(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    _agents_manifest(proj, None, version=2)
+    loaded = load_manifest(_skills_root(proj))
+    assert loaded.state == "present"
+    assert loaded.agents == {}
+
+
+def test_v3_round_trip_preserves_agents() -> None:
+    agents = {"spec-reviewer": {"release": "0.12.0", "sha256": _SHA}}
+    text = skills_module.render_manifest(skills_module.Manifest("present", {}, {}, agents))
+    assert json.loads(text)["agents"] == agents
+    assert json.loads(text)["version"] == 3
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        [],
+        {"x": "str"},
+        {"x": {"release": "1", "sha256": "z" * 64}},
+        {"x": {"release": "1", "sha256": "A" * 64}},
+        {"x": {"release": 1, "sha256": _SHA}},
+        {"x": {"release": "1"}},
+    ],
+)
+def test_invalid_agents_section_is_unreadable(tmp_path: Path, bad: object) -> None:
+    proj = _scaffold(tmp_path)
+    _agents_manifest(proj, bad)
+    assert load_manifest(_skills_root(proj)).state == skills_module.MANIFEST_UNREADABLE
+
+
+def test_skills_sync_keeps_agents_section(tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    agents = {"spec-reviewer": {"release": "0.12.0", "sha256": _SHA}}
+    path = _agents_manifest(proj, agents)
+    shutil.rmtree(_skills_root(proj) / "wrapup")
+    sync_project_skills(proj)
+    after = json.loads(path.read_text(encoding="utf-8"))
+    assert after["version"] == 3
+    assert after["agents"] == agents
+    assert "wrapup" in after["skills"]
+
+
+def test_write_manifest_rejects_a_bare_dict(tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        skills_module._write_manifest(tmp_path, {"wrapup": {}}, None)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        skills_module.render_manifest({})  # type: ignore[arg-type]

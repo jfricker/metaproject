@@ -34,6 +34,7 @@ import hashlib
 import importlib.resources
 import json
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field, replace
@@ -51,7 +52,7 @@ if TYPE_CHECKING:
 SKILL_NAME = "metaproject"
 
 MANIFEST_NAME = ".metaproject-skills.json"
-MANIFEST_VERSION = 2
+MANIFEST_VERSION = 3
 # Staging lives beside `.agents/skills`, never inside it, so a half-built copy is never
 # discoverable as a skill.
 STAGING_NAME = ".metaproject-skills-tmp"
@@ -271,11 +272,24 @@ def _valid_entry(entry: object) -> bool:
 
 @dataclass(frozen=True)
 class Manifest:
-    """The install manifest as loaded: its state, per-skill entries and bridge entries."""
+    """The install manifest as loaded: state, per-skill, bridge and agent entries."""
 
     state: str
     skills: Dict[str, Dict] = field(default_factory=dict)
     bridges: Dict[str, Dict] = field(default_factory=dict)
+    agents: Dict[str, Dict] = field(default_factory=dict)
+
+
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def _valid_agent_entry(entry: object) -> bool:
+    return (
+        isinstance(entry, dict)
+        and isinstance(entry.get("release"), str)
+        and isinstance(entry.get("sha256"), str)
+        and _SHA256_RE.fullmatch(entry["sha256"]) is not None
+    )
 
 
 def load_manifest(target: Path) -> Manifest:
@@ -284,7 +298,8 @@ def load_manifest(target: Path) -> Manifest:
     `absent` (a legacy install) and `unreadable` (bad JSON or wrong shape) both yield no
     entries; `newer` (a format version above this release's) yields none either, so the
     caller falls back to legacy classification and never rewrites the file. A version 1
-    file has no bridges.
+    file has no bridges; a version 1 or 2 file has no agents. From version 3 `agents` must
+    be a dict of `{release: str, sha256: 64 lowercase hex}` or the file is `unreadable`.
     """
     path = manifest_path(target)
     if not path.exists() and not path.is_symlink():
@@ -309,33 +324,45 @@ def load_manifest(target: Path) -> Manifest:
         if not isinstance(raw, dict):
             return Manifest(MANIFEST_UNREADABLE)
         bridges = {name: dict(b) if isinstance(b, dict) else b for name, b in raw.items()}
+    agents: Dict[str, Dict] = {}
+    if version >= 3:
+        raw_agents = data.get("agents", {})
+        if not isinstance(raw_agents, dict) or not all(
+            isinstance(k, str) and _valid_agent_entry(v) for k, v in raw_agents.items()
+        ):
+            return Manifest(MANIFEST_UNREADABLE)
+        agents = {name: dict(v) for name, v in raw_agents.items()}
     return Manifest(
-        MANIFEST_PRESENT, {name: dict(entry) for name, entry in entries.items()}, bridges
+        MANIFEST_PRESENT,
+        {name: dict(entry) for name, entry in entries.items()},
+        bridges,
+        agents,
     )
 
 
-def render_manifest(manifest: "Manifest | Dict[str, Dict]", bridges: Optional[Dict] = None) -> str:
+def render_manifest(manifest: Manifest) -> str:
     """Deterministic manifest text: sorted keys, indent 2, trailing newline."""
-    if isinstance(manifest, Manifest):
-        skills, kept = manifest.skills, manifest.bridges
-    else:
-        skills, kept = manifest, {}
+    if not isinstance(manifest, Manifest):
+        raise TypeError("render_manifest takes a Manifest, not a bare dict")
     body = {
         "version": MANIFEST_VERSION,
-        "skills": skills,
-        "bridges": kept if bridges is None else bridges,
+        "skills": manifest.skills,
+        "bridges": manifest.bridges,
+        "agents": manifest.agents,
     }
     return json.dumps(body, indent=2, sort_keys=True) + "\n"
 
 
 def _write_manifest(
     target: Path,
-    entries: "Manifest | Dict[str, Dict]",
+    manifest: Manifest,
     tracker: "Optional[TransactionalTracker]",
 ) -> None:
     """Write the manifest atomically (temp file in the same directory, then replace)."""
+    if not isinstance(manifest, Manifest):
+        raise TypeError("_write_manifest takes a Manifest, not a bare dict")
     path = manifest_path(target)
-    text = render_manifest(entries)
+    text = render_manifest(manifest)
     existed = path.exists()
     if existed:
         try:
@@ -773,7 +800,7 @@ def sync_project_skills(
                     if new_entries or new_bridges or manifest_path(target.path).exists():
                         _write_manifest(
                             target.path,
-                            Manifest(MANIFEST_PRESENT, new_entries, new_bridges),
+                            Manifest(MANIFEST_PRESENT, new_entries, new_bridges, loaded.agents),
                             tracker,
                         )
             finally:
@@ -819,7 +846,11 @@ def migrate_legacy_skills_link(project_dir: Path) -> "bridge_ops.BridgeReport":
     slot = dict(new_bridges.get(key) or {})
     slot["claude"] = records
     new_bridges[key] = slot
-    _write_manifest(target.path, Manifest(MANIFEST_PRESENT, loaded.skills, new_bridges), None)
+    _write_manifest(
+        target.path,
+        Manifest(MANIFEST_PRESENT, loaded.skills, new_bridges, loaded.agents),
+        None,
+    )
     return report
 
 
