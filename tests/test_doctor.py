@@ -289,6 +289,7 @@ from metaproject.deliverables import LEGACY_ROOT_NAMES, template_path  # noqa: E
 from metaproject.doctor import _relocate  # noqa: E402
 from metaproject.git import init_repository  # noqa: E402
 from metaproject.skills import bundled_skills, install_project_skills  # noqa: E402
+from metaproject.subagents import bundled_agents, install_project_agents  # noqa: E402
 
 _OLD_DOC_TEXT = {old: f"# {old} — the project's real content\n" for old in LEGACY_ROOT_NAMES}
 
@@ -651,6 +652,7 @@ def test_scoped_dry_run_checks_only_that_project(tmp_path: Path) -> None:
         f"skills legacy link: {target}",
         f"skills targets: {target}",
         f"project skills: {target}",
+        f"project agents: {target}",
         f"skill shadowing: {target}",
         f"project hook scripts: {target}",
     ]
@@ -659,7 +661,8 @@ def test_scoped_dry_run_checks_only_that_project(tmp_path: Path) -> None:
     assert results[3].healthy  # no legacy link
     assert not results[4].healthy  # skills.targets absent
     assert not results[5].healthy  # nothing installed
-    assert results[6].healthy and results[7].healthy
+    assert not results[6].healthy  # no agents installed
+    assert results[7].healthy and results[8].healthy
     assert _snapshot(tmp_path / "projects", Path(cfg.templates_dir), config_file.parent) == before
     assert (bystander / "intent.md").is_file()
 
@@ -759,6 +762,7 @@ def test_cli_doctor_scoped_current_directory(
         ),
     )
     install_project_skills(project)
+    install_project_agents(project)
     update_settings(project, ("skills", "targets"), ["claude"])
     monkeypatch.chdir(project)
 
@@ -1265,3 +1269,64 @@ def test_agent_session_reports_legacy_and_targets_writes_nothing(
     assert dry.exit_code == 1
     assert "legacy layout" in dry.output and "skills.targets is not recorded" in dry.output
     assert _snapshot(project) == before
+
+
+# ----------------------------------------------------------------- project agents
+
+
+def _agents_project(tmp_path: Path) -> Path:
+    project = tmp_path / "proj"
+    scaffold_project(project_name="proj", output=project, interactive=False, no_git=True)
+    return project
+
+
+def test_missing_agent_reported_then_fixed_after_confirm(tmp_path: Path) -> None:
+    project = _agents_project(tmp_path)
+    victim = project / ".claude" / "agents" / "spec-reviewer.md"
+    victim.unlink()
+
+    dry = _skills_run(tmp_path, project, dry_run=True, confirm=_fail_if_called)
+    found = _check(dry, f"project agents: {project}")
+    assert "missing agent: spec-reviewer" in found.findings and not found.healthy
+    assert not victim.exists()
+
+    results = _skills_run(tmp_path, project, confirm=_only("project agents"))
+    fixed = _check(results, f"project agents: {project}")
+    assert fixed.fixed is True
+    bundled = {a.name: a for a in bundled_agents()}["spec-reviewer"]
+    assert victim.read_bytes() == bundled.path.read_bytes()
+
+
+def test_agents_check_runs_right_after_project_skills(tmp_path: Path) -> None:
+    project = _agents_project(tmp_path)
+    names = [r.name for r in _skills_run(tmp_path, project, dry_run=True)]
+    assert (
+        names.index(f"project agents: {project}") == names.index(f"project skills: {project}") + 1
+    )
+
+
+def test_modified_agent_reported_never_fixed(tmp_path: Path) -> None:
+    project = _agents_project(tmp_path)
+    mine = project / ".claude" / "agents" / "spec-reviewer.md"
+    mine.write_text("my own reviewer\n", encoding="utf-8")
+
+    results = _skills_run(tmp_path, project, confirm=_fail_if_called)
+    result = _check(results, f"project agents: {project}")
+    assert any("modified agent" in f and "spec-reviewer" in f for f in result.findings)
+    assert set(result.findings) <= set(result.report_only)
+    assert mine.read_text(encoding="utf-8") == "my own reviewer\n"
+
+
+def test_agent_session_agents_check_is_report_only(runner: CliRunner, tmp_path: Path) -> None:
+    project = _agents_project(tmp_path)
+    victim = project / ".claude" / "agents" / "spec-reviewer.md"
+    victim.unlink()
+    _, config_file = _make_env(tmp_path)
+    env = {**_cli_env(config_file), "METAPROJECT_AGENT": None, "CLAUDECODE": "1"}
+
+    result = runner.invoke(app, ["doctor", str(project)], env=env)
+    assert result.exit_code == 1
+    assert not victim.exists()
+    dry = runner.invoke(app, ["doctor", "--dry-run", str(project)], env=env)
+    assert "missing agent: spec-reviewer" in dry.output
+    assert not victim.exists()

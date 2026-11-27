@@ -344,6 +344,13 @@ def scaffold_project(
         # commit includes them (R-SKL-2, R-SKL-6). Create-only, rollback-tracked.
         skills_report = install_project_skills(target_dir, dry_run=dry_run, tracker=tracker)
 
+        # 5a'. Project agents (R-AGT-12): create-only, same tracker as the skills.
+        from metaproject import subagents
+
+        agents_report = subagents.install_project_agents(
+            target_dir, dry_run=dry_run, tracker=tracker
+        )
+
         # 5b. Claude Code hooks: the hook script (create-only) and its entries merged into
         # .claude/settings.json (merge, never overwrite). An unmergeable settings file is
         # reported, not fatal: nothing is written for hooks and the scaffold goes on.
@@ -379,6 +386,7 @@ def scaffold_project(
             "backfilled": is_backfill,
             "skills_bridges": skills_report.bridges.get("claude"),
             "skills": skills_report,
+            "agents": agents_report,
             "hooks": hooks_report,
             "git_initialized": git_initialized,
             "git_status": git_status,
@@ -387,6 +395,7 @@ def scaffold_project(
                 *render_report.warnings,
                 *([targets_warning] if targets_warning else []),
                 *skills_report.warnings,
+                *agents_report.warnings,
             ],
             "identity_file": identity_file,
         }

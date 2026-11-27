@@ -1166,3 +1166,52 @@ def test_scaffold_failure_after_targets_restores_a_backfilled_config(
         )
     assert (target / IDENTITY_FILE).read_text(encoding="utf-8") == original
     assert not (target / ".claude" / "skills").exists()
+
+
+def test_scaffold_installs_bundled_agents_byte_equal_and_records_manifest(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    from metaproject.subagents import bundled_agents
+
+    target = tmp_path / "agents_proj"
+    res = scaffold_project(
+        project_name="agents_proj",
+        output=target,
+        config=Config(author="Jane Dev", default_branch="main"),
+        interactive=False,
+        no_git=True,
+    )
+    assert res["agents"] is not None
+    bundled = bundled_agents()
+    assert len(bundled) == 3
+    for agent in bundled:
+        assert (target / ".claude" / "agents" / f"{agent.name}.md").read_bytes() == (
+            agent.path.read_bytes()
+        )
+    manifest = json.loads(
+        (target / ".agents" / "skills" / ".metaproject-skills.json").read_text(encoding="utf-8")
+    )
+    assert manifest["version"] == 3
+    assert manifest["agents"] == {
+        a.name: {
+            "release": manifest["agents"][a.name]["release"],
+            "sha256": hashlib.sha256(a.path.read_bytes()).hexdigest(),
+        }
+        for a in bundled
+    }
+
+
+def test_scaffold_dry_run_writes_no_agents(tmp_path: Path) -> None:
+    target = tmp_path / "dry_agents"
+    res = scaffold_project(
+        project_name="dry_agents",
+        output=target,
+        config=Config(author="Jane Dev", default_branch="main"),
+        interactive=False,
+        no_git=True,
+        dry_run=True,
+    )
+    assert not (target / ".claude" / "agents").exists()
+    assert {s.action for s in res["agents"].statuses} == {"installed"}

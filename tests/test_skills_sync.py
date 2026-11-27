@@ -1,5 +1,6 @@
 """`metaproject skills status|sync`, the install manifest, and the skill ledger (#3, 3b)."""
 
+import hashlib
 import json
 import os
 import shutil
@@ -37,6 +38,7 @@ from metaproject.skills import (
     skill_digest,
     sync_project_skills,
 )
+from metaproject.subagents import bundled_agents
 from metaproject.treeops import file_map, hash_content
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -132,7 +134,12 @@ def test_new_writes_manifest_for_every_skill(tmp_path: Path) -> None:
     proj = _scaffold(tmp_path)
     data = _manifest(proj)
     assert data["version"] == 3
-    assert data["agents"] == {}
+    assert set(data["agents"]) == {agent.name for agent in bundled_agents()}
+    for agent in bundled_agents():
+        assert (
+            data["agents"][agent.name]["sha256"]
+            == hashlib.sha256(agent.path.read_bytes()).hexdigest()
+        )
     assert set(data["skills"]) == {skill.name for skill in bundled_skills()}
     for skill in bundled_skills():
         entry = data["skills"][skill.name]
@@ -1226,3 +1233,147 @@ def test_write_manifest_rejects_a_bare_dict(tmp_path: Path) -> None:
         skills_module._write_manifest(tmp_path, {"wrapup": {}}, None)  # type: ignore[arg-type]
     with pytest.raises(TypeError):
         skills_module.render_manifest({})  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------- agents pass
+
+
+def _agents_dir(proj: Path) -> Path:
+    return proj / ".claude" / "agents"
+
+
+def _agent_manifest_outdated(proj: Path, name: str = "spec-reviewer") -> Path:
+    """Turn agent `name` into a pristine copy of a fictional earlier release."""
+    dest = _agents_dir(proj) / f"{name}.md"
+    dest.write_text("old release body\n", encoding="utf-8")
+    data = _manifest(proj)
+    data["agents"][name] = {
+        "release": "0.1.0",
+        "sha256": hashlib.sha256(dest.read_bytes()).hexdigest(),
+    }
+    (_skills_root(proj) / MANIFEST_NAME).write_text(json.dumps(data), encoding="utf-8")
+    return dest
+
+
+def test_status_json_adds_agents_without_changing_skill_keys(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    proj = _scaffold(tmp_path)
+    payload = json.loads(
+        runner.invoke(app, ["skills", "status", "--dir", str(proj), "-f", "json"]).stdout
+    )
+    assert set(payload["agents"][0]) == {"name", "state", "installed_release", "action", "note"}
+    assert {a["name"] for a in payload["agents"]} == {a.name for a in bundled_agents()}
+    assert all(a["state"] == CURRENT and a["action"] is None for a in payload["agents"])
+    assert set(payload["skills"][0]) == {
+        "name",
+        "state",
+        "installed_release",
+        "basis",
+        "changed",
+        "note",
+        "action",
+    }
+    without = {k: v for k, v in payload.items() if k != "agents"}
+    assert list(without)[:3] == ["project", "target", "location"]
+
+
+def test_status_table_has_agents_section(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    proj = _scaffold(tmp_path)
+    (_agents_dir(proj) / "spec-reviewer.md").write_text("mine\n", encoding="utf-8")
+    (_agents_dir(proj) / "project-auditor.md").unlink()
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj)], env={"COLUMNS": "200"})
+    assert result.exit_code == 0, result.output
+    assert "Project agents" in result.output
+    assert "spec-reviewer" in result.output and "~ modified" in result.output
+    assert "! missing" in result.output
+
+
+def test_sync_updates_outdated_agent_keeps_modified_and_second_run_is_noop(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    proj = _scaffold(tmp_path)
+    outdated = _agent_manifest_outdated(proj, "spec-reviewer")
+    mine = _agents_dir(proj) / "project-auditor.md"
+    mine.write_text("hand edited\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["skills", "sync", "--dir", str(proj), "-f", "json"])
+    assert result.exit_code == 0, result.output
+    actions = {a["name"]: a["action"] for a in json.loads(result.stdout)["agents"]}
+    assert actions["spec-reviewer"] == UPDATED
+    assert actions["project-auditor"] == KEPT
+    bundled = {a.name: a for a in bundled_agents()}
+    assert outdated.read_bytes() == bundled["spec-reviewer"].path.read_bytes()
+    assert mine.read_bytes() == b"hand edited\n"
+
+    before = _tree(proj)
+    again = runner.invoke(app, ["skills", "sync", "--dir", str(proj)])
+    assert again.exit_code == 0, again.output
+    assert _tree(proj) == before
+
+
+def test_force_agent_name_replaces_modified_agent_only(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    for name in ("spec-reviewer", "project-auditor"):
+        (_agents_dir(proj) / f"{name}.md").write_text("mine\n", encoding="utf-8")
+    (_skills_root(proj) / "generate-spec" / "SKILL.md").write_text("# mine\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app, ["skills", "sync", "--dir", str(proj), "--force", "spec-reviewer", "-f", "json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    agent_actions = {a["name"]: a["action"] for a in payload["agents"]}
+    assert agent_actions["spec-reviewer"] == FORCED
+    assert agent_actions["project-auditor"] == KEPT
+    skill_actions = {s["name"]: s["action"] for s in payload["skills"]}
+    assert skill_actions["generate-spec"] == KEPT
+    bundled = {a.name: a for a in bundled_agents()}
+    assert (_agents_dir(proj) / "spec-reviewer.md").read_bytes() == (
+        bundled["spec-reviewer"].path.read_bytes()
+    )
+    assert (_agents_dir(proj) / "project-auditor.md").read_bytes() == b"mine\n"
+
+
+def test_force_unknown_name_errors_before_any_agent_write(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    proj = _scaffold(tmp_path)
+    (_agents_dir(proj) / "spec-reviewer.md").unlink()
+    before = _tree(proj)
+    result = runner.invoke(
+        app, ["skills", "sync", "--dir", str(proj), "--force", "spec-reviewer", "--force", "nope"]
+    )
+    assert result.exit_code == 1 and "nope" in result.output
+    assert _tree(proj) == before
+
+
+def test_agents_enabled_subset_shows_disabled(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    cfg_path = proj / ".metaproject" / "config.json"
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["agents"] = {"enabled": ["spec-reviewer"]}
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    before = _tree(proj)
+
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj), "-f", "json"])
+    assert result.exit_code == 0, result.output
+    agents = {a["name"]: a for a in json.loads(result.stdout)["agents"]}
+    assert agents["spec-reviewer"]["state"] == CURRENT
+    assert agents["project-auditor"]["state"] == "disabled"
+    assert agents["project-auditor"]["action"] is None  # status carries no actions
+    assert _tree(proj) == before
+
+
+def test_agent_pass_notices_print_like_skills(runner: CliRunner, tmp_path: Path) -> None:
+    proj = _scaffold(tmp_path)
+    cfg_path = proj / ".metaproject" / "config.json"
+    data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    data["agents"] = {"enabled": ["spec-reviewer", "ghost"]}
+    cfg_path.write_text(json.dumps(data), encoding="utf-8")
+    result = runner.invoke(app, ["skills", "status", "--dir", str(proj)])
+    assert result.exit_code == 0
+    assert "unknown agent 'ghost'" in " ".join(result.output.split())

@@ -498,3 +498,32 @@ def test_cli_adopt_dry_run_narrates_would_be_bridges(
     assert result.exit_code == 0, result.output
     assert "would be created" in " ".join(result.output.split())
     assert not (repo / ".claude").exists()
+
+
+def test_adopt_leaves_handwritten_agents_untouched_and_reports_modified(
+    runner: CliRunner, tmp_path: Path, agent_session, no_git
+) -> None:
+    from metaproject.subagents import bundled_agents
+
+    repo = existing_repo(tmp_path)
+    agents = repo / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    reviewer = agents / "spec-reviewer.md"
+    mine = agents / "my-agent.md"
+    reviewer.write_text("my own spec reviewer\n", encoding="utf-8")
+    mine.write_text("my agent\n", encoding="utf-8")
+
+    result = adopt_project(repo, author="Jo F")
+
+    assert reviewer.read_bytes() == b"my own spec reviewer\n"
+    assert mine.read_bytes() == b"my agent\n"
+    statuses = {s.name: s for s in result.backfill.agents.statuses}
+    assert statuses["spec-reviewer"].state == "modified"
+    assert statuses["spec-reviewer"].action == "kept"
+    for agent in bundled_agents():
+        if agent.name != "spec-reviewer":
+            assert (agents / f"{agent.name}.md").read_bytes() == agent.path.read_bytes()
+
+    cli = runner.invoke(app, ["backfill", "--dir", str(repo)])
+    assert cli.exit_code == 0, cli.output
+    assert "differ from the bundle" in " ".join(cli.output.split())

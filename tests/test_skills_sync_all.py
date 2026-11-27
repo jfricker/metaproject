@@ -356,3 +356,49 @@ def test_sync_all_counts_only_real_failures(runner: CliRunner, cfg: Config, tmp_
     result = runner.invoke(app, ["skills", "sync", "--all", "--yes"])
     assert result.exit_code == 1, result.output
     assert "failed 1" in _flat(result.output)
+
+
+# ----------------------------------------------------------------- agents in --all
+
+
+def _agent_file(proj: Path) -> Path:
+    return proj / ".claude" / "agents" / "spec-reviewer.md"
+
+
+def test_sync_all_installs_missing_agents_and_json_has_agents(
+    runner: CliRunner, cfg: Config, tmp_path: Path
+) -> None:
+    proj = _project(cfg, tmp_path, "alpha", outdated=False)
+    _agent_file(proj).unlink()
+
+    result = runner.invoke(app, ["skills", "sync", "--all", "--yes", "--format", "json"])
+
+    assert result.exit_code == 0, result.output
+    body = json.loads(result.stdout)
+    agents = {a["name"]: a for a in body["projects"][0]["agents"]}
+    assert agents["spec-reviewer"]["action"] == "installed"
+    assert _agent_file(proj).is_file()
+    assert body["totals"] == {"updated": 0, "installed": 0, "kept-modified": 0}
+
+
+def test_sync_all_agent_session_without_yes_writes_no_agents(
+    runner: CliRunner, cfg: Config, tmp_path: Path
+) -> None:
+    proj = _project(cfg, tmp_path, "alpha", outdated=False)
+    _agent_file(proj).unlink()
+    before = _tree(proj)
+    result = runner.invoke(app, ["skills", "sync", "--all"], env={"METAPROJECT_AGENT": "1"})
+    assert result.exit_code == 0, result.output
+    assert _tree(proj) == before and not _agent_file(proj).exists()
+
+
+def test_status_all_json_includes_agents(runner: CliRunner, cfg: Config, tmp_path: Path) -> None:
+    _project(cfg, tmp_path, "alpha", outdated=False)
+    result = runner.invoke(app, ["skills", "status", "--all", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    row = json.loads(result.stdout)["projects"][0]
+    assert {a["name"] for a in row["agents"]} == {
+        "backlog-worker",
+        "project-auditor",
+        "spec-reviewer",
+    }

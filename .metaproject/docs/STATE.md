@@ -18,9 +18,9 @@
 - [x] 2. Manifest v3 in skills.py
 - [x] 3. subagents.py core
 - [x] 4. Ledger agents section
-- [ ] 5. Scaffold/backfill/adopt call sites
-- [ ] 6. CLI skills status/sync
-- [ ] 7. Doctor agents check
+- [x] 5. Scaffold/backfill/adopt call sites
+- [x] 6. CLI skills status/sync
+- [x] 7. Doctor agents check
 - [ ] 8. review --format json and --managed
 - [ ] 9. learn synthesizer wiring
 - [ ] 10. Skills and docs
@@ -32,12 +32,14 @@
 <!-- written by implement-plan/execute-tests; appended to docs/DESIGN-INVARIANTS.md by wrapup -->
 - `skills._write_manifest` accepts only a `Manifest`; every manifest write carries the `agents` section through, so a skills pass never drops agents and an agents pass never drops skills/bridges (`tests/test_skills_sync.py`, `tests/test_subagents.py`).
 - `subagents.py` is the only writer of `<home>/.claude/agents/<name>.md` and the manifest `agents` section; `skills` never imports `subagents` (`tests/test_subagents.py`).
-- Agent files are written temp-then-`os.replace` after a hash check; a failed write leaves the original and the manifest unchanged; a symlinked `.claude`/`.claude/agents` is never written through (`tests/test_subagents.py`).
+- Agent files are written temp-then-`os.replace` after a hash check; a failed write leaves the original and the manifest unchanged; a symlinked `.claude`/`.claude/agents` is never written through; staging uses `tempfile.mkstemp` (O_EXCL, random name) so a planted symlink is never followed (`tests/test_subagents.py::test_planted_temp_symlink_is_not_followed`).
+- `backfill` with named files touches exactly the named agents (`only=`), never other missing ones (`tests/test_backfill.py`).
 - `.claude/agents` paths are `DeliverableClass.SUBAGENT` and never appear in `scaffolded()` or `learn_targets()` (`tests/test_subagents.py`).
 
 ## Open items carried into plan.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
+- `skills status --all` table shows no agents column (agents only in JSON); `skills sync --all` adds an agents suffix to a project line only when a count is nonzero. Accepted as within R-AGT-15 (existing output unchanged).
 - Amend DESIGN-INVARIANTS doctor order line: project agents run right after project skills (wrapup).
 
 ## Verified facts (do not re-investigate)

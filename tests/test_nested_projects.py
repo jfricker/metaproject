@@ -537,3 +537,15 @@ def test_session_script_uses_the_nearest_anchor(tmp_path: Path, with_anchor: boo
     expected = sub if with_anchor else start
     assert f"metaproject skills sync --dir {expected}" in lines
     assert f"metaproject templates fetch --dir {expected}" in lines
+
+
+def test_delegating_sub_project_agents_land_in_the_home(delegating: dict) -> None:
+    from metaproject.subagents import bundled_agents, install_project_agents
+
+    root, sub = delegating["root"], delegating["sub"]
+    install_project_agents(sub)
+    for agent in bundled_agents():
+        assert (root / ".claude" / "agents" / f"{agent.name}.md").read_bytes() == (
+            agent.path.read_bytes()
+        )
+    assert not (sub / ".claude" / "agents").exists()

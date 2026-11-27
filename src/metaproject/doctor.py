@@ -11,8 +11,9 @@ module that owns the concern, so doctor and ``init``/``new`` cannot drift apart
 
 The checks, in order: template-store layout, template store, config file name, config,
 orphaned global skill, project identity, project config, project docs, skills legacy link,
-skills targets, project skills, skill shadowing, project hook scripts. Layout runs first so a store
-whose cycle templates are still at the root is migrated, not re-seeded beside them.
+skills targets, project skills, project agents, skill shadowing, project hook scripts.
+Layout runs first so a store whose cycle templates are still at the root is migrated, not
+re-seeded beside them.
 
 `run_checks(..., project=...)` scopes the run to one operator-named project: only
 that project's identity, config, docs, skills and hook-script checks run, and none of the
@@ -40,6 +41,7 @@ from metaproject import (
     hooks,
     identity,
     skills,
+    subagents,
     templates,
 )
 from metaproject.config import Config
@@ -888,6 +890,51 @@ def fix_project_skills(project_dir: Path) -> None:
     skills.sync_project_skills(project_dir, update=True)
 
 
+def check_project_agents(project_dir: Path) -> tuple[List[str], List[str], str]:
+    """Missing, outdated, modified and disabled bundled agents in one project (R-AGT-16).
+
+    The same classification as `skills status`. Missing and outdated (pristine copies of
+    an earlier release) are fixable; modified and disabled agents are reported, never
+    changed. The no-home refusal is the project-skills check's to report.
+    """
+    report = subagents.inspect_project_agents(project_dir)
+    if report.notice is not None:
+        return [], [], ""
+    missing = [s.name for s in report.statuses if s.state == skills.MISSING]
+    outdated = [s.name for s in report.statuses if s.state == skills.OUTDATED]
+    modified = [
+        f"modified agent (left untouched; `metaproject skills sync --force {s.name}` to "
+        f"replace): {s.name}"
+        for s in report.statuses
+        if s.state == skills.MODIFIED
+    ]
+    disabled = [
+        f"disabled agent (kept; excluded by agents.enabled): {s.name}"
+        for s in report.statuses
+        if s.state == subagents.DISABLED
+    ]
+    findings = (
+        [f"missing agent: {name}" for name in missing]
+        + [f"outdated agent (unmodified copy of an earlier release): {name}" for name in outdated]
+        + modified
+        + disabled
+    )
+    report_only = modified + disabled
+    if report.manifest_state == skills.MANIFEST_NEWER and (missing or outdated):
+        text = "agents manifest written by a newer metaproject; upgrade before syncing"
+        findings.append(text)
+        report_only = list(findings)
+    summary = (
+        f"install {len(missing)} missing, update {len(outdated)} outdated unmodified "
+        "agent(s) in .claude/agents/"
+    )
+    return findings, report_only, summary
+
+
+def fix_project_agents(project_dir: Path) -> None:
+    subagents.sync_project_agents(project_dir, update=True)
+
+
 # --------------------------------------------------------------------- running
 
 
@@ -901,6 +948,7 @@ _PROJECT_CHECKS: Tuple[
     ("skills legacy link", check_skills_legacy_link, fix_skills_legacy_link),
     ("skills targets", check_skills_targets, fix_skills_targets),
     ("project skills", check_project_skills, fix_project_skills),
+    ("project agents", check_project_agents, fix_project_agents),
     ("skill shadowing", check_skill_shadowing, fix_skill_shadowing),
     ("project hook scripts", check_project_hooks, fix_project_hooks),
 )

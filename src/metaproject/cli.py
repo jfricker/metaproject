@@ -249,6 +249,37 @@ def main(
     pass
 
 
+def print_agents_report(report: Any, dry_run: bool) -> None:
+    """Narrate one project-agents install pass (`new`, `backfill`, `adopt`)."""
+    if report is None or report.notice or not report.statuses:
+        return
+    installed = [s.name for s in report.statuses if s.action == INSTALLED]
+    current = [s.name for s in report.statuses if s.state == CURRENT]
+    outdated = [s.name for s in report.statuses if s.state == OUTDATED]
+    modified = [s.name for s in report.statuses if s.state == MODIFIED]
+    if installed:
+        verb = "Would install" if dry_run else "Installed"
+        console.print(
+            f"[cyan]✓ {verb} {len(installed)} project agent(s) in .claude/agents/:[/cyan] "
+            + ", ".join(installed)
+        )
+    if current:
+        console.print(f"[dim]{len(current)} project agent(s) already current[/dim]")
+    if outdated:
+        console.print(
+            "[yellow]Notice:[/] project agent(s) from an earlier release, unmodified: "
+            + ", ".join(outdated)
+            + ". Run [bold cyan]metaproject skills sync[/bold cyan] to update them.",
+            soft_wrap=True,
+        )
+    if modified:
+        console.print(
+            "[yellow]Notice:[/] project agent(s) differ from the bundle and were left "
+            "untouched: " + ", ".join(modified),
+            soft_wrap=True,
+        )
+
+
 def print_skills_report(
     states: Dict[str, str],
     notice: Optional[str],
@@ -957,6 +988,7 @@ def new_cmd(
             dry_run,
             bridges=result.get("skills_bridges"),
         )
+    print_agents_report(result.get("agents"), dry_run)
     hooks_report = result.get("hooks")
     if hooks_report is not None:
         print_hooks_report(
@@ -1454,12 +1486,15 @@ def print_backfill_result(result, dry_run: bool, target: Path) -> None:
         target,
         bridges=result.skills_bridges,
     )
+    print_agents_report(result.agents, dry_run)
     if result.hooks_notice:
         console.print(f"[yellow]Notice:[/] {result.hooks_notice}")
     elif ".claude/settings.json" in result.created:
         print_hook_config_hint(target)
 
-    wrote_skills = any(state == INSTALLED for state in result.skills.values())
+    wrote_skills = any(state == INSTALLED for state in result.skills.values()) or (
+        result.agents is not None and any(s.action == INSTALLED for s in result.agents.statuses)
+    )
     if not (
         result.created
         or result.skipped
@@ -1760,6 +1795,10 @@ SKILL_STATE_LABELS = {
     "modified": "[magenta]~ modified[/magenta]",
     "missing": "[red]! missing[/red]",
 }
+AGENT_STATE_LABELS = {
+    **SKILL_STATE_LABELS,
+    "disabled": "[dim]- disabled (kept)[/dim]",
+}
 SKILL_ACTION_LABELS = {
     "installed": "installed",
     "updated": "updated",
@@ -1796,14 +1835,29 @@ def _skills_project(project_dir: Optional[Path], output_format: str) -> Path:
     return target
 
 
-def _skills_payload(project: Path, report, dry_run: bool, with_action: bool) -> Dict[str, Any]:
+def _agents_payload(report, with_action: bool) -> List[Dict[str, Any]]:
+    return [
+        {
+            "name": status.name,
+            "state": status.state,
+            "installed_release": status.installed_release,
+            "action": status.action if with_action else None,
+            "note": status.note,
+        }
+        for status in report.statuses
+    ]
+
+
+def _skills_payload(
+    project: Path, report, dry_run: bool, with_action: bool, agents_report=None
+) -> Dict[str, Any]:
     from metaproject.skills import running_release
 
     try:
         target = report.target.relative_to(project).as_posix()
     except ValueError:
         target = str(report.target)
-    return {
+    payload = {
         "project": str(project),
         "target": target,
         "location": report.location,
@@ -1838,6 +1892,9 @@ def _skills_payload(project: Path, report, dry_run: bool, with_action: bool) -> 
             for status in report.statuses
         ],
     }
+    if agents_report is not None:
+        payload["agents"] = _agents_payload(agents_report, with_action)
+    return payload
 
 
 def _skill_detail(status) -> str:
@@ -1858,17 +1915,77 @@ def _bridge_cell(info: Optional[Dict[str, Any]]) -> str:
     return f"{state} → {action}" if action else state
 
 
+def _render_agents_section(project: Path, agents_report, dry_run: bool, with_action: bool) -> None:
+    """The "Agents" table after the skills table, same columns and labels."""
+    if not agents_report.statuses:
+        return
+    title = f"Project agents — {project}"
+    if dry_run:
+        title += " (dry run)"
+    table = Table(title=escape(title), show_header=True, header_style="bold magenta")
+    table.add_column("Agent", style="bold cyan")
+    table.add_column("State")
+    table.add_column("Installed release")
+    if with_action:
+        table.add_column("Action")
+    table.add_column("Detail")
+    for status in agents_report.statuses:
+        row = [
+            status.name,
+            AGENT_STATE_LABELS.get(status.state, status.state),
+            status.installed_release or "—",
+        ]
+        if with_action:
+            row.append(SKILL_ACTION_LABELS.get(status.action or "", status.action or "—"))
+        row.append(escape(status.note) if status.note else "—")
+        table.add_row(*row)
+    console.print(table)
+    modified = [
+        s.name for s in agents_report.statuses if s.state == "modified" and s.action != "forced"
+    ]
+    if modified:
+        console.print(
+            "[yellow]Notice:[/] modified agent(s) left untouched: "
+            + ", ".join(modified)
+            + ". [bold cyan]metaproject skills sync --force NAME[/bold cyan] discards local "
+            "edits.",
+            soft_wrap=True,
+        )
+    outdated = [
+        s.name for s in agents_report.statuses if s.state == "outdated" and s.action is None
+    ]
+    if outdated:
+        console.print(
+            "[yellow]Notice:[/] outdated agent(s): "
+            + ", ".join(outdated)
+            + ". Run [bold cyan]metaproject skills sync[/bold cyan] to update them.",
+            soft_wrap=True,
+        )
+
+
 def _render_skills_report(
-    project: Path, report, output_format: str, dry_run: bool, with_action: bool
+    project: Path,
+    report,
+    output_format: str,
+    dry_run: bool,
+    with_action: bool,
+    agents_report=None,
 ) -> None:
     """Print one status/sync report; exit 1 only on the no-home refusal (R-BRG-29)."""
     import json
 
     out = _skills_console(output_format)
     if output_format == "json":
-        typer.echo(json.dumps(_skills_payload(project, report, dry_run, with_action), indent=2))
+        typer.echo(
+            json.dumps(
+                _skills_payload(project, report, dry_run, with_action, agents_report), indent=2
+            )
+        )
     for warning in report.warnings:
         out.print(f"[yellow]Notice:[/] {escape(warning)}", soft_wrap=True)
+    if agents_report is not None:
+        for warning in agents_report.warnings:
+            out.print(f"[yellow]Notice:[/] {escape(warning)}", soft_wrap=True)
     if report.notice:
         out.print(f"[yellow]Refused:[/] {escape(report.notice)}", soft_wrap=True)
         raise typer.Exit(code=1)
@@ -1939,6 +2056,8 @@ def _render_skills_report(
             + ". Run [bold cyan]metaproject skills sync[/bold cyan] to update them.",
             soft_wrap=True,
         )
+    if agents_report is not None:
+        _render_agents_section(project, agents_report, dry_run, with_action)
 
 
 def _skills_all_projects(
@@ -2003,6 +2122,7 @@ def _skills_sync_all(
     import json
 
     from metaproject.skills import sync_project_skills
+    from metaproject.subagents import sync_project_agents
 
     projects = _skills_all_projects(project_dir, force, output_format, "skills sync --all")
     if projects is None:
@@ -2030,6 +2150,7 @@ def _skills_sync_all(
     for project in projects:
         try:
             report = sync_project_skills(project, update=True, dry_run=dry_run)
+            agents_report = sync_project_agents(project, update=True, dry_run=dry_run)
         except Exception as exc:  # one project's failure never stops the rest
             failed += 1
             payloads.append({"project": str(project), "error": str(exc)})
@@ -2040,12 +2161,17 @@ def _skills_sync_all(
                 )
             continue
         if output_format == "json":
-            payloads.append(_skills_payload(project, report, dry_run, with_action=True))
-        if report.notice:
+            payloads.append(
+                _skills_payload(
+                    project, report, dry_run, with_action=True, agents_report=agents_report
+                )
+            )
+        if report.notice or agents_report.notice:
             failed += 1
             if output_format != "json":
                 console.print(
-                    f"{escape(str(project))}  [red]refused[/red] {escape(report.notice)}",
+                    f"{escape(str(project))}  [red]refused[/red] "
+                    f"{escape(report.notice or agents_report.notice)}",
                     soft_wrap=True,
                 )
             continue
@@ -2054,6 +2180,9 @@ def _skills_sync_all(
             totals[key] += value
         if output_format != "json":
             cells = "  ".join(f"{key} {value}" for key, value in counts.items())
+            agent_counts = _sync_counts(agents_report)
+            if any(agent_counts.values()):
+                cells += "  agents " + " ".join(f"{k} {v}" for k, v in agent_counts.items())
             console.print(f"{escape(str(project))}  {cells}", soft_wrap=True)
 
     if output_format == "json":
@@ -2070,7 +2199,7 @@ def _skills_sync_all(
         raise typer.Exit(code=1)
 
 
-def _render_skills_status_all(reports, output_format: str) -> None:
+def _render_skills_status_all(reports, output_format: str, agents_reports=None) -> None:
     """`skills status --all`: one row per managed project. Exit 1 on any refusal."""
     import json
 
@@ -2085,7 +2214,15 @@ def _render_skills_status_all(reports, output_format: str) -> None:
                 payloads.append({"project": str(project), "error": error})
                 failed += 1
                 continue
-            payloads.append(_skills_payload(project, report, False, with_action=False))
+            payloads.append(
+                _skills_payload(
+                    project,
+                    report,
+                    False,
+                    with_action=False,
+                    agents_report=(agents_reports or {}).get(project),
+                )
+            )
             failed += bool(report.notice)
         typer.echo(json.dumps({"projects": payloads}, indent=2))
     else:
@@ -2128,23 +2265,34 @@ def skills_status_cmd(
 ) -> None:
     """Report each bundled skill as current, outdated, modified or missing. Read-only."""
     from metaproject.skills import inspect_project_skills
+    from metaproject.subagents import inspect_project_agents
 
     if all_projects:
         projects = _skills_all_projects(project_dir, [], output_format, "skills status --all")
         if projects is None:
             return
         reports = []
+        agents_reports: Dict[Path, Any] = {}
         for project in projects:
             try:
                 reports.append((project, inspect_project_skills(project), None))
+                agents_reports[project] = inspect_project_agents(project)
             except Exception as exc:  # one project's failure never stops the rest
                 reports.append((project, None, str(exc)))
-        _render_skills_status_all(reports, output_format)
+        _render_skills_status_all(reports, output_format, agents_reports)
         return
 
     project = _skills_project(project_dir, output_format)
     report = inspect_project_skills(project)
-    _render_skills_report(project, report, output_format, dry_run=False, with_action=False)
+    agents_report = inspect_project_agents(project)
+    _render_skills_report(
+        project,
+        report,
+        output_format,
+        dry_run=False,
+        with_action=False,
+        agents_report=agents_report,
+    )
 
 
 @skills_app.command(name="sync")
@@ -2184,6 +2332,7 @@ def skills_sync_cmd(
     and never commits.
     """
     from metaproject.skills import sync_project_skills
+    from metaproject.subagents import bundled_agents, sync_project_agents
 
     if all_projects:
         _skills_sync_all(dry_run, list(force or ()), yes, output_format, project_dir)
@@ -2191,14 +2340,27 @@ def skills_sync_cmd(
 
     project = _skills_project(project_dir, output_format)
     out = _skills_console(output_format)
+    # `--force` names that belong to a bundled agent go to the agents pass; every other name
+    # goes to skills, whose unknown-name error fires before any write in either pass.
+    agent_names = {agent.name for agent in bundled_agents()}
+    skill_force = tuple(n for n in (force or ()) if n not in agent_names)
+    agent_force = tuple(n for n in (force or ()) if n in agent_names)
     try:
-        report = sync_project_skills(
-            project, update=True, force=tuple(force or ()), dry_run=dry_run
+        report = sync_project_skills(project, update=True, force=skill_force, dry_run=dry_run)
+        agents_report = sync_project_agents(
+            project, update=True, force=agent_force, dry_run=dry_run
         )
     except MetaProjectError as exc:
         out.print(f"[bold red]Skills Error:[/bold red] {escape(str(exc))}", soft_wrap=True)
         raise typer.Exit(code=1)
-    _render_skills_report(project, report, output_format, dry_run=dry_run, with_action=True)
+    _render_skills_report(
+        project,
+        report,
+        output_format,
+        dry_run=dry_run,
+        with_action=True,
+        agents_report=agents_report,
+    )
 
 
 # ----------------------------------------------------------------------- templates

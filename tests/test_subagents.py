@@ -194,6 +194,21 @@ def test_install_writes_and_records(tmp_path: Path) -> None:
     assert not list(_agents_dir(proj).glob("*tmp*"))
 
 
+def test_planted_temp_symlink_is_not_followed(tmp_path: Path) -> None:
+    proj = _proj(tmp_path)
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    agents_dir = _agents_dir(proj)
+    agents_dir.mkdir(parents=True)
+    for name in NAMES:
+        (agents_dir / f".{name}.md.metaproject-tmp").symlink_to(victim)
+    sync_project_agents(proj)
+    assert victim.read_text() == "keep me"
+    for name in NAMES:
+        assert (agents_dir / f"{name}.md").read_bytes() == _bundle(name)
+        assert (agents_dir / f"{name}.md").stat().st_mode & 0o777 == 0o644
+
+
 def test_outdated_replaced_only_with_update(tmp_path: Path) -> None:
     proj = _proj(tmp_path)
     sync_project_agents(proj)

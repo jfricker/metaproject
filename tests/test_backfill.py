@@ -592,3 +592,49 @@ def test_backfill_no_args_skips_v08_root_intent_without_duplicating(tmp_path: Pa
     assert not (proj / ".metaproject" / "docs" / "INTENT.md").exists()
     assert ".metaproject/docs/SPEC.md" in result.created
     assert (proj / ".metaproject" / "docs" / "SPEC.md").is_file()
+
+
+def test_backfill_installs_missing_agents_create_only(tmp_path: Path) -> None:
+    from metaproject.subagents import bundled_agents
+
+    proj, templates = scaffolded_project(tmp_path)
+    victim = proj / ".claude" / "agents" / "project-auditor.md"
+    victim.unlink()
+    kept = proj / ".claude" / "agents" / "spec-reviewer.md"
+    kept.write_text("mine\n", encoding="utf-8")
+
+    result = backfill_missing(proj, templates_dir=templates)
+
+    bundled = {a.name: a for a in bundled_agents()}
+    assert victim.read_bytes() == bundled["project-auditor"].path.read_bytes()
+    assert kept.read_text(encoding="utf-8") == "mine\n"
+    states = {s.name: (s.state, s.action) for s in result.agents.statuses}
+    assert states["project-auditor"] == ("missing", "installed")
+    assert states["spec-reviewer"] == ("modified", "kept")
+
+
+def test_backfill_named_files_touch_agents_only_for_agent_paths(tmp_path: Path) -> None:
+    proj, templates = scaffolded_project(tmp_path)
+    agent = proj / ".claude" / "agents" / "project-auditor.md"
+    agent.unlink()
+    other = proj / ".claude" / "agents" / "spec-reviewer.md"
+    other.unlink()
+    (proj / ".metaproject" / "docs" / "HANDOFF.md").unlink(missing_ok=True)
+
+    plain = backfill_missing(proj, files=["HANDOFF.md"], templates_dir=templates)
+    assert plain.agents is None and not agent.exists()
+
+    named = backfill_missing(
+        proj, files=[".claude/agents/project-auditor.md"], templates_dir=templates
+    )
+    assert named.created == [".claude/agents/project-auditor.md"]
+    assert agent.is_file()
+    assert not other.exists()  # naming files touches exactly those files
+
+    again = backfill_missing(
+        proj, files=[".claude/agents/project-auditor.md"], templates_dir=templates
+    )
+    assert again.refused == [".claude/agents/project-auditor.md"]
+
+    unknown = backfill_missing(proj, files=[".claude/agents/nope.md"], templates_dir=templates)
+    assert unknown.missing_template == [".claude/agents/nope.md"]

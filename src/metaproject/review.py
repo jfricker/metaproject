@@ -701,6 +701,8 @@ class BackfillResult:
     not_written: List[str] = field(default_factory=list)
     # The Claude bridge report from the skills install, None when not bridged.
     skills_bridges: Any = None
+    # The project-agents pass (`subagents.AgentsReport`), None when it did not run.
+    agents: Any = None
     # Notes that are not failures: an unwritable `skills.targets`, manifest trouble.
     warnings: List[str] = field(default_factory=list)
 
@@ -755,14 +757,35 @@ def backfill_missing(
         # de-duplicate after resolving, keeping first-seen order.
         named = list(dict.fromkeys(canonical_path(path) for path in files))
 
+        # A named `.claude/agents/<name>.md` is a bundled project agent, installed by the
+        # agents pass (R-AGT-12), not rendered from the template store.
+        from metaproject import subagents
+
+        agent_prefix = ".claude/agents/"
+        agent_names = {a.name for a in subagents.bundled_agents()}
+        agent_paths = [p for p in named if p.startswith(agent_prefix)]
+        named = [p for p in named if p not in agent_paths]
+        unknown_agents = [
+            p
+            for p in agent_paths
+            if not (p.endswith(".md") and p[len(agent_prefix) : -3] in agent_names)
+        ]
+        existing_agents = [
+            p for p in agent_paths if p not in unknown_agents and (resolved_proj / p).exists()
+        ]
+
         existing = [path for path in named if _present(resolved_proj, path)]
         hooks_notice = _settings_refusal(resolved_proj, named)
         if hooks_notice is not None:
             existing.append(".claude/settings.json")
+        existing = [*existing_agents, *existing]
         if existing:
             return BackfillResult(refused=existing, hooks_notice=hooks_notice)
 
-        missing_template = [path for path in named if not _has_source(path, resolved_templates)]
+        missing_template = [
+            *unknown_agents,
+            *[path for path in named if not _has_source(path, resolved_templates)],
+        ]
         if missing_template:
             return BackfillResult(missing_template=missing_template)
 
@@ -775,12 +798,31 @@ def backfill_missing(
         others = [path for path in named if path not in settings]
         for path in others:
             write(path)
+        agents_report = None
+        if agent_paths:
+            from metaproject.scaffold import TransactionalTracker
+
+            tracker = TransactionalTracker()
+            tracker.record_existing(resolved_proj)
+            try:
+                agents_report = subagents.install_project_agents(
+                    resolved_proj,
+                    dry_run=dry_run,
+                    tracker=tracker,
+                    only=[Path(path).stem for path in agent_paths],
+                )
+            except Exception:
+                if not dry_run:
+                    tracker.rollback()
+                raise
         try:
             for path in settings:
                 write(path)
         except SettingsError as exc:
-            return BackfillResult(created=others, refused=settings, hooks_notice=str(exc))
-        return BackfillResult(created=named)
+            return BackfillResult(
+                created=others, refused=settings, hooks_notice=str(exc), agents=agents_report
+            )
+        return BackfillResult(created=[*named, *agent_paths], agents=agents_report)
 
     directory_paths = [d.path for d in DELIVERABLES if d.cls is DeliverableClass.DIRECTORY]
     other_paths = [
@@ -854,6 +896,9 @@ def backfill_missing(
     targets_warning = record_skills_targets(resolved_proj, tracker, dry_run=dry_run)
     try:
         skills = install_project_skills(resolved_proj, dry_run=dry_run, tracker=tracker)
+        from metaproject import subagents
+
+        agents = subagents.install_project_agents(resolved_proj, dry_run=dry_run, tracker=tracker)
     except Exception:
         if not dry_run:
             tracker.rollback()
@@ -871,7 +916,12 @@ def backfill_missing(
         hooks_notice=hooks_notice,
         not_written=not_written,
         skills_bridges=skills.bridges.get("claude"),
-        warnings=[*([targets_warning] if targets_warning else []), *skills.warnings],
+        agents=agents,
+        warnings=[
+            *([targets_warning] if targets_warning else []),
+            *skills.warnings,
+            *agents.warnings,
+        ],
     )
 
 

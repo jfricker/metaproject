@@ -19,6 +19,7 @@ Dependency direction: `subagents` imports `skills`; `skills` must never import
 import hashlib
 import importlib.resources
 import os
+import tempfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
@@ -264,14 +265,20 @@ def _write_agent(
     want = _sha256(data)
     existed = dest.exists() or dest.is_symlink()
     skills._ensure_target(dest.parent, tracker)
-    tmp = dest.parent / f".{agent.name}.md{TEMP_SUFFIX}"
+    # mkstemp: an unpredictable name opened O_EXCL, so a pre-placed symlink cannot
+    # redirect the write; the hash is re-read through the same descriptor, not the path.
+    fd, tmp_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{agent.name}.", suffix=TEMP_SUFFIX)
+    tmp = Path(tmp_name)
     try:
-        with open(tmp, "wb") as handle:
+        with os.fdopen(fd, "w+b") as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        if _sha256(tmp.read_bytes()) != want:
-            raise OSError("staged agent file does not match the bundle")
+            if hasattr(os, "fchmod"):
+                os.fchmod(handle.fileno(), 0o644)
+            handle.seek(0)
+            if _sha256(handle.read()) != want:
+                raise OSError("staged agent file does not match the bundle")
         if tracker is not None and existed and dest.is_file() and not dest.is_symlink():
             tracker.record_modified_file(dest)
         os.replace(tmp, dest)
@@ -292,8 +299,12 @@ def sync_project_agents(
     force: Sequence[str] = (),
     dry_run: bool = False,
     tracker: "Optional[TransactionalTracker]" = None,
+    only: Optional[Sequence[str]] = None,
 ) -> AgentsReport:
     """Install missing agents and, with `update`, replace outdated unmodified ones.
+
+    `only` limits the pass to those enabled agent names (`backfill` with named files
+    touches exactly the named files); None means every enabled agent.
 
     Modified agents are kept unless named in `force`. Disabled agents and files this
     module does not bundle are never touched. The manifest's `agents` section records
@@ -339,6 +350,8 @@ def sync_project_agents(
     statuses: List[AgentStatus] = []
     try:
         for agent in ctx.enabled:
+            if only is not None and agent.name not in only:
+                continue
             dest = ctx.agents_dir / f"{agent.name}.md"
             status = classify_agent(
                 agent, dest, loaded.agents.get(agent.name), _history(agent.name), running
@@ -380,6 +393,9 @@ def install_project_agents(
     project_dir: Path,
     dry_run: bool = False,
     tracker: "Optional[TransactionalTracker]" = None,
+    only: Optional[Sequence[str]] = None,
 ) -> AgentsReport:
     """Install missing agents only (`new`, `backfill`, `adopt`); never replaces a file."""
-    return sync_project_agents(project_dir, update=False, dry_run=dry_run, tracker=tracker)
+    return sync_project_agents(
+        project_dir, update=False, dry_run=dry_run, tracker=tracker, only=only
+    )
