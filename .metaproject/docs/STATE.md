@@ -3,10 +3,10 @@
 ## Process
 
 <!-- each stage ticks its own item here as it completes -->
-- [ ] 1. write-intent: intent.md approved
-- [ ] 2. generate-spec: spec.md approved
-- [ ] 3. generate-design: design.md approved
-- [ ] 4. generate-plan: plan.md approved
+- [x] 1. write-intent: intent.md approved
+- [x] 2. generate-spec: spec.md approved
+- [x] 3. generate-design: design.md approved
+- [x] 4. generate-plan: plan.md approved
 - [ ] 5. implement-plan: code and tests written
 - [ ] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
@@ -14,6 +14,18 @@
 ## Implementation phases
 
 <!-- written by implement-plan as steps land -->
+- [ ] 1. Bundle agents and packaging
+- [ ] 2. Manifest v3 in skills.py
+- [ ] 3. subagents.py core
+- [ ] 4. Ledger agents section
+- [ ] 5. Scaffold/backfill/adopt call sites
+- [ ] 6. CLI skills status/sync
+- [ ] 7. Doctor agents check
+- [ ] 8. review --format json and --managed
+- [ ] 9. learn synthesizer wiring
+- [ ] 10. Skills and docs
+- [ ] 11. Dogfood this repository
+- [ ] 12. Final gate and manual checks
 
 ## Design invariants (regression guards)
 
@@ -22,7 +34,9 @@
 ## Open items carried into plan.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
+- Amend DESIGN-INVARIANTS doctor order line: project agents run right after project skills (wrapup).
 
 ## Verified facts (do not re-investigate)
 
 <!-- written by implement-plan/execute-tests; appended to docs/VERIFIED-FACTS.md by wrapup -->
+- Claude Code 2.1.332: `claude -p --tools "" --strict-mcp-config` init event has `tools: []`, `mcp: []`; `--tools default` lists all built-ins. An agent file with `tools: []` is listed as "All tools" (frontmatter does not disable tools). Confirmed by running both, 2026-11-26.
