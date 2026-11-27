@@ -1190,6 +1190,7 @@ def test_scaffold_installs_bundled_agents_byte_equal_and_records_manifest(
         assert (target / ".claude" / "agents" / f"{agent.name}.md").read_bytes() == (
             agent.path.read_bytes()
         )
+    assert not (target / ".claude" / "agents" / "learn-synthesizer.md").exists()
     manifest = json.loads(
         (target / ".agents" / "skills" / ".metaproject-skills.json").read_text(encoding="utf-8")
     )

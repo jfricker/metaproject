@@ -1377,3 +1377,20 @@ def test_agent_pass_notices_print_like_skills(runner: CliRunner, tmp_path: Path)
     result = runner.invoke(app, ["skills", "status", "--dir", str(proj)])
     assert result.exit_code == 0
     assert "unknown agent 'ghost'" in " ".join(result.output.split())
+
+
+def test_sync_with_symlinked_agents_dir_warns_and_writes_nothing(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    proj = _scaffold(tmp_path)
+    agents = proj / ".claude" / "agents"
+    shutil.rmtree(agents)
+    target = tmp_path / "agents-elsewhere"
+    target.mkdir()
+    agents.symlink_to(target, target_is_directory=True)
+
+    result = runner.invoke(app, ["skills", "sync", "--dir", str(proj), "--yes"])
+
+    assert result.exit_code == 0, result.output
+    assert "symlink" in result.output
+    assert list(target.iterdir()) == []

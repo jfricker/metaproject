@@ -891,35 +891,23 @@ def fix_project_skills(project_dir: Path) -> None:
 
 
 def check_project_agents(project_dir: Path) -> tuple[List[str], List[str], str]:
-    """Missing, outdated, modified and disabled bundled agents in one project (R-AGT-16).
+    """Missing and outdated bundled agents in one project (R-AGT-16).
 
     The same classification as `skills status`. Missing and outdated (pristine copies of
-    an earlier release) are fixable; modified and disabled agents are reported, never
-    changed. The no-home refusal is the project-skills check's to report.
+    an earlier release) are fixable; modified and disabled agents are never changed and
+    are not findings. The no-home refusal is the project-skills check's to report.
     """
     report = subagents.inspect_project_agents(project_dir)
     if report.notice is not None:
         return [], [], ""
     missing = [s.name for s in report.statuses if s.state == skills.MISSING]
     outdated = [s.name for s in report.statuses if s.state == skills.OUTDATED]
-    modified = [
-        f"modified agent (left untouched; `metaproject skills sync --force {s.name}` to "
-        f"replace): {s.name}"
-        for s in report.statuses
-        if s.state == skills.MODIFIED
+    # Modified and disabled agents are the operator's choice: informational only, never
+    # a finding (`skills status` lists them).
+    findings = [f"missing agent: {name}" for name in missing] + [
+        f"outdated agent (unmodified copy of an earlier release): {name}" for name in outdated
     ]
-    disabled = [
-        f"disabled agent (kept; excluded by agents.enabled): {s.name}"
-        for s in report.statuses
-        if s.state == subagents.DISABLED
-    ]
-    findings = (
-        [f"missing agent: {name}" for name in missing]
-        + [f"outdated agent (unmodified copy of an earlier release): {name}" for name in outdated]
-        + modified
-        + disabled
-    )
-    report_only = modified + disabled
+    report_only: List[str] = []
     if report.manifest_state == skills.MANIFEST_NEWER and (missing or outdated):
         text = "agents manifest written by a newer metaproject; upgrade before syncing"
         findings.append(text)

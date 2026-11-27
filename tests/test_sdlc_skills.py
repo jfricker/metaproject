@@ -243,3 +243,13 @@ def test_shipit_gates_handed_off_merges_and_keeps_branches_with_open_prs() -> No
     cleanup = text[text.index("\n6. **Clean up.**") : text.index("\n7. **Report.**")]
     assert "gh pr list --head <branch> --state open" in cleanup
     assert cleanup.index("open PR") < cleanup.index("Use `-d`")
+
+
+def test_skills_name_their_subagents_and_keep_fallbacks() -> None:
+    execute = _skill_text("execute-tests")
+    assert "spec-reviewer" in execute and "manual" in execute
+    fleet = _skill_text("review-fleet")
+    assert "project-auditor" in fleet and "--managed --format json" in fleet
+    assert "Without subagents" in fleet
+    factory = _skill_text("backlog-factory")
+    assert "backlog-worker" in factory and "## Subagent brief" in factory

@@ -251,7 +251,14 @@ def main(
 
 def print_agents_report(report: Any, dry_run: bool) -> None:
     """Narrate one project-agents install pass (`new`, `backfill`, `adopt`)."""
-    if report is None or report.notice or not report.statuses:
+    if report is None:
+        return
+    for warning in report.warnings:
+        console.print(f"[yellow]Warning:[/] {escape(warning)}", soft_wrap=True)
+    if report.notice:
+        console.print(f"[yellow]Notice:[/] {escape(report.notice)}", soft_wrap=True)
+        return
+    if not report.statuses:
         return
     installed = [s.name for s in report.statuses if s.action == INSTALLED]
     current = [s.name for s in report.statuses if s.state == CURRENT]
@@ -2355,9 +2362,11 @@ def skills_status_cmd(
         agents_reports: Dict[Path, Any] = {}
         for project in projects:
             try:
-                reports.append((project, inspect_project_skills(project), None))
+                skills_report = inspect_project_skills(project)
                 agents_reports[project] = inspect_project_agents(project)
+                reports.append((project, skills_report, None))
             except Exception as exc:  # one project's failure never stops the rest
+                agents_reports.pop(project, None)
                 reports.append((project, None, str(exc)))
         _render_skills_status_all(reports, output_format, agents_reports)
         return

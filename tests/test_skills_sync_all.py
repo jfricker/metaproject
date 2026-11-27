@@ -402,3 +402,27 @@ def test_status_all_json_includes_agents(runner: CliRunner, cfg: Config, tmp_pat
         "project-auditor",
         "spec-reviewer",
     }
+
+
+def test_status_all_agents_pass_failure_is_one_row_and_exit_one(
+    runner, tmp_path, monkeypatch
+) -> None:
+    import json
+
+    from metaproject import subagents
+    from metaproject.cli import app
+
+    proj = tmp_path / "p"
+    scaffold_project(project_name="p", output=proj, interactive=False, no_git=True)
+    monkeypatch.setattr("metaproject.cli._skills_all_projects", lambda *a, **k: [proj])
+
+    def boom(_project):
+        raise RuntimeError("agents exploded")
+
+    monkeypatch.setattr(subagents, "inspect_project_agents", boom)
+    result = runner.invoke(app, ["skills", "status", "--all", "--format", "json"])
+
+    assert result.exit_code == 1
+    data = json.loads(result.output)
+    assert len(data["projects"]) == 1
+    assert data["projects"][0]["error"] == "agents exploded"

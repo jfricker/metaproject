@@ -1305,15 +1305,20 @@ def test_agents_check_runs_right_after_project_skills(tmp_path: Path) -> None:
     )
 
 
-def test_modified_agent_reported_never_fixed(tmp_path: Path) -> None:
+def test_modified_and_disabled_agents_are_not_findings(tmp_path: Path) -> None:
+    import json
+
     project = _agents_project(tmp_path)
     mine = project / ".claude" / "agents" / "spec-reviewer.md"
     mine.write_text("my own reviewer\n", encoding="utf-8")
+    config = project / ".metaproject" / "config.json"
+    data = json.loads(config.read_text(encoding="utf-8"))
+    data["agents"] = {"enabled": ["spec-reviewer", "backlog-worker"]}
+    config.write_text(json.dumps(data), encoding="utf-8")  # project-auditor is disabled
 
     results = _skills_run(tmp_path, project, confirm=_fail_if_called)
     result = _check(results, f"project agents: {project}")
-    assert any("modified agent" in f and "spec-reviewer" in f for f in result.findings)
-    assert set(result.findings) <= set(result.report_only)
+    assert result.findings == [] and result.healthy
     assert mine.read_text(encoding="utf-8") == "my own reviewer\n"
 
 

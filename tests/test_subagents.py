@@ -451,3 +451,19 @@ def test_agents_ledger_covers_every_current_agent() -> None:
 def test_parse_history_tolerates_missing_agents_section() -> None:
     assert skills.parse_history('{"version": 1, "skills": {}}', "agents") == {}
     assert skills.parse_history('{"version": 1, "skills": {}}') == {}
+
+
+def test_only_subagents_and_deliverables_declare_the_agents_path() -> None:
+    src = Path(subagents.__file__).parent
+    assert "subagents" not in (src / "skills.py").read_text(encoding="utf-8")
+    assert "subagents" not in (src / "bridges.py").read_text(encoding="utf-8")
+    allowed = {"subagents.py", "deliverables.py"}
+    # Narration (docstrings, user-facing messages) may name the directory; a path join or
+    # a literal `.claude/agents/` prefix used as a write target may not live elsewhere.
+    narration = {"cli.py", "doctor.py"}
+    for path in sorted(src.rglob("*.py")):
+        if path.name in allowed | narration:
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert '".claude" / "agents"' not in text, path
+        assert '".claude/agents' not in text, path

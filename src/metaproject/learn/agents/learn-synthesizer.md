@@ -9,7 +9,7 @@ scaffolded from. You judge; you do not act. Nothing you return is applied
 until a human has reviewed the diff.
 
 ## Input (the user turn)
-- `TARGET`: the template's path (for example `AGENTS.md.template`).
+- `TARGET`: the project-relative file the template scaffolds (for example `AGENTS.md`).
 - `KIND`: `edit` means the template exists. `new` means the file
   has no template yet and you are proposing its first content.
 - `MODE`: `map`, which proposes from raw evidence, or `reduce`, which merges proposals from several chunks

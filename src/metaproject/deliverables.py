@@ -106,11 +106,16 @@ def scaffolded() -> Tuple[str, ...]:
     return tuple(d.path for d in DELIVERABLES if d.cls is not DeliverableClass.ON_DEMAND)
 
 
+# The one declaration of where project agents live, relative to a skills home.
+AGENTS_DIR = Path(".claude") / "agents"
+AGENTS_DIR_POSIX = AGENTS_DIR.as_posix()
+
+
 def subagent_paths() -> Tuple[str, ...]:
     """`.claude/agents/<name>.md` for every bundled project agent (class SUBAGENT)."""
     from metaproject.subagents import bundled_agents  # lazy: avoids an import cycle
 
-    return tuple(f".claude/agents/{agent.name}.md" for agent in bundled_agents())
+    return tuple(f"{AGENTS_DIR_POSIX}/{agent.name}.md" for agent in bundled_agents())
 
 
 def learn_targets() -> Tuple[str, ...]:

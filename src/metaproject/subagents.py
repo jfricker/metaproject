@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from metaproject import skills
+from metaproject.deliverables import AGENTS_DIR
 from metaproject.exceptions import MetaProjectError
 from metaproject.skills import (
     CURRENT,
@@ -200,11 +201,11 @@ def _context(project_dir: Path) -> _Context:
     enabled, warnings = enabled_agents(home)
     names = {a.name for a in enabled}
     disabled = tuple(a for a in bundled_agents() if a.name not in names)
-    return _Context(home, home / ".claude" / "agents", enabled, disabled, warnings)
+    return _Context(home, home / AGENTS_DIR, enabled, disabled, warnings)
 
 
 def _symlinked(home: Path) -> Optional[Path]:
-    for path in (home / ".claude", home / ".claude" / "agents"):
+    for path in (home / AGENTS_DIR.parent, home / AGENTS_DIR):
         if path.is_symlink():
             return path
     return None

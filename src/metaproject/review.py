@@ -785,8 +785,10 @@ def backfill_missing(
         # A named `.claude/agents/<name>.md` is a bundled project agent, installed by the
         # agents pass (R-AGT-12), not rendered from the template store.
         from metaproject import subagents
+        from metaproject.deliverables import AGENTS_DIR_POSIX
+        from metaproject.skills import INSTALLED, skills_home
 
-        agent_prefix = ".claude/agents/"
+        agent_prefix = f"{AGENTS_DIR_POSIX}/"
         agent_names = {a.name for a in subagents.bundled_agents()}
         agent_paths = [p for p in named if p.startswith(agent_prefix)]
         named = [p for p in named if p not in agent_paths]
@@ -795,8 +797,15 @@ def backfill_missing(
             for p in agent_paths
             if not (p.endswith(".md") and p[len(agent_prefix) : -3] in agent_names)
         ]
+        # The agents live in the skills home, which is a delegating sub-project's
+        # ancestor, not the sub-project itself.
+        agents_home = skills_home(resolved_proj)
         existing_agents = [
-            p for p in agent_paths if p not in unknown_agents and (resolved_proj / p).exists()
+            p
+            for p in agent_paths
+            if p not in unknown_agents
+            and agents_home is not None
+            and ((agents_home / p).exists() or (agents_home / p).is_symlink())
         ]
 
         existing = [path for path in named if _present(resolved_proj, path)]
@@ -840,14 +849,33 @@ def backfill_missing(
                 if not dry_run:
                     tracker.rollback()
                 raise
+        agents_created: List[str] = []
+        agents_refused: List[str] = []
+        agent_warnings: List[str] = []
+        if agents_report is not None:
+            installed = {s.name for s in agents_report.statuses if s.action == INSTALLED}
+            for path in agent_paths:
+                (agents_created if Path(path).stem in installed else agents_refused).append(path)
+            agent_warnings = list(agents_report.warnings)
+            if agents_report.notice:
+                agent_warnings.append(agents_report.notice)
         try:
             for path in settings:
                 write(path)
         except SettingsError as exc:
             return BackfillResult(
-                created=others, refused=settings, hooks_notice=str(exc), agents=agents_report
+                created=[*others, *agents_created],
+                refused=[*settings, *agents_refused],
+                hooks_notice=str(exc),
+                warnings=agent_warnings,
+                agents=agents_report,
             )
-        return BackfillResult(created=[*named, *agent_paths], agents=agents_report)
+        return BackfillResult(
+            created=[*named, *agents_created],
+            refused=agents_refused,
+            warnings=agent_warnings,
+            agents=agents_report,
+        )
 
     directory_paths = [d.path for d in DELIVERABLES if d.cls is DeliverableClass.DIRECTORY]
     other_paths = [

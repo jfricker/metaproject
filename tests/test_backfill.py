@@ -638,3 +638,59 @@ def test_backfill_named_files_touch_agents_only_for_agent_paths(tmp_path: Path) 
 
     unknown = backfill_missing(proj, files=[".claude/agents/nope.md"], templates_dir=templates)
     assert unknown.missing_template == [".claude/agents/nope.md"]
+
+
+AUDITOR = ".claude/agents/project-auditor.md"
+WORKER = ".claude/agents/backlog-worker.md"
+
+
+def test_backfill_named_agent_behind_symlinked_claude_is_not_created(tmp_path: Path) -> None:
+    proj, templates = scaffolded_project(tmp_path)
+    shutil.rmtree(proj / ".claude")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (proj / ".claude").symlink_to(elsewhere, target_is_directory=True)
+
+    result = backfill_missing(proj, files=[AUDITOR], templates_dir=templates)
+
+    assert result.created == []
+    assert result.refused == [AUDITOR]
+    assert any("symlink" in w for w in result.warnings)
+    assert list(elsewhere.rglob("*")) == []
+
+
+def test_backfill_named_agent_disabled_by_config_is_not_created(tmp_path: Path) -> None:
+    import json
+
+    proj, templates = scaffolded_project(tmp_path)
+    config = proj / ".metaproject" / "config.json"
+    data = json.loads(config.read_text(encoding="utf-8"))
+    data["agents"] = {"enabled": ["spec-reviewer"]}
+    config.write_text(json.dumps(data), encoding="utf-8")
+    victim = proj / WORKER
+    victim.unlink()
+
+    result = backfill_missing(proj, files=[WORKER], templates_dir=templates)
+
+    assert WORKER not in result.created
+    assert result.refused == [WORKER]
+    assert not victim.exists()
+
+
+def test_backfill_named_agent_already_in_delegating_home_is_not_created(tmp_path: Path) -> None:
+    from metaproject.identity import IDENTITY_FILE
+    from metaproject.subagents import install_project_agents
+
+    root = tmp_path / "mono"
+    (root / ".git").mkdir(parents=True)
+    sub = root / "packages" / "a"
+    (sub / ".metaproject").mkdir(parents=True)
+    (sub / IDENTITY_FILE).write_text('{"skills": {"location": "root"}}', encoding="utf-8")
+    install_project_agents(sub)
+    assert (root / AUDITOR).is_file()
+
+    result = backfill_missing(sub, files=[AUDITOR], templates_dir=get_bundled_templates_dir())
+
+    assert result.created == []
+    assert result.refused == [AUDITOR]
+    assert not (sub / ".claude" / "agents").exists()
