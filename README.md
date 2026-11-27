@@ -13,7 +13,8 @@ I now use this process to write MetaProject as well as all my 30+ projects I've 
 - **Agent-Safe Backfill (`metaproject backfill`)**: Create specific missing documents without confirmation, in agent sessions.
 - **Agent-Safe Adoption (`metaproject adopt`)**: Bring an already-cloned repository under metaproject — identity, every missing document and skill — create-only, never changes the repository, no confirmation.
 - **Environment Setup (`metaproject init` / `install`)**: Prepare templates and configure project workspace.
-- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`, plus the `/verify-browser` cross-browser loop and the `/backlog-factory` parallel orchestrator) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new`, `backfill` and `adopt`, and kept current by `metaproject skills sync`.
+- **Project Skills**: The SDLC cycle skills (`/write-intent` … `/wrapup`, `/backlog-new`, plus the `/verify-browser` cross-browser loop, the `/backlog-factory` parallel orchestrator and the `/review-fleet` fleet audit) and the metaproject skill ship in the wheel and are copied into each project's `.agents/skills/` by `new`, `backfill` and `adopt`, and kept current by `metaproject skills sync`.
+- **Project Agents**: `spec-reviewer`, `backlog-worker` and `project-auditor` ship alongside the skills and are installed to `.claude/agents/<name>.md` by the same commands; `agents.enabled` in `.metaproject/config.json` selects them (absent = all, `[]` = none), and `skills status|sync` and `doctor` cover them.
 - **Repair & Migration (`metaproject doctor`)**: Bring the template store, config and cataloged projects up to date after an upgrade, behind per-fix confirmation.
 - **Workspace Universe (`metaproject universe`)**: Catalog and classify all projects across subdirectories into a SQLite database.
 - **Drift Auditing (`metaproject review`)**: Detect drift between project files and central templates.
@@ -211,6 +212,10 @@ it is a no-op without a source.
 
 ## Upgrading from older releases
 
+Projects synced by this release get install manifest format v3 (an `agents` section for the
+project agents); older metaproject versions see it as newer and only report on those projects.
+Run `metaproject skills sync` (or `doctor`) to install the agents.
+
 This is migration reference; the everyday path is [Update](#update). After upgrading the CLI, what
 metaproject put outside it can lag behind: the template store at
 `~/.metaproject/templates` (including its layout), `learn.targets` in `settings.json`, an
@@ -308,18 +313,20 @@ The wizard will prompt for:
 It automatically initializes your SQLite catalog at `~/.metaproject/universe.db` and indexes existing projects in your workspace.
 
 #### Project Skills
-`init` installs no skill. Twelve skills ship inside the package and are copied into each
+`init` installs no skill. Thirteen skills ship inside the package and are copied into each
 project by `metaproject new` and `metaproject backfill`, into `.agents/skills/<name>/`
 (Claude Code reaches each through a bridge entry at `.claude/skills/<name>`), and committed
 with the project like any other file:
 
-- the eleven SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
+- the twelve SDLC skills — `/write-intent`, `/generate-spec`, `/generate-design`,
   `/generate-plan`, `/implement-plan`, `/execute-tests`, `/wrapup`, `/shipit` (merge, push, deploy and
   clean up a finished branch; production deploys wait for a five-line zero-downtime plan and your OK), `/backlog-new` for parking ideas,
   `/verify-browser` (reproduce a browser bug in WebKit with a failing Playwright test, then fix
   it until webkit, chromium and mobile-safari all pass; real-device checks go to `.metaproject/docs/TODO.md`),
   and `/backlog-factory` (work the top N independent backlog items in parallel, one worktree,
-  subagent and PR each; merges only with your OK and deploys to preview only) — invoked by bare name;
+  subagent and PR each; merges only with your OK and deploys to preview only),
+  and `/review-fleet` (audit every managed project against the templates with one
+  `project-auditor` subagent per project that needs attention; writes nothing) — invoked by bare name;
 - the `metaproject` skill, which teaches an agent when to reach for each command, which
   forms are safe to run unattended (`review --no-tui`, `learn list`, `universe`) and which
   need a human (`learn scan` calls a model; `learn apply` commits to your template store;
@@ -707,6 +714,10 @@ metaproject review ~/Projects --all --show-ignored  # audit everything, ignore l
 ```
 
 #### Scripted use
+
+`metaproject review --format json` prints one JSON document on stdout (never opens the TUI,
+never writes), and `--managed` reviews every cataloged managed project, the set `doctor` and
+`skills --all` use. The `/review-fleet` skill combines the two with the `project-auditor` agent.
 
 The board degrades exactly like the `learn` reviewer — `--no-tui`, `TERM=dumb`, or a
 non-TTY stdout prints the table and exits — so CI and pipelines need no special flag.

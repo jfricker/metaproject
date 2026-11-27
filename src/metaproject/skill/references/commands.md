@@ -191,6 +191,8 @@ exits in an agent session (see [Agent-session guards](#agent-session-guards)).
 | `--show-ignored` | Include projects on the ignore list |
 | `--list-ignored` | Print the ignore list and exit |
 | `--unignore` | Remove the target project from the ignore list and exit |
+| `--managed` | Review the cataloged managed projects (the set `doctor` and `skills --all` use) |
+| `--format table\|json` | `json` prints one document `{"templates", "projects": [...]}` on stdout, never opens the TUI, never writes; rejected with `--unignore`/`--list-ignored` (usage error). Default `table` |
 
 States: `✓ CLEAN` (nothing missing, nothing drifted, no working document missing a
 heading), `~ DRIFTED` (present but a governance file's content differs, or a working
@@ -292,6 +294,7 @@ left behind by an upgrade, and repairs each finding behind its own confirmation.
 | Project config (per project) | Moves a legacy root `.metaproject.json` to `.metaproject/config.json` (`git mv` when tracked); removes an identical leftover; reports a differing pair (and the differing keys) without changing either |
 | Project docs (per project) | Moves legacy root or `docs/` cycle documents (plus `docs/{archive,backlog,discovery}/` and `.gitkeep`) into `.metaproject/docs/` (`git mv` when tracked), cleans emptied/junk-only `docs/` while keeping non-empty project `docs/`; never overwrites conflicts and never commits |
 | Project skills (per project) | Installs missing project skills and updates outdated, unmodified ones (same classification as `skills status`); modified ones are reported, never overwritten |
+| Project agents (per project) | Installs missing project agents and updates outdated, unmodified ones (same classification as `skills status`); modified ones are reported, never overwritten; honours `agents.enabled` |
 | Skills legacy link, targets, shadowing (per project) | Migrates a legacy `.claude/skills` → `.agents/skills` directory link to per-skill bridge entries (names user skills Claude Code will stop seeing); reports a bad `skills.targets` and `~/.claude/skills/<n>` or `.github/skills/<n>` shadowing, which only the operator resolves |
 | Project hook scripts (per project) | Replaces an installed `.claude/hooks/metaproject_hook.py` or `scripts/metaproject-session.sh` that predates `.metaproject/config.json` with the bundled copy |
 
@@ -381,6 +384,16 @@ root, nothing is written and the command exits 1. Copies left in the sub-project
 pass; `action` is null for `status`; `location` is `project` or `root`, `home` the
 directory holding the skills, `bridges` the per-target bridge mode and entry states,
 `shadowing` the entries a higher-precedence copy hides), with notices on stderr.
+
+### Project agents
+
+`new`, `backfill`, `adopt` and `skills sync` also install the bundled project agents
+(`spec-reviewer`, `backlog-worker`, `project-auditor`) into `<home>/.claude/agents/<name>.md`
+and record them in the manifest's `agents` section; `skills status` lists them beside the
+skills, with the same four states and `--force NAME`. `agents.enabled` in
+`.metaproject/config.json` (list of names; absent = all, `[]` = none) selects them. The
+manifest is format v3: a metaproject release older than this one sees it as newer, only reports
+on it.
 
 ### Every managed project: `--all`
 

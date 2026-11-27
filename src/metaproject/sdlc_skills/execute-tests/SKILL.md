@@ -67,7 +67,10 @@ look — tests, build, and (for UI work) screenshots.
 5. On failure: fix the code and re-run, don't just report the failure and stop, unless
    the fix requires a decision outside `.metaproject/docs/PLAN.md`'s scope — then stop and flag it.
 6. Check each item in `.metaproject/docs/SPEC.md`'s Acceptance criteria against what was actually
-   implemented; note any criteria not yet met.
+   implemented; note any criteria not yet met. When the `spec-reviewer` agent type is
+   available, dispatch it for this check instead: record each `blocker` finding in
+   `.metaproject/docs/STATE.md` as an unmet criterion and fix every `major` finding before
+   reporting. Without the agent, do the manual check above.
 7. Record in `.metaproject/docs/STATE.md` (wrapup reads these sections and nothing else): unmet
    acceptance criteria and unresolved failures under **Open items carried into PLAN.md**;
    new regression guards under **Design invariants**; facts this run established under

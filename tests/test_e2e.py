@@ -96,6 +96,7 @@ def test_full_lifecycle_and_performance(
         "shipit",
         "verify-browser",
         "backlog-factory",
+        "review-fleet",
     ):
         assert (project_target / ".claude" / "skills" / skill / "SKILL.md").is_file()
         entry = project_target / ".claude" / "skills" / skill

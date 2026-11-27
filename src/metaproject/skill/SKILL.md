@@ -34,7 +34,7 @@ Every project's documents move through one cycle, each stage owned by a project 
 and ticked off in `.metaproject/docs/STATE.md`'s Process list. The skills ship in the metaproject
 wheel; `new` and `backfill` copy them into the project's `.agents/skills/` (Claude Code reaches each
 through a per-skill bridge entry at `.claude/skills/<name>`), where they are committed with the project and invoked by bare name
-(`/write-intent`, `/generate-spec`, …, plus utility skills such as `/backlog-new` and `/verify-browser`):
+(`/write-intent`, `/generate-spec`, …, plus utility skills such as `/backlog-new`, `/verify-browser` and `/review-fleet`):
 
 ```
 write-intent → generate-spec → generate-design → generate-plan →
@@ -237,13 +237,36 @@ updates them all but is the operator's call — in an agent session without `--y
 reports, so hand the operator `metaproject skills sync --all --yes` rather than adding
 `--yes` yourself.
 
+### Project agents
+
+The same install paths (`new`, `backfill`, `adopt`, `skills sync`) also copy three project
+agents into `.claude/agents/<name>.md`, recorded in an `agents` section of the same manifest
+(manifest format v3: an older metaproject sees it as newer and only reports):
+
+- `spec-reviewer` — read-only check of the branch's changes against the cycle documents and the project's declared invariants; dispatched by `execute-tests`.
+- `backlog-worker` — builds one backlog item in its own worktree to a green gate and a PR; dispatched by `backlog-factory`.
+- `project-auditor` — read-only explanation of one project's `review` findings with one recommended action; dispatched by `review-fleet`.
+
+`.metaproject/config.json` key `agents.enabled` selects them: a list of names, absent means
+all, `[]` means none. `skills status|sync` (and `--all`) and `metaproject doctor` cover agents
+exactly as they cover skills: `current`, `outdated`, `modified`, `missing`; a modified agent is
+reported, never overwritten, except by `skills sync --force NAME`.
+
 ## Auditing a project against the templates
 
 ```bash
 metaproject review                       # this project
 metaproject review /path/to/project
 metaproject review --all --depth 2       # every project under the tree
+metaproject review --managed --format json   # every cataloged managed project, machine-readable
 ```
+
+`--format json` prints one JSON document on stdout (`{"templates", "projects": [...]}`, each
+project with its findings, diffs and `is_clean`); it never opens the TUI and never writes.
+`--managed` reviews the cataloged managed projects, the same set `doctor` and `skills --all`
+use. The `/review-fleet` skill builds on both: it runs `review --managed --format json` once,
+skips clean and ignored projects, dispatches one `project-auditor` per remaining project and
+merges the reports into one table grouped by recommended action. It writes nothing.
 
 Each project reports one of four states, and the distinction is worth keeping straight
 when you summarize:

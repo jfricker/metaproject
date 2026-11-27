@@ -21,6 +21,10 @@
       {
         "digest": "b1511794fc643100d531e9a85243956bd30236ef99c54b36590645bd6587d96b",
         "release": "0.10.0"
+      },
+      {
+        "digest": "0cef4d8dfa3ef15af89132bf7fd169692fc32002efa868e5c73a8f41e65b5ce4",
+        "release": "0.12.0"
       }
     ],
     "backlog-new": [
@@ -77,6 +81,10 @@
       {
         "digest": "9f0daea438b81d79e9ffce02f79db92f18d7b871d517cc5981be16162cd75298",
         "release": "0.10.0"
+      },
+      {
+        "digest": "120b58e127af013e3a2c1f380f0570c5cbdcc134f3a538d16b44ca3a1837eb5a",
+        "release": "0.12.0"
       }
     ],
     "generate-design": [
@@ -239,6 +247,16 @@
       {
         "digest": "9fef2b0c046155a0a3d9ce6f27ea02244aeeee1ce6ddbb53c7f781239888293f",
         "release": "0.11.0"
+      },
+      {
+        "digest": "36f773b7638c2880a14b54fcea0c8ed045539a5e78c6551ad840a4d5693c81ba",
+        "release": "0.12.0"
+      }
+    ],
+    "review-fleet": [
+      {
+        "digest": "b8f87dd28197294787720a8670397f5ebcf1799e937875594bf53d7d757a234f",
+        "release": "0.12.0"
       }
     ],
     "shipit": [
@@ -342,6 +360,10 @@
     "backlog-worker": [
       {
         "digest": "d25ab22e3ba6c8807b1ae79beaca85432f2c307d905eec57e429a036360552f1",
+        "release": "0.12.0"
+      },
+      {
+        "digest": "f1d87abe3308409734ae51fc184b9f29cd52b4817424f7dce11e2d482d23d110",
         "release": "0.12.0"
       }
     ],

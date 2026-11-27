@@ -22,6 +22,7 @@ SDLC_SKILLS = (
     "shipit",
     "verify-browser",
     "backlog-factory",
+    "review-fleet",
 )
 
 PRECONDITION = (
@@ -49,8 +50,8 @@ def _frontmatter(text: str) -> dict:
     return fields
 
 
-def test_all_twelve_skills_are_bundled() -> None:
-    """AC-1: eleven SDLC skills plus the metaproject skill."""
+def test_all_thirteen_skills_are_bundled() -> None:
+    """AC-1: twelve SDLC skills plus the metaproject skill."""
     assert {s.name for s in bundled_skills()} == {*SDLC_SKILLS, "metaproject"}
 
 
@@ -91,6 +92,12 @@ def test_no_root_location_reference_to_a_relocated_document(name: str) -> None:
         text,
     ), name
     assert not re.search(r"(?<!\.metaproject/)docs/(?:archive|backlog|discovery)\b", text), name
+
+
+def test_review_fleet_is_declared_and_named() -> None:
+    """R-AGT-20: review-fleet is a bundled skill whose frontmatter name matches."""
+    assert "review-fleet" in {s.name for s in bundled_skills()}
+    assert _frontmatter(_skill_text("review-fleet"))["name"] == "review-fleet"
 
 
 def test_wrapup_archives_from_docs_and_resets_with_backfill() -> None:

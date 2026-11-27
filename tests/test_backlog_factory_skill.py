@@ -76,3 +76,25 @@ def test_backlog_factory_gates_push_merge_and_deploy_separately() -> None:
     assert "never `--admin`" in text
     assert "the merge approval in step 8 does not cover the deploy" in text
     assert "no local-merge path" in text
+
+
+def test_backlog_worker_agent_covers_every_brief_rule() -> None:
+    """R-AGT-18: the agent's rules are a superset of the pasted brief's rules."""
+    from metaproject.subagents import bundled_agents
+
+    path = next(a.path for a in bundled_agents() if a.name == "backlog-worker")
+    agent = path.read_text(encoding="utf-8").lower()
+    brief_rules = _skill().split("Rules:", 1)[1].split("Report back:", 1)[0]
+    assert brief_rules.count(";") >= 7
+    keywords = (
+        "inside your worktree",
+        "base branch",
+        "never merge",
+        "deploy",
+        "version",
+        "cycle documents",
+        "git-ignored",
+        "playwright_browsers_path",
+    )
+    for needle in keywords:
+        assert needle in agent, needle

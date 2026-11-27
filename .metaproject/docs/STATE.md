@@ -23,7 +23,7 @@
 - [x] 7. Doctor agents check
 - [x] 8. review --format json and --managed
 - [x] 9. learn synthesizer wiring
-- [ ] 10. Skills and docs
+- [x] 10. Skills and docs
 - [ ] 11. Dogfood this repository
 - [ ] 12. Final gate and manual checks
 
@@ -35,6 +35,7 @@
 - Agent files are written temp-then-`os.replace` after a hash check; a failed write leaves the original and the manifest unchanged; a symlinked `.claude`/`.claude/agents` is never written through; staging uses `tempfile.mkstemp` (O_EXCL, random name) so a planted symlink is never followed (`tests/test_subagents.py::test_planted_temp_symlink_is_not_followed`).
 - `backfill` with named files touches exactly the named agents (`only=`), never other missing ones (`tests/test_backfill.py`).
 - `review --format json` writes nothing and prints only JSON on stdout; `compliance_cell` derives from `review.compliance_state`, so board and JSON cannot disagree (`tests/test_review.py`).
+- `review --managed` never opens the interactive board when projects resolve to different template stores (Deploy/Update write from one store) (`tests/test_review.py::test_review_managed_mixed_stores_never_open_the_board`).
 - `synth.claude_command` always passes `--tools "" --strict-mcp-config --disable-slash-commands --system-prompt <learn-synthesizer body>`, and `run_claude` runs in an empty temp cwd; the synthesizer system prompt counts against the chunk budget (`tests/test_learn_synth.py`).
 - `.claude/agents` paths are `DeliverableClass.SUBAGENT` and never appear in `scaffolded()` or `learn_targets()` (`tests/test_subagents.py`).
 
