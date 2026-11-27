@@ -19,7 +19,7 @@ has diverged" rather than two that can disagree.
 
 import difflib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -272,6 +272,31 @@ class ReviewResult:
             warnings=[str(warning) for warning in (data.get("warnings") or [])],
             is_ignored=bool(data.get("is_ignored")),
         )
+
+
+def compliance_state(result: ReviewResult) -> str:
+    """The board's `Compliance` verdict as a plain word.
+
+    `INCOMPLETE` > `OUTOFDATE` > `DRIFTED` > `CLEAN`: a file that is not there cannot be
+    reconciled, and a file that has not been migrated is not yet where drift is judged.
+    The board and `review --format json` both read it from here.
+    """
+    if not result.is_compliant:
+        return "INCOMPLETE"
+    if not result.is_current:
+        return "OUTOFDATE"
+    return "CLEAN" if result.is_clean else "DRIFTED"
+
+
+def result_to_dict(result: ReviewResult) -> Dict[str, Any]:
+    """A JSON-serialisable view of one audit: the stored fields plus every derived verdict."""
+    data = asdict(result)
+    data["updatable"] = result.updatable
+    data["is_compliant"] = result.is_compliant
+    data["is_current"] = result.is_current
+    data["is_clean"] = result.is_clean
+    data["compliance"] = compliance_state(result)
+    return data
 
 
 def _diff_against_template(

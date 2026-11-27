@@ -45,6 +45,7 @@ from rich.text import Text
 from metaproject.exceptions import MetaProjectError
 from metaproject.review import (
     ReviewResult,
+    compliance_state,
     deploy_entry,
     ignore_project,
     resolve_variables,
@@ -165,6 +166,14 @@ class BoardResult:
 # ------------------------------------------------------------------------------ painting
 
 
+_STATE_CELLS = {
+    "CLEAN": STATE_CLEAN,
+    "DRIFTED": STATE_DRIFTED,
+    "OUTOFDATE": STATE_OUTOFDATE,
+    "INCOMPLETE": STATE_INCOMPLETE,
+}
+
+
 def compliance_cell(result: ReviewResult) -> str:
     """The `Compliance` column: four states, each named for the defect it reports.
 
@@ -174,11 +183,7 @@ def compliance_cell(result: ReviewResult) -> str:
     DRIFTED: a file that is not there cannot be reconciled, and a file that has not been
     migrated is not yet where drift would be judged.
     """
-    if not result.is_compliant:
-        return STATE_INCOMPLETE
-    if not result.is_current:
-        return STATE_OUTOFDATE
-    return STATE_CLEAN if result.is_clean else STATE_DRIFTED
+    return _STATE_CELLS[compliance_state(result)]
 
 
 def count_cell(count: int, style: str) -> str:

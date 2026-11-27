@@ -21,8 +21,8 @@
 - [x] 5. Scaffold/backfill/adopt call sites
 - [x] 6. CLI skills status/sync
 - [x] 7. Doctor agents check
-- [ ] 8. review --format json and --managed
-- [ ] 9. learn synthesizer wiring
+- [x] 8. review --format json and --managed
+- [x] 9. learn synthesizer wiring
 - [ ] 10. Skills and docs
 - [ ] 11. Dogfood this repository
 - [ ] 12. Final gate and manual checks
@@ -34,12 +34,15 @@
 - `subagents.py` is the only writer of `<home>/.claude/agents/<name>.md` and the manifest `agents` section; `skills` never imports `subagents` (`tests/test_subagents.py`).
 - Agent files are written temp-then-`os.replace` after a hash check; a failed write leaves the original and the manifest unchanged; a symlinked `.claude`/`.claude/agents` is never written through; staging uses `tempfile.mkstemp` (O_EXCL, random name) so a planted symlink is never followed (`tests/test_subagents.py::test_planted_temp_symlink_is_not_followed`).
 - `backfill` with named files touches exactly the named agents (`only=`), never other missing ones (`tests/test_backfill.py`).
+- `review --format json` writes nothing and prints only JSON on stdout; `compliance_cell` derives from `review.compliance_state`, so board and JSON cannot disagree (`tests/test_review.py`).
+- `synth.claude_command` always passes `--tools "" --strict-mcp-config --disable-slash-commands --system-prompt <learn-synthesizer body>`, and `run_claude` runs in an empty temp cwd; the synthesizer system prompt counts against the chunk budget (`tests/test_learn_synth.py`).
 - `.claude/agents` paths are `DeliverableClass.SUBAGENT` and never appear in `scaffolded()` or `learn_targets()` (`tests/test_subagents.py`).
 
 ## Open items carried into plan.md
 
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
 - `skills status --all` table shows no agents column (agents only in JSON); `skills sync --all` adds an agents suffix to a project line only when a count is nonzero. Accepted as within R-AGT-15 (existing output unchanged).
+- `review --managed --format json`: each project uses its own template store; the top-level `"templates"` is the first project's store (default store when the catalog is empty). Confirm or change to per-project only.
 - Amend DESIGN-INVARIANTS doctor order line: project agents run right after project skills (wrapup).
 
 ## Verified facts (do not re-investigate)

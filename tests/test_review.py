@@ -1532,3 +1532,152 @@ def test_ac12_review_never_mentions_skill_files(runner: CliRunner, tmp_path: Pat
     assert cli.exit_code == 0, cli.output
     assert ".agents" not in cli.output
     assert "SKILL.md" not in cli.output
+
+
+# ------------------------------------------------------- review --format json / --managed
+
+
+def _json_fixtures(tmp_path: Path) -> dict:
+    """A clean, a drifted, an incomplete and a legacy (OUTOFDATE) project side by side."""
+    templates = get_bundled_templates_dir()
+    root = tmp_path / "fleet"
+    root.mkdir()
+    for name in ("clean_p", "drift_p", "legacy_p"):
+        scaffold_project(
+            project_name=name,
+            output=root / name,
+            templates_dir=templates,
+            interactive=False,
+            no_git=True,
+        )
+    (root / "drift_p" / "AGENTS.md").write_text("# local rules\n", encoding="utf-8")
+    (root / "legacy_p" / ".metaproject" / "docs" / "INTENT.md").rename(
+        root / "legacy_p" / "intent.md"
+    )
+    make_drifting_project(root, "incomplete_p")
+    return {
+        "root": root,
+        "clean_p": "CLEAN",
+        "drift_p": "DRIFTED",
+        "legacy_p": "OUTOFDATE",
+        "incomplete_p": "INCOMPLETE",
+    }
+
+
+def test_compliance_state_and_cell_agree_for_every_state(tmp_path: Path) -> None:
+    from metaproject.review import compliance_state
+
+    fx = _json_fixtures(tmp_path)
+    cells = {
+        "CLEAN": STATE_CLEAN,
+        "DRIFTED": STATE_DRIFTED,
+        "OUTOFDATE": STATE_OUTOFDATE,
+        "INCOMPLETE": STATE_INCOMPLETE,
+    }
+    for name in ("clean_p", "drift_p", "legacy_p", "incomplete_p"):
+        res = review_project(fx["root"] / name)
+        assert compliance_state(res) == fx[name]
+        assert compliance_cell(res) == cells[fx[name]]
+
+
+def test_review_format_json_is_one_document_matching_the_board(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    import json
+
+    from metaproject.review import compliance_state, get_ignore_file
+
+    fx = _json_fixtures(tmp_path)
+    ledger = get_ignore_file()
+    assert not ledger.exists()
+    result = runner.invoke(app, ["review", str(fx["root"]), "--all", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    assert set(doc) == {"templates", "projects"}
+    by_name = {p["project_name"]: p for p in doc["projects"]}
+    assert set(by_name) == {"clean_p", "drift_p", "legacy_p", "incomplete_p"}
+    for name, entry in by_name.items():
+        res = review_project(fx["root"] / name)
+        assert entry["compliance"] == fx[name] == compliance_state(res)
+        assert len(entry["missing_files"]) == len(res.missing_files)
+        assert len(entry["diffs"]) == len(res.diffs)
+        assert entry["updatable"] == res.updatable
+        assert entry["is_clean"] == res.is_clean
+    assert by_name["legacy_p"]["legacy"]
+    assert not ledger.exists()
+
+
+def test_review_format_json_single_project(runner: CliRunner, tmp_path: Path) -> None:
+    import json
+
+    fx = _json_fixtures(tmp_path)
+    result = runner.invoke(app, ["review", str(fx["root"] / "clean_p"), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    assert [p["compliance"] for p in doc["projects"]] == ["CLEAN"]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--format", "json", "--unignore"],
+        ["--format", "json", "--list-ignored"],
+        ["--managed", "--all"],
+        ["--managed", "."],
+        ["--managed", "--depth", "2"],
+        ["--format", "xml"],
+    ],
+)
+def test_review_usage_errors(runner: CliRunner, args: List[str]) -> None:
+    result = runner.invoke(app, ["review", *args])
+    assert result.exit_code == 2, result.output
+
+
+def test_review_managed_empty_catalog(runner: CliRunner, tmp_path: Path) -> None:
+    import json
+
+    result = runner.invoke(app, ["review", "--managed", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["projects"] == []
+    table = runner.invoke(app, ["review", "--managed"])
+    assert table.exit_code == 0, table.output
+
+
+def test_review_managed_reviews_cataloged_projects(runner: CliRunner, tmp_path: Path) -> None:
+    import json
+
+    from metaproject import db
+    from metaproject.config import load_config
+
+    fx = _json_fixtures(tmp_path)
+    cfg = load_config()
+    database = db.get_db(cfg.universe_db)
+    for name in ("clean_p", "drift_p"):
+        path = fx["root"] / name
+        db.upsert_project(
+            database,
+            {
+                "name": name,
+                "path": str(path),
+                "relative_path": name,
+                "last_modified": "2026-11-01T00:00:00",
+                "last_modified_ts": 1.0,
+                "classification": "Active",
+                "is_git": 0,
+                "scanned_at": "2026-11-01T00:00:00",
+                "scan_root": str(fx["root"]),
+            },
+        )
+    result = runner.invoke(app, ["review", "--managed", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    states = {p["project_name"]: p["compliance"] for p in doc["projects"]}
+    assert states == {"clean_p": "CLEAN", "drift_p": "DRIFTED"}
+
+    ignore_project(fx["root"] / "drift_p")
+    hidden = json.loads(runner.invoke(app, ["review", "--managed", "--format", "json"]).stdout)
+    assert [p["project_name"] for p in hidden["projects"]] == ["clean_p"]
+    shown = json.loads(
+        runner.invoke(app, ["review", "--managed", "--format", "json", "--show-ignored"]).stdout
+    )
+    assert len(shown["projects"]) == 2

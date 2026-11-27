@@ -459,7 +459,9 @@ def resolve_project(project_dir: Optional[Path], output_format: str = "table") -
     return target
 
 
-def resolve_project_templates(project_dir: Path, templates_path: Optional[Path]) -> Optional[Path]:
+def resolve_project_templates(
+    project_dir: Path, templates_path: Optional[Path], out: Optional[Console] = None
+) -> Optional[Path]:
     """Resolve the store once for `backfill`/`adopt`/`review` and say where it came from.
 
     Resolved once per command and handed on as an explicit path, so a git
@@ -473,7 +475,7 @@ def resolve_project_templates(project_dir: Path, templates_path: Optional[Path])
     if not resolution.source_declared:
         return templates_path
     style = "yellow" if resolution.origin == ORIGIN_BUNDLED else "dim"
-    console.print(f"[{style}]{escape(resolution.describe())}[/{style}]", soft_wrap=True)
+    (out or console).print(f"[{style}]{escape(resolution.describe())}[/{style}]", soft_wrap=True)
     return resolution.path
 
 
@@ -1324,10 +1326,19 @@ def review_cmd(
         "--unignore",
         help="Remove the target project from the ignore list and exit.",
     ),
+    managed: bool = typer.Option(
+        False,
+        "--managed",
+        help="Review the cataloged managed projects (the set doctor and skills --all use).",
+    ),
+    output_format: str = typer.Option(
+        "table", "--format", "-f", help="Output format: table or json."
+    ),
 ) -> None:
     """Analyze projects against central templates to detect missing files and drift."""
     from metaproject.review import (
         load_ignored,
+        result_to_dict,
         review_project,
         review_workspace,
         unignore_project,
@@ -1335,7 +1346,46 @@ def review_cmd(
     from metaproject.review_tui import run_board
     from metaproject.session import tui_enabled
 
-    target = (project_dir or Path.cwd()).resolve() if all_projects else resolve_project(project_dir)
+    def usage_error(message: str) -> None:
+        Console(stderr=True).print(f"[red]Usage error:[/red] {escape(message)}", soft_wrap=True)
+        raise typer.Exit(code=2)
+
+    if output_format not in ("table", "json"):
+        usage_error(f"unknown --format {output_format!r}")
+    as_json = output_format == "json"
+    if as_json and (unignore or list_ignored):
+        usage_error("--format json cannot be combined with --unignore or --list-ignored.")
+    if managed:
+        if all_projects:
+            usage_error("--managed cannot be combined with --all.")
+        if project_dir is not None:
+            usage_error("--managed cannot be combined with a PROJECT argument.")
+        if depth != 1:
+            usage_error("--managed cannot be combined with --depth.")
+
+    # Notices go to stderr under json so stdout stays one parseable document.
+    out = Console(stderr=True) if as_json else console
+
+    if managed:
+        from metaproject.catalog import managed_projects
+
+        if web_profile_notice("`metaproject review --managed`", output_format):
+            return
+        require("sqlite_utils", "`metaproject review --managed`")
+        target = Path.cwd().resolve()
+        ignored_set = set() if show_ignored else set(load_ignored())
+        projects = [p for p in managed_projects(load_config()) if str(p) not in ignored_set]
+        # Resolve the store per project so each project's `templates.source` is honoured.
+        results = []
+        for proj in projects:
+            proj_templates = resolve_project_templates(proj, templates_path, out)
+            results.append(review_project(proj, proj_templates))
+        if results and results[0].templates_dir:
+            templates_path = Path(results[0].templates_dir)
+    elif all_projects:
+        target = (project_dir or Path.cwd()).resolve()
+    else:
+        target = resolve_project(project_dir, output_format)
 
     if list_ignored:
         entries = load_ignored()
@@ -1352,7 +1402,9 @@ def review_cmd(
             console.print(f"[yellow]{target} was not on the ignore list.[/yellow]")
         return
 
-    if all_projects:
+    if managed:
+        pass
+    elif all_projects:
         results = review_workspace(
             target,
             templates_path,
@@ -1360,8 +1412,26 @@ def review_cmd(
             include_ignored=show_ignored,
         )
     else:
-        templates_path = resolve_project_templates(target, templates_path)
+        templates_path = resolve_project_templates(target, templates_path, out)
         results = [review_project(target, templates_path)]
+
+    if as_json:
+        import json
+
+        from metaproject.review import resolve_templates_dir
+
+        templates_dir = (
+            results[0].templates_dir if results else str(resolve_templates_dir(templates_path))
+        )
+        for res in results:
+            for warning in res.warnings:
+                out.print(
+                    f"[yellow]Warning:[/yellow] {escape(res.project_name)}: {escape(warning)}",
+                    soft_wrap=True,
+                )
+        document = {"templates": templates_dir, "projects": [result_to_dict(r) for r in results]}
+        typer.echo(json.dumps(document, indent=2, sort_keys=True))
+        return
 
     if not results:
         console.print(f"[yellow]No projects discovered for review in {target}[/yellow]")
