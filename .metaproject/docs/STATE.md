@@ -14,7 +14,7 @@
 ## Implementation phases
 
 <!-- written by implement-plan as steps land -->
-- [ ] 1. Bundle agents and packaging
+- [x] 1. Bundle agents and packaging
 - [ ] 2. Manifest v3 in skills.py
 - [ ] 3. subagents.py core
 - [ ] 4. Ledger agents section
