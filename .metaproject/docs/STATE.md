@@ -7,7 +7,7 @@
 - [x] 2. generate-spec: spec.md approved
 - [x] 3. generate-design: design.md approved
 - [x] 4. generate-plan: plan.md approved
-- [ ] 5. implement-plan: code and tests written
+- [x] 5. implement-plan: code and tests written
 - [ ] 6. execute-tests: tests passing
 - [ ] 7. wrapup: cycle archived
 
@@ -25,7 +25,7 @@
 - [x] 9. learn synthesizer wiring
 - [x] 10. Skills and docs
 - [x] 11. Dogfood this repository
-- [ ] 12. Final gate and manual checks
+- [x] 12. Final gate and manual checks
 
 ## Design invariants (regression guards)
 
@@ -44,9 +44,13 @@
 <!-- written by implement-plan/execute-tests; resolved with the operator by wrapup -->
 - `skills status --all` table shows no agents column (agents only in JSON); `skills sync --all` adds an agents suffix to a project line only when a count is nonzero. Accepted as within R-AGT-15 (existing output unchanged).
 - `review --managed --format json`: each project uses its own template store; the top-level `"templates"` is the first project's store (default store when the catalog is empty). Confirm or change to per-project only.
+- Manual, operator: run one real `metaproject learn scan` (agent sessions are guarded) and compare proposal quality with the pre-change synthesis (default system prompt removed).
+- Manual, operator: `metaproject doctor .` here should report project agents current (doctor refuses in agent sessions).
 - Amend DESIGN-INVARIANTS doctor order line: project agents run right after project skills (wrapup).
 
 ## Verified facts (do not re-investigate)
 
 <!-- written by implement-plan/execute-tests; appended to docs/VERIFIED-FACTS.md by wrapup -->
 - Claude Code 2.1.332: `claude -p --tools "" --strict-mcp-config` init event has `tools: []`, `mcp: []`; `--tools default` lists all built-ins. An agent file with `tools: []` is listed as "All tools" (frontmatter does not disable tools). Confirmed by running both, 2026-11-26.
+- `synth.claude_command("claude", "haiku")` run live from an empty temp dir: stream-json init has `tools: []`, `mcp: []`, 0 slash commands, and the model replies (acceptance criterion 14). Confirmed 2026-11-26.
+- This repository synced to the shipped agents: three `.claude/agents/*.md` byte-equal to the bundle, manifest v3 with an `agents` section; a second `skills sync --yes` wrote nothing. Confirmed 2026-11-26.
