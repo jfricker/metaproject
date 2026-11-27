@@ -1681,3 +1681,30 @@ def test_review_managed_reviews_cataloged_projects(runner: CliRunner, tmp_path: 
         runner.invoke(app, ["review", "--managed", "--format", "json", "--show-ignored"]).stdout
     )
     assert len(shown["projects"]) == 2
+
+
+def test_review_managed_mixed_stores_never_open_the_board(
+    runner: CliRunner, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deploy/Update write from one shared store, so mixed stores print read-only."""
+    from dataclasses import replace
+
+    from metaproject import cli, review_tui, session
+
+    clean = ReviewResult(project_name="a", project_path=str(tmp_path / "a"), templates_dir="/s1")
+    other = replace(clean, project_name="b", project_path=str(tmp_path / "b"), templates_dir="/s2")
+    results = iter([clean, other])
+    monkeypatch.setattr(
+        "metaproject.catalog.managed_projects", lambda cfg: [tmp_path / "a", tmp_path / "b"]
+    )
+    monkeypatch.setattr(cli, "resolve_project_templates", lambda proj, tp, out=None: tp)
+    monkeypatch.setattr("metaproject.review.review_project", lambda proj, tp: next(results))
+    monkeypatch.setattr(session, "tui_enabled", lambda no_tui=False: not no_tui)
+
+    def boom(*args, **kwargs):
+        raise AssertionError("interactive board opened for mixed template stores")
+
+    monkeypatch.setattr(review_tui, "run_board", boom)
+    result = runner.invoke(app, ["review", "--managed"])
+    assert result.exit_code == 0, result.output
+    assert "read-only" in result.output

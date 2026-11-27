@@ -1382,6 +1382,16 @@ def review_cmd(
             results.append(review_project(proj, proj_templates))
         if results and results[0].templates_dir:
             templates_path = Path(results[0].templates_dir)
+        # The board's Deploy/Update write from one shared store. When managed projects
+        # resolve to different stores, a write could render a project from another
+        # project's templates, so the board is printed read-only instead.
+        if len({r.templates_dir for r in results}) > 1 and not no_tui and not as_json:
+            no_tui = True
+            out.print(
+                "[yellow]Managed projects use different template stores; showing the board "
+                "read-only. Run `metaproject review <project>` to remediate one.[/yellow]",
+                soft_wrap=True,
+            )
     elif all_projects:
         target = (project_dir or Path.cwd()).resolve()
     else:
