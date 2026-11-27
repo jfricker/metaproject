@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate `src/metaproject/skill_history.json`, the ledger of released skill digests.
+"""Regenerate `src/metaproject/skill_history.json`, the ledger of released skill and agent digests.
 
 `metaproject skills sync` replaces an installed skill only when it is a pristine copy of
 some release. For installs that predate the install manifest, "pristine" is decided by
@@ -14,6 +14,7 @@ Usage: scripts/gen_skill_history.py [--ledger PATH] [--check]
 """
 
 import argparse
+import hashlib
 import io
 import re
 import subprocess
@@ -29,6 +30,7 @@ from metaproject.skills import file_map, skill_digest, skills_in  # noqa: E402
 
 LEDGER = ROOT / "src" / "metaproject" / "skill_history.json"
 SKILL_PATHS = ("src/metaproject/skill", "src/metaproject/sdlc_skills")
+AGENT_PATH = "src/metaproject/agents"
 FIRST_RELEASE = (0, 8, 0)
 TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
@@ -49,7 +51,7 @@ def release_tags() -> list:
 
 
 def extract(tag: str, dest: Path) -> None:
-    for path in SKILL_PATHS:
+    for path in (*SKILL_PATHS, AGENT_PATH):
         result = subprocess.run(
             ["git", "archive", "--format=tar", tag, path], cwd=ROOT, capture_output=True
         )
@@ -68,6 +70,18 @@ def digests_of(root: Path) -> dict:
     }
 
 
+def agent_digests_of(root: Path) -> dict:
+    """`{agent name: sha256 of the file bytes}` for the project agents under `root`."""
+    agents_dir = root / "src" / "metaproject" / "agents"
+    if not agents_dir.is_dir():
+        return {}
+    return {
+        path.stem: hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(agents_dir.glob("*.md"))
+        if path.stem != "learn-synthesizer"
+    }
+
+
 def current_version() -> str:
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     return re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE).group(1)
@@ -75,10 +89,11 @@ def current_version() -> str:
 
 def build(existing: dict) -> dict:
     skills = {name: list(entries) for name, entries in existing.get("skills", {}).items()}
+    agents = {name: list(entries) for name, entries in existing.get("agents", {}).items()}
 
-    def add(release: str, digests: dict) -> None:
+    def add(release: str, digests: dict, section: dict = skills) -> None:
         for name, digest in digests.items():
-            entries = skills.setdefault(name, [])
+            entries = section.setdefault(name, [])
             if not any(entry["digest"] == digest for entry in entries):
                 entries.append({"digest": digest, "release": release})
 
@@ -86,8 +101,14 @@ def build(existing: dict) -> dict:
         with tempfile.TemporaryDirectory() as tmp:
             extract(tag, Path(tmp))
             add(tag[1:], digests_of(Path(tmp)))
+            add(tag[1:], agent_digests_of(Path(tmp)), agents)
     add(current_version(), digests_of(ROOT))
-    return {"version": 1, "skills": dict(sorted(skills.items()))}
+    add(current_version(), agent_digests_of(ROOT), agents)
+    return {
+        "version": 1,
+        "skills": dict(sorted(skills.items())),
+        "agents": dict(sorted(agents.items())),
+    }
 
 
 def render(ledger: dict) -> str:

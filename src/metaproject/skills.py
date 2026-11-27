@@ -229,25 +229,28 @@ def is_newer_release(candidate: object, running: str) -> bool:
 # ------------------------------------------------------------------------ ledger
 
 
-def parse_history(text: str) -> Dict[str, Dict[str, str]]:
-    """`{skill name: {digest: release}}` from the ledger's JSON text."""
+def parse_history(text: str, section: str = "skills") -> Dict[str, Dict[str, str]]:
+    """`{name: {digest: release}}` for one ledger section (`skills` or `agents`).
+
+    A missing section reads as empty.
+    """
     data = json.loads(text)
     out: Dict[str, Dict[str, str]] = {}
-    for name, entries in (data.get("skills") or {}).items():
+    for name, entries in (data.get(section) or {}).items():
         out[name] = {entry["digest"]: entry["release"] for entry in entries}
     return out
 
 
 @lru_cache(maxsize=1)
-def load_history() -> Dict[str, Dict[str, str]]:
-    """The digests of every previously released skill, from package data."""
+def load_history(section: str = "skills") -> Dict[str, Dict[str, str]]:
+    """The digests of every previously released skill (or agent), from package data."""
     try:
         text = (
             importlib.resources.files("metaproject")
             .joinpath(HISTORY_RESOURCE)
             .read_text(encoding="utf-8")
         )
-        return parse_history(text)
+        return parse_history(text, section)
     except Exception:
         return {}
 

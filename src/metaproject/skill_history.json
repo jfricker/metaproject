@@ -337,5 +337,25 @@
         "release": "0.10.0"
       }
     ]
+  },
+  "agents": {
+    "backlog-worker": [
+      {
+        "digest": "d25ab22e3ba6c8807b1ae79beaca85432f2c307d905eec57e429a036360552f1",
+        "release": "0.12.0"
+      }
+    ],
+    "project-auditor": [
+      {
+        "digest": "ede6a8e8766ca4eacadacc8fe3fa2351c86af89e4e224c7241e67a309c12478d",
+        "release": "0.12.0"
+      }
+    ],
+    "spec-reviewer": [
+      {
+        "digest": "f4fce5413872c041745cd2d0a2a0a4dd7a35dea35e200ead50625b2c2cf53975",
+        "release": "0.12.0"
+      }
+    ]
   }
 }

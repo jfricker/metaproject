@@ -1,7 +1,7 @@
 """The single declaration of deliverable classes (spec.md R-CLS-1).
 
 Every file (or directory) `metaproject` scaffolds, reviews, or learns from belongs to
-exactly one of five classes, declared once here rather than re-decided by each caller:
+exactly one of six classes, declared once here rather than re-decided by each caller:
 
 - **governance** — `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore`. Rendered and
   diffed in full; offered for both Update and Deploy.
@@ -22,6 +22,9 @@ exactly one of five classes, declared once here rather than re-decided by each c
   every key the operator already has. Present means "the hook script is installed and
   every metaproject hook entry is merged"; never diffed, never offered for Update, never
   learn evidence.
+- **subagent** — `.claude/agents/<name>.md` for each bundled project agent. Installed and
+  updated only by `subagents.py`; not in `DELIVERABLES`, so `review`, `scaffolded()` and
+  `learn_targets()` never see them.
 
 `review.py`, `scaffold.py`, `config.py` and `learn/` all read this module rather than
 import it from one another, so `learn` in particular never has to import `review` just
@@ -42,13 +45,14 @@ MIGRATABLE_SUBDIRS: Tuple[str, ...] = ("archive", "backlog", "discovery")
 
 
 class DeliverableClass(Enum):
-    """The five classes a deliverable can belong to. See module docstring."""
+    """The classes a deliverable can belong to. See module docstring."""
 
     GOVERNANCE = "governance"
     WORKING = "working"
     ON_DEMAND = "on_demand"
     DIRECTORY = "directory"
     SETTINGS = "settings"
+    SUBAGENT = "subagent"
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,13 @@ def classify(path: str) -> Optional[DeliverableClass]:
 def scaffolded() -> Tuple[str, ...]:
     """Every declared path except on-demand ones — what `new` and `backfill` create."""
     return tuple(d.path for d in DELIVERABLES if d.cls is not DeliverableClass.ON_DEMAND)
+
+
+def subagent_paths() -> Tuple[str, ...]:
+    """`.claude/agents/<name>.md` for every bundled project agent (class SUBAGENT)."""
+    from metaproject.subagents import bundled_agents  # lazy: avoids an import cycle
+
+    return tuple(f".claude/agents/{agent.name}.md" for agent in bundled_agents())
 
 
 def learn_targets() -> Tuple[str, ...]:

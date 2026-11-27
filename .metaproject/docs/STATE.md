@@ -16,8 +16,8 @@
 <!-- written by implement-plan as steps land -->
 - [x] 1. Bundle agents and packaging
 - [x] 2. Manifest v3 in skills.py
-- [ ] 3. subagents.py core
-- [ ] 4. Ledger agents section
+- [x] 3. subagents.py core
+- [x] 4. Ledger agents section
 - [ ] 5. Scaffold/backfill/adopt call sites
 - [ ] 6. CLI skills status/sync
 - [ ] 7. Doctor agents check
@@ -30,6 +30,10 @@
 ## Design invariants (regression guards)
 
 <!-- written by implement-plan/execute-tests; appended to docs/DESIGN-INVARIANTS.md by wrapup -->
+- `skills._write_manifest` accepts only a `Manifest`; every manifest write carries the `agents` section through, so a skills pass never drops agents and an agents pass never drops skills/bridges (`tests/test_skills_sync.py`, `tests/test_subagents.py`).
+- `subagents.py` is the only writer of `<home>/.claude/agents/<name>.md` and the manifest `agents` section; `skills` never imports `subagents` (`tests/test_subagents.py`).
+- Agent files are written temp-then-`os.replace` after a hash check; a failed write leaves the original and the manifest unchanged; a symlinked `.claude`/`.claude/agents` is never written through (`tests/test_subagents.py`).
+- `.claude/agents` paths are `DeliverableClass.SUBAGENT` and never appear in `scaffolded()` or `learn_targets()` (`tests/test_subagents.py`).
 
 ## Open items carried into plan.md
 
